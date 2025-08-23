@@ -18,6 +18,14 @@ class Window:
         self.root.geometry("1500x750")
         self.root.configure(bg="#F0F0F0")
 
+         # Icono personalizado
+        try:
+            from tkinter import PhotoImage
+            icon = PhotoImage(file="assets/icon.png")
+            self.root.iconphoto(True, icon)
+        except Exception as e:
+            print("No se pudo cargar el icono:", e)
+
         self.monedas = monedas if monedas else ForexPairs.CURRENCIES
 
         # Frames

@@ -6,8 +6,8 @@ setup(
     description="Forex Trading Bot con Tkinter, FinRL y Reinforcement Learning",
     author="jadelmag",
     author_email="kientienemibarraespaciadora@gmail.com",
-    packages=find_packages(where="app"),
-    package_dir={"": "app"},
+    packages=find_packages(where="."),
+    package_dir={"": "."},
     install_requires=[
         "yfinance==0.2.25",
         "pandas==2.2.3",
@@ -22,12 +22,12 @@ setup(
         "scikit-learn>=1.3.0",
         "websockets==10.4",
         "wrds==3.4.0",
-        # FinRL desde GitHub
-        "git+https://github.com/AI4Finance-Foundation/FinRL.git"
+        # FinRL desde GitHub con PEP 508
+        "FinRL @ git+https://github.com/AI4Finance-Foundation/FinRL.git",
     ],
     entry_points={
         "console_scripts": [
-            "forex-trader-bot=app.main:main"
+            "forex-trader-bot=forex_trader_bot.main:main"
         ]
     },
     classifiers=[
@@ -35,3 +35,4 @@ setup(
         "Operating System :: OS Independent",
     ],
 )
+
