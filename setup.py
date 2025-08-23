@@ -9,7 +9,7 @@ setup(
     packages=find_packages(where="app"),
     package_dir={"": "app"},
     install_requires=[
-        "yfinance==0.2.25",       # compatible con websockets<11
+        "yfinance==0.2.25",
         "pandas>=2.1.0",
         "numpy>=2.3.0",
         "matplotlib>=3.8.0",
@@ -19,11 +19,11 @@ setup(
         "gym>=0.26.0",
         "tensorboard>=2.15.0",
         "scikit-learn>=1.3.0",
-        "websockets==10.4"        # compatible con alpaca-trade-api
+        "websockets==10.4"
     ],
     entry_points={
         "console_scripts": [
-            "forex-trader-bot=main:main"
+        "forex-trader-bot=app.main:main"
         ]
     },
     classifiers=[

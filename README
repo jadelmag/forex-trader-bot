@@ -19,44 +19,53 @@ Este proyecto permite:
 
 ---
 
+## Estructura del proyecto
+
+```
+forex-trader-bot/
+│
+├─ app/ # Paquete principal
+│ ├─ __init__.py # Importa automáticamente Window, CandlestickChart, ForexPairs
+│ ├─ window.py # Clase Window con Tkinter y lógica de gráficos
+│ ├─ candlestick_chart.py # Clase CandlestickChart para obtener y dibujar velas
+│ ├─ forex_pairs.py # Clase ForexPairs con pares de divisas e intervalos
+│ └─ main.py # Función main() para ejecutar la app
+│
+├─ setup.py # Configuración del paquete y entry point
+├─ requirements.txt # Dependencias necesarias
+└─ README.md # Instrucciones de instalación y uso
+```
+
+---
+
 ## Instalación paso a paso
 
 ### 1. Clonar el repositorio
-
-Abre la terminal o PowerShell y ejecuta:
 
 ```bash
 git clone https://github.com/jadelmag/forex-trader-bot.git
 cd forex-trader-bot
 ```
 
----
-
 ### 2. Crear un entorno virtual
-
-Es muy recomendable usar un entorno virtual para no afectar otras librerías de Python:
 
 ```bash
 python -m venv forex-env
 ```
 
----
-
 ### 3. Activar el entorno virtual
 
-* **Windows**:
+* Windows:
 
 ```bash
 .\forex-env\Scripts\activate
 ```
 
-* **Linux/macOS**:
+* Linux/macOS:
 
 ```bash
 source forex-env/bin/activate
 ```
-
----
 
 ### 4. Actualizar pip
 
@@ -64,44 +73,33 @@ source forex-env/bin/activate
 python -m pip install --upgrade pip
 ```
 
----
-
-### 5. Instalar las dependencias
+### 5. Instalar dependencias
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Esto instalará:
+### 6. Instalar el paquete en modo editable
 
-* `yfinance`, `pandas`, `numpy`, `matplotlib`, `mplfinance`
-* `stable-baselines3`, `torch`, `gym`, `tensorboard`
-* `scikit-learn`, `websockets`
-* FinRL desde GitHub
+```bash
+pip install -e .
+```
 
----
+Esto creará el comando `forex-trader-bot`.
 
-### 6. Ejecutar el bot
-
-Desde la raíz del proyecto, ejecuta:
+### 7. Ejecutar el bot
 
 ```bash
 forex-trader-bot
 ```
 
-Esto abrirá la interfaz gráfica de Tkinter.
+> Esto abrirá la interfaz gráfica de Tkinter.
 
----
-
-### 7. Salir del entorno virtual
-
-Cuando hayas terminado de usar el bot, puedes salir del entorno virtual con:
+### 8. Salir del entorno virtual
 
 ```bash
 deactivate
 ```
-
-Esto devolverá tu terminal al Python del sistema.
 
 ---
 
@@ -112,7 +110,7 @@ Esto devolverá tu terminal al Python del sistema.
 3. Selecciona el **periodo** y el **intervalo** de las velas.
 4. Haz clic en **Cargar Gráfica** para visualizar las velas.
 5. Usa los botones **Zoom**, **Pan** y **Exportar** según necesites.
-6. Ejecuta estrategias RL haciendo clic en **Estrategia** (solo si quieres probar modelos entrenados).
+6. Ejecuta estrategias RL haciendo clic en **Estrategia**.
 
 ---
 
@@ -124,9 +122,9 @@ Esto devolverá tu terminal al Python del sistema.
 
 ## Recomendaciones
 
-* Se recomienda conexión estable a Internet, ya que los datos se descargan en tiempo real desde Yahoo Finance.
-* No mezclar librerías de este entorno con otros proyectos para evitar conflictos.
-* Para actualizar FinRL, puedes usar:
+* Mantén conexión estable a Internet.
+* No mezcles librerías de este entorno con otros proyectos para evitar conflictos.
+* Para actualizar FinRL:
 
 ```bash
 pip install --upgrade git+https://github.com/AI4Finance-Foundation/FinRL.git
@@ -136,21 +134,10 @@ pip install --upgrade git+https://github.com/AI4Finance-Foundation/FinRL.git
 
 ## Problemas comunes
 
-1. **Error de `websockets`**:
-   Asegúrate de tener la versión exacta `websockets==10.4` instalada.
+1. **Error de `websockets`**: asegúrate de tener la versión exacta `websockets==10.4`.
+2. **Datos no encontrados**: algunos pares exóticos pueden no estar disponibles en Yahoo Finance.
+3. **Problemas de Python**: este proyecto está probado con Python 3.11.
 
-2. **Datos no encontrados**:
-   Algunos pares exóticos pueden no estar disponibles en Yahoo Finance. Usa pares principales como `EURUSD`, `USDJPY`, etc.
-
-3. **Problemas de Python**:
-   Este proyecto está probado con **Python 3.11**. Recomendable no usar versiones anteriores.
-
----
-
-## Documentación gráfica para principiantes
-
-Se recomienda añadir capturas de pantalla de la interfaz con flechas señalando los botones de **Confirmar**, **Cargar Gráfica**, **Zoom**, **Pan**, **Exportar** y **Estrategia** para que sea más intuitivo.
-
-## License
+## Licencia
 
 MIT

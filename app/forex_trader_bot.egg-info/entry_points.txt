@@ -1,2 +1,0 @@
-[console_scripts]
-forex-trader-bot = main:main
