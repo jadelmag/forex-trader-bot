@@ -1,0 +1,15 @@
+# Dependencias PyPI
+yfinance==0.2.25          # compatible con websockets<11
+pandas>=2.1.0
+numpy>=2.3.0
+matplotlib>=3.8.0
+mplfinance>=0.12.10b0
+websockets==10.4           # compatible con alpaca-trade-api
+stable-baselines3>=2.7.0
+torch>=2.8.0
+gym>=0.26.0
+tensorboard>=2.15.0
+scikit-learn>=1.3.0
+
+# FinRL desde GitHub (última versión)
+git+https://github.com/AI4Finance-Foundation/FinRL.git

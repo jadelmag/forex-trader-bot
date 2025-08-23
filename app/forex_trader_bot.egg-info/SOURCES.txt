@@ -1,0 +1,8 @@
+README
+setup.py
+app/forex_trader_bot.egg-info/PKG-INFO
+app/forex_trader_bot.egg-info/SOURCES.txt
+app/forex_trader_bot.egg-info/dependency_links.txt
+app/forex_trader_bot.egg-info/entry_points.txt
+app/forex_trader_bot.egg-info/requires.txt
+app/forex_trader_bot.egg-info/top_level.txt

@@ -1,0 +1,156 @@
+# Forex Trader Bot
+
+Bot de trading Forex con interfaz gráfica (Tkinter) y soporte de Reinforcement Learning (FinRL + Stable-Baselines3).
+
+Este proyecto permite:
+
+* Seleccionar pares de divisas.
+* Cargar gráficos de velas con tooltips.
+* Ejecutar estrategias de RL y backtesting.
+* Exportar datos históricos a CSV.
+
+---
+
+## Requisitos
+
+* Python 3.11 [Download: https://www.python.org/downloads/]
+* Conexión a internet (para descargar datos de Yahoo Finance y FinRL)
+* Git (para clonar el repositorio) [Download: https://git-scm.com/downloads]
+
+---
+
+## Instalación paso a paso
+
+### 1. Clonar el repositorio
+
+Abre la terminal o PowerShell y ejecuta:
+
+```bash
+git clone https://github.com/jadelmag/forex-trader-bot.git
+cd forex-trader-bot
+```
+
+---
+
+### 2. Crear un entorno virtual
+
+Es muy recomendable usar un entorno virtual para no afectar otras librerías de Python:
+
+```bash
+python -m venv forex-env
+```
+
+---
+
+### 3. Activar el entorno virtual
+
+* **Windows**:
+
+```bash
+.\forex-env\Scripts\activate
+```
+
+* **Linux/macOS**:
+
+```bash
+source forex-env/bin/activate
+```
+
+---
+
+### 4. Actualizar pip
+
+```bash
+python -m pip install --upgrade pip
+```
+
+---
+
+### 5. Instalar las dependencias
+
+```bash
+pip install -r requirements.txt
+```
+
+Esto instalará:
+
+* `yfinance`, `pandas`, `numpy`, `matplotlib`, `mplfinance`
+* `stable-baselines3`, `torch`, `gym`, `tensorboard`
+* `scikit-learn`, `websockets`
+* FinRL desde GitHub
+
+---
+
+### 6. Ejecutar el bot
+
+Desde la raíz del proyecto, ejecuta:
+
+```bash
+forex-trader-bot
+```
+
+Esto abrirá la interfaz gráfica de Tkinter.
+
+---
+
+### 7. Salir del entorno virtual
+
+Cuando hayas terminado de usar el bot, puedes salir del entorno virtual con:
+
+```bash
+deactivate
+```
+
+Esto devolverá tu terminal al Python del sistema.
+
+---
+
+## Uso básico
+
+1. Selecciona la **moneda base** y la **moneda cotizada**.
+2. Haz clic en **Confirmar**.
+3. Selecciona el **periodo** y el **intervalo** de las velas.
+4. Haz clic en **Cargar Gráfica** para visualizar las velas.
+5. Usa los botones **Zoom**, **Pan** y **Exportar** según necesites.
+6. Ejecuta estrategias RL haciendo clic en **Estrategia** (solo si quieres probar modelos entrenados).
+
+---
+
+## Exportar datos
+
+* Puedes exportar los datos históricos de la gráfica a un archivo CSV usando el botón **Exportar**.
+
+---
+
+## Recomendaciones
+
+* Se recomienda conexión estable a Internet, ya que los datos se descargan en tiempo real desde Yahoo Finance.
+* No mezclar librerías de este entorno con otros proyectos para evitar conflictos.
+* Para actualizar FinRL, puedes usar:
+
+```bash
+pip install --upgrade git+https://github.com/AI4Finance-Foundation/FinRL.git
+```
+
+---
+
+## Problemas comunes
+
+1. **Error de `websockets`**:
+   Asegúrate de tener la versión exacta `websockets==10.4` instalada.
+
+2. **Datos no encontrados**:
+   Algunos pares exóticos pueden no estar disponibles en Yahoo Finance. Usa pares principales como `EURUSD`, `USDJPY`, etc.
+
+3. **Problemas de Python**:
+   Este proyecto está probado con **Python 3.11**. Recomendable no usar versiones anteriores.
+
+---
+
+## Documentación gráfica para principiantes
+
+Se recomienda añadir capturas de pantalla de la interfaz con flechas señalando los botones de **Confirmar**, **Cargar Gráfica**, **Zoom**, **Pan**, **Exportar** y **Estrategia** para que sea más intuitivo.
+
+## License
+
+MIT
