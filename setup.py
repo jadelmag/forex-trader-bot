@@ -10,16 +10,18 @@ setup(
     package_dir={"": "app"},
     install_requires=[
         "yfinance==0.2.25",
-        "pandas>=2.1.0",
-        "numpy>=2.3.0",
+        "pandas==2.2.3",
+        "numpy==1.26.4",
         "matplotlib>=3.8.0",
         "mplfinance>=0.12.10b0",
         "stable-baselines3>=2.7.0",
         "torch>=2.8.0",
         "gymnasium>=0.30.0",          # reemplaza gym
         "tensorboard>=2.15.0",
+        "requests==2.32.5",
         "scikit-learn>=1.3.0",
         "websockets==10.4",
+        "wrds==3.4.0",
         # FinRL desde GitHub
         "git+https://github.com/AI4Finance-Foundation/FinRL.git"
     ],
