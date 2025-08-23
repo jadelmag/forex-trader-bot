@@ -16,14 +16,16 @@ setup(
         "mplfinance>=0.12.10b0",
         "stable-baselines3>=2.7.0",
         "torch>=2.8.0",
-        "gym>=0.26.0",
+        "gymnasium>=0.30.0",          # reemplaza gym
         "tensorboard>=2.15.0",
         "scikit-learn>=1.3.0",
-        "websockets==10.4"
+        "websockets==10.4",
+        # FinRL desde GitHub
+        "git+https://github.com/AI4Finance-Foundation/FinRL.git"
     ],
     entry_points={
         "console_scripts": [
-        "forex-trader-bot=app.main:main"
+            "forex-trader-bot=app.main:main"
         ]
     },
     classifiers=[

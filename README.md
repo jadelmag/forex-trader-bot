@@ -141,3 +141,6 @@ pip install --upgrade git+https://github.com/AI4Finance-Foundation/FinRL.git
 ## Licencia
 
 MIT
+
+
+python -m pip install requests 
