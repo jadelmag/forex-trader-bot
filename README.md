@@ -24,6 +24,14 @@ Este proyecto permite:
 ```
 forex-trader-bot/
 │
+├─ csv/ # Archivos CSV de velas
+│ ├─ DAT_ASCII_EURUSD_M1_2023.csv # Velas de EUR/USD
+│ ├─ DAT_ASCII_EURUSD_M1_2024.csv # Velas de EUR/USD
+│ └─ DAT_ASCII_EURUSD_M1_2025.csv # Velas de EUR/USD
+|
+├─ assets/ # Archivos de assets
+│ └─ icon.png # Icono de la aplicación
+|  
 ├─ app/ # Paquete principal
 │ ├─ __init__.py # Importa automáticamente Window, CandlestickChart, ForexPairs
 │ ├─ window.py # Clase Window con Tkinter y lógica de gráficos

@@ -1,10 +1,11 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 import threading
 import yfinance as yf
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.patches import Rectangle
+import os
+import pandas as pd
 
 from app.candlestick_chart import CandlestickChart
 from app.forex_pairs import ForexPairs
@@ -18,7 +19,7 @@ class Window:
         self.root.geometry("1500x750")
         self.root.configure(bg="#F0F0F0")
 
-         # Icono personalizado
+        # Icono personalizado
         try:
             from tkinter import PhotoImage
             icon = PhotoImage(file="assets/icon.png")
@@ -86,7 +87,6 @@ class Window:
             if c == base:
                 continue
             try:
-                from app.forex_pairs import ForexPairs
                 ForexPairs.ticker_valido(base, c)
                 monedas_validas.append(c)
             except ValueError:
@@ -120,6 +120,11 @@ class Window:
         self.btn_clear_grafica = tk.Button(self.frame_main, text="Clear", command=self.clear_grafica, state="disabled")
         self.btn_clear_grafica.grid(row=1, column=7, padx=5)
 
+        # Botón cargar CSV
+        self.btn_csv = tk.Button(self.frame_main, text="Cargar CSV", command=self.cargar_csv_dialog)
+        self.btn_csv.grid(row=1, column=8, padx=5)
+
+        # Botón RL
         self.btn_rl = tk.Button(self.frame_trading, text="Entrenar Agente RL", command=self.entrenar_agente_thread)
         self.btn_rl.pack(side="right", padx=5)
 
@@ -139,32 +144,32 @@ class Window:
                 self.combo_intervalo.config(state="disabled")
 
     # ---------- Cargar gráfica ----------
-    def cargar_grafica(self):
-        base = self.combo1.get()
-        cotizada = self.combo2.get()
-        intervalo = self.combo_intervalo.get()
-        periodo = self.combo_periodo.get()
-        if not intervalo or not periodo:
-            messagebox.showwarning("Atención", "Selecciona intervalo y periodo antes de cargar la gráfica.")
-            return
-
+    def cargar_grafica(self, desde_csv=False, ruta_csv=None):
         try:
-            self.grafico = CandlestickChart(base, cotizada, period=periodo, interval=intervalo)
-            try:
-                self.grafico.obtener_datos()
-            except Exception as e:
-                if "429" in str(e):
-                    self.mostrar_modal_429()
+            if desde_csv and ruta_csv:
+                df_csv = pd.read_csv(ruta_csv)
+                self.grafico = CandlestickChart.from_dataframe(df_csv)
+            else:
+                base = self.combo1.get()
+                cotizada = self.combo2.get()
+                intervalo = self.combo_intervalo.get()
+                periodo = self.combo_periodo.get()
+                if not base or not cotizada or not intervalo or not periodo:
+                    messagebox.showwarning("Atención", "Selecciona intervalo y periodo antes de cargar la gráfica.")
                     return
-                else:
-                    raise
+                self.grafico = CandlestickChart(base, cotizada, period=periodo, interval=intervalo)
+                try:
+                    self.grafico.obtener_datos()
+                except Exception as e:
+                    if "429" in str(e):
+                        self.mostrar_modal_429()
+                        return
+                    else:
+                        raise
 
-            self.fig, self.ax = plt.subplots(figsize=(12,6))
-            self._dibujar_velas()
-
+            self.fig, self.ax = self.grafico.crear_figura()
             if self.canvas_grafico:
                 self.canvas_grafico.get_tk_widget().destroy()
-
             self.canvas_grafico = FigureCanvasTkAgg(self.fig, master=self.frame_grafico)
             self.canvas_grafico.draw()
             self.canvas_grafico.get_tk_widget().pack(fill="both", expand=True)
@@ -173,18 +178,22 @@ class Window:
             self._programar_actualizacion()
 
         except Exception as e:
-            messagebox.showerror("Error", str(e))
+            messagebox.showerror("Error al cargar gráfica", str(e))
 
     # ---------- Dibujar velas ----------
     def _dibujar_velas(self):
-        self.ax.clear()
-        data = self.grafico.data
-        if data is not None and not data.empty:
-            self.ax.plot(data.index, data['Close'], color='black')
-            self.ax.set_title(f"{self.grafico.base}/{self.grafico.cotizada} - {self.grafico.interval}")
-            self.ax.grid(True)
-        if self.canvas_grafico:
-            self.canvas_grafico.draw()
+        if self.grafico is None:
+            return
+        try:
+            if self.fig is None or self.ax is None:
+                self.fig, self.ax = self.grafico.crear_figura()
+            else:
+                self.grafico.crear_figura(ax=self.ax)
+            if self.canvas_grafico:
+                self.canvas_grafico.draw()
+        except RuntimeError as e:
+            if "429" in str(e):
+                self.mostrar_modal_429()
 
     # ---------- Actualización periódica ----------
     def _programar_actualizacion(self):
@@ -192,7 +201,7 @@ class Window:
             self.root.after(self.UPDATE_INTERVAL_MS, self._actualizar_grafica)
 
     def _actualizar_grafica(self):
-        if self.grafico:
+        if self.grafico and not isinstance(self.grafico.data, pd.DataFrame):  # Actualiza solo si es yfinance
             try:
                 self.grafico.obtener_datos()
             except Exception as e:
@@ -223,6 +232,41 @@ class Window:
             self.canvas_grafico = None
         self.btn_grafica.config(state="normal")
         self.btn_clear_grafica.config(state="disabled")
+
+    # ---------- Cargar CSV ----------
+    def cargar_csv_dialog(self):
+        respuesta = messagebox.askquestion(
+            "Cargar CSV",
+            "¿Deseas cargar el CSV desde la carpeta interna del proyecto?\n"
+            "Si no, se abrirá un diálogo para seleccionar un archivo externo."
+        )
+
+        if respuesta == 'yes':
+            self._cargar_csv_interna()
+        else:
+            self._cargar_csv_externa()
+
+    def _cargar_csv_interna(self):
+        carpeta_csv = os.path.join(os.getcwd(), "csv")
+        if not os.path.exists(carpeta_csv):
+            messagebox.showwarning("Atención", "No existe la carpeta 'csv' en el proyecto.")
+            return
+
+        archivo = filedialog.askopenfilename(
+            initialdir=carpeta_csv,
+            title="Selecciona un CSV",
+            filetypes=(("Archivos CSV","*.csv"),)
+        )
+        if archivo:
+            self.cargar_grafica(desde_csv=True, ruta_csv=archivo)
+
+    def _cargar_csv_externa(self):
+        archivo = filedialog.askopenfilename(
+            title="Selecciona un CSV",
+            filetypes=(("Archivos CSV","*.csv"),)
+        )
+        if archivo:
+            self.cargar_grafica(desde_csv=True, ruta_csv=archivo)
 
     # ---------- Entrenamiento RL ----------
     def entrenar_agente_thread(self):
