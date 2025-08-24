@@ -1,35 +1,26 @@
+# app/window.py
+
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import threading
-import yfinance as yf
+import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-import os
-import pandas as pd
-
+from matplotlib.patches import Rectangle
 from app.candlestick_chart import CandlestickChart
 from app.forex_pairs import ForexPairs
+import time
+import yfinance as yf
 
 class Window:
-    UPDATE_INTERVAL_MS = 60000  # 1 minuto
-
     def __init__(self, root, monedas=None):
         self.root = root
         self.root.title("Trading Bot - Forex Market")
         self.root.geometry("1500x750")
         self.root.configure(bg="#F0F0F0")
-
-        # Icono personalizado
-        try:
-            from tkinter import PhotoImage
-            icon = PhotoImage(file="assets/icon.png")
-            self.root.iconphoto(True, icon)
-        except Exception as e:
-            print("No se pudo cargar el icono:", e)
-
         self.monedas = monedas if monedas else ForexPairs.CURRENCIES
 
-        # Frames
+        # ---------------- Frames ----------------
         self.frame_main = tk.Frame(self.root, bg="#F0F0F0")
         self.frame_main.pack(padx=20, pady=20, anchor="w")
         self.frame_grafico = tk.Frame(self.root, bg="#FFFFFF", relief="sunken", bd=1)
@@ -37,7 +28,7 @@ class Window:
         self.frame_trading = tk.Frame(self.root, bg="#F0F0F0")
         self.frame_trading.pack(fill="x", pady=5, padx=20, anchor="e")
 
-        # Widgets de selección de monedas
+        # ---------------- Widgets ----------------
         tk.Label(self.frame_main, text="Moneda Base:", bg="#F0F0F0").grid(row=0, column=0, sticky="w")
         self.combo1 = ttk.Combobox(self.frame_main, values=self.monedas, state="readonly", width=12)
         self.combo1.grid(row=1, column=0, padx=5)
@@ -50,10 +41,11 @@ class Window:
 
         self.btn_confirmar = tk.Button(self.frame_main, text="Confirmar", state="disabled", command=self.confirmar)
         self.btn_confirmar.grid(row=1, column=2, padx=5)
-        self.btn_clear_confirmar = tk.Button(self.frame_main, text="Clear", command=self.clear_confirmar, state="disabled")
-        self.btn_clear_confirmar.grid(row=1, column=3, padx=5)
 
-        # Inicializaciones
+        self.btn_cargar_csv = tk.Button(self.frame_main, text="Cargar CSV", command=self.cargar_csv)
+        self.btn_cargar_csv.grid(row=1, column=3, padx=5)
+
+        # ---------------- Inicializaciones ----------------
         self.combo_periodo = None
         self.combo_intervalo = None
         self.btn_grafica = None
@@ -64,71 +56,62 @@ class Window:
         self.ax = None
         self.canvas_grafico = None
         self.tooltip = None
+
+        # Zoom y Pan
         self.zoom_activado = False
+        self.zoom_x0 = None
+        self.zoom_y0 = None
+        self.rect_zoom = None
         self.pan_activado = False
-        self.actualizacion_activa = False
+        self.pan_x0 = None
+        self.pan_y0 = None
+        self.limites_x0 = None
+        self.limites_y0 = None
 
-    # ---------- Función para mostrar modal 429 ----------
-    def mostrar_modal_429(self):
-        messagebox.showwarning(
-            "Acceso limitado",
-            "yfinance pudo conectarse a Yahoo Finance, pero Yahoo está limitando tu acceso "
-            "porque detectó muchas solicitudes en poco tiempo.\n\n"
-            "Esto no es un problema de red ni de tu entorno virtual, sino un límite de Yahoo Finance."
-        )
+        # Botones Zoom/Pan
+        self.btn_zoom = tk.Button(self.frame_trading, text="Zoom", command=self.toggle_zoom)
+        self.btn_zoom.pack(side="right", padx=5)
+        self.btn_pan = tk.Button(self.frame_trading, text="Pan", command=self.toggle_pan)
+        self.btn_pan.pack(side="right", padx=5)
 
-    # ---------- Selección de monedas ----------
+    # ---------------- Funciones Monedas ----------------
     def actualizar_segundo(self):
-        base = self.combo1.get()
-        if not base:
-            return
-        monedas_validas = []
-        for c in self.monedas:
-            if c == base:
-                continue
-            try:
-                ForexPairs.ticker_valido(base, c)
-                monedas_validas.append(c)
-            except ValueError:
-                continue
-        self.combo2['values'] = monedas_validas
-        if self.combo2.get() not in monedas_validas:
-            self.combo2.set('')
+        seleccion1 = self.combo1.get()
+        opciones2 = [m for m in self.monedas if m != seleccion1]
+        self.combo2['values'] = opciones2
+        self.btn_cargar_csv.config(state="normal" if not seleccion1 and not self.combo2.get() else "disabled")
 
     def on_seleccion(self, event):
         self.actualizar_segundo()
-        self.btn_confirmar.config(state="normal" if self.combo1.get() and self.combo2.get() else "disabled")
+        if self.combo1.get() and self.combo2.get():
+            self.btn_confirmar.config(state="normal")
+        else:
+            self.btn_confirmar.config(state="disabled")
 
-    # ---------- Confirmar ----------
+    # ---------------- Confirmar ----------------
     def confirmar(self):
         self.btn_confirmar.config(state="disabled")
-        self.btn_clear_confirmar.config(state="normal")
         self.combo1.config(state="disabled")
         self.combo2.config(state="disabled")
 
+        # Periodo
         tk.Label(self.frame_main, text="Periodo:", bg="#F0F0F0").grid(row=0, column=4, sticky="w")
         self.combo_periodo = ttk.Combobox(self.frame_main, values=self.periodos_disponibles, state="readonly", width=12)
         self.combo_periodo.grid(row=1, column=4, padx=5)
         self.combo_periodo.bind("<<ComboboxSelected>>", self.on_periodo_cambiado)
 
+        # Intervalo
         tk.Label(self.frame_main, text="Intervalo:", bg="#F0F0F0").grid(row=0, column=5, sticky="w")
         self.combo_intervalo = ttk.Combobox(self.frame_main, state="disabled", width=12)
         self.combo_intervalo.grid(row=1, column=5, padx=5)
 
-        self.btn_grafica = tk.Button(self.frame_main, text="Cargar Gráfica", command=self.cargar_grafica, width=12)
+        # Botones Cargar gráfica / Clear
+        self.btn_grafica = tk.Button(self.frame_main, text="Cargar Gráfica", command=self._cargar_yfinance, width=12)
         self.btn_grafica.grid(row=1, column=6, padx=5)
         self.btn_clear_grafica = tk.Button(self.frame_main, text="Clear", command=self.clear_grafica, state="disabled")
         self.btn_clear_grafica.grid(row=1, column=7, padx=5)
 
-        # Botón cargar CSV
-        self.btn_csv = tk.Button(self.frame_main, text="Cargar CSV", command=self.cargar_csv_dialog)
-        self.btn_csv.grid(row=1, column=8, padx=5)
-
-        # Botón RL
-        self.btn_rl = tk.Button(self.frame_trading, text="Entrenar Agente RL", command=self.entrenar_agente_thread)
-        self.btn_rl.pack(side="right", padx=5)
-
-    # ---------- Intervalo dinámico ----------
+    # ---------------- Intervalo dinámico ----------------
     def on_periodo_cambiado(self, event):
         periodo = self.combo_periodo.get()
         base = self.combo1.get()
@@ -143,130 +126,183 @@ class Window:
                 self.combo_intervalo.set('')
                 self.combo_intervalo.config(state="disabled")
 
-    # ---------- Cargar gráfica ----------
-    def cargar_grafica(self, desde_csv=False, ruta_csv=None):
-        try:
-            if desde_csv and ruta_csv:
-                df_csv = pd.read_csv(ruta_csv)
-                self.grafico = CandlestickChart.from_dataframe(df_csv)
-            else:
-                base = self.combo1.get()
-                cotizada = self.combo2.get()
-                intervalo = self.combo_intervalo.get()
-                periodo = self.combo_periodo.get()
-                if not base or not cotizada or not intervalo or not periodo:
-                    messagebox.showwarning("Atención", "Selecciona intervalo y periodo antes de cargar la gráfica.")
-                    return
-                self.grafico = CandlestickChart(base, cotizada, period=periodo, interval=intervalo)
-                try:
-                    self.grafico.obtener_datos()
-                except Exception as e:
-                    if "429" in str(e):
-                        self.mostrar_modal_429()
-                        return
-                    else:
-                        raise
+    # ---------------- Cargar CSV ----------------
+    def cargar_csv(self):
+        file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv")])
+        if not file_path:
+            return
 
-            self.fig, self.ax = self.grafico.crear_figura()
-            if self.canvas_grafico:
-                self.canvas_grafico.get_tk_widget().destroy()
-            self.canvas_grafico = FigureCanvasTkAgg(self.fig, master=self.frame_grafico)
-            self.canvas_grafico.draw()
-            self.canvas_grafico.get_tk_widget().pack(fill="both", expand=True)
+        df = pd.read_csv(file_path, sep=';', header=None,
+                         names=['DateTime', 'Open', 'High', 'Low', 'Close', 'Volume'])
+        df['DateTime'] = pd.to_datetime(df['DateTime'], format='%Y%m%d %H%M%S')
+        df.set_index('DateTime', inplace=True)
+        self.grafico = CandlestickChart.from_dataframe(df)
 
-            self.actualizacion_activa = True
-            self._programar_actualizacion()
+        # Barra de progreso
+        progress_win = tk.Toplevel(self.root)
+        progress_win.title("Cargando CSV...")
+        progress_win.geometry("300x100")
+        progress_win.resizable(False, False)
+        tk.Label(progress_win, text="Procesando datos...").pack(padx=10, pady=10)
+        progress = ttk.Progressbar(progress_win, mode='determinate', maximum=len(df))
+        progress.pack(fill='x', padx=10, pady=10)
 
-        except Exception as e:
-            messagebox.showerror("Error al cargar gráfica", str(e))
+        def cargar_datos():
+            for i in range(len(df)):
+                time.sleep(0.001)
+                progress['value'] = i + 1
+                progress_win.update_idletasks()
+            progress_win.destroy()
+            self._dibujar_grafico()
 
-    # ---------- Dibujar velas ----------
-    def _dibujar_velas(self):
-        if self.grafico is None:
+        threading.Thread(target=cargar_datos, daemon=True).start()
+
+    # ---------------- Cargar yFinance ----------------
+    def _cargar_yfinance(self):
+        base = self.combo1.get()
+        cotizada = self.combo2.get()
+        intervalo = self.combo_intervalo.get()
+        periodo = self.combo_periodo.get()
+        if not intervalo or not periodo:
+            messagebox.showwarning("Atención", "Selecciona intervalo y periodo antes de cargar la gráfica.")
             return
         try:
-            if self.fig is None or self.ax is None:
-                self.fig, self.ax = self.grafico.crear_figura()
-            else:
-                self.grafico.crear_figura(ax=self.ax)
-            if self.canvas_grafico:
-                self.canvas_grafico.draw()
-        except RuntimeError as e:
+            self.grafico = CandlestickChart(base, cotizada, period=periodo, interval=intervalo)
+            self.grafico.obtener_datos()
+            self._dibujar_grafico()
+        except Exception as e:
             if "429" in str(e):
                 self.mostrar_modal_429()
+            else:
+                messagebox.showerror("Error", str(e))
 
-    # ---------- Actualización periódica ----------
-    def _programar_actualizacion(self):
-        if self.actualizacion_activa:
-            self.root.after(self.UPDATE_INTERVAL_MS, self._actualizar_grafica)
-
-    def _actualizar_grafica(self):
-        if self.grafico and not isinstance(self.grafico.data, pd.DataFrame):  # Actualiza solo si es yfinance
-            try:
-                self.grafico.obtener_datos()
-            except Exception as e:
-                if "429" in str(e):
-                    self.mostrar_modal_429()
-                    return
-            self._dibujar_velas()
-        self._programar_actualizacion()
-
-    # ---------- Clear ----------
-    def clear_confirmar(self):
-        self.combo1.set('')
-        self.combo2.set('')
-        self.combo1.config(state="readonly")
-        self.combo2.config(state="readonly")
-        self.btn_confirmar.config(state="disabled")
-        self.btn_clear_confirmar.config(state="disabled")
-        for widget in self.frame_main.grid_slaves():
-            if int(widget.grid_info()['column']) >= 4:
-                widget.destroy()
+    # ---------------- Dibujar gráfico ----------------
+    def _dibujar_grafico(self):
+        fig, ax = self.grafico.crear_figura()
+        self.fig = fig
+        self.ax = ax
         if self.canvas_grafico:
             self.canvas_grafico.get_tk_widget().destroy()
-            self.canvas_grafico = None
+        self.canvas_grafico = FigureCanvasTkAgg(self.fig, master=self.frame_grafico)
+        self.canvas_grafico.draw()
+        self.canvas_grafico.get_tk_widget().pack(fill="both", expand=True)
 
-    def clear_grafica(self):
-        if self.canvas_grafico:
-            self.canvas_grafico.get_tk_widget().destroy()
-            self.canvas_grafico = None
-        self.btn_grafica.config(state="normal")
-        self.btn_clear_grafica.config(state="disabled")
+        # Conectar eventos
+        self.canvas_grafico.mpl_connect("motion_notify_event", self.mostrar_tooltip)
+        if self.zoom_activado:
+            self._activar_zoom()
+        if self.pan_activado:
+            self._activar_pan()
 
-    # ---------- Cargar CSV ----------
-    def cargar_csv_dialog(self):
-        respuesta = messagebox.askquestion(
-            "Cargar CSV",
-            "¿Deseas cargar el CSV desde la carpeta interna del proyecto?\n"
-            "Si no, se abrirá un diálogo para seleccionar un archivo externo."
-        )
-
-        if respuesta == 'yes':
-            self._cargar_csv_interna()
+    # ---------------- Tooltip ----------------
+    def mostrar_tooltip(self, event):
+        if event.inaxes is None: return
+        xdata = int(round(event.xdata))
+        if hasattr(self.grafico, "data") and 0 <= xdata < len(self.grafico.data):
+            vela = self.grafico.data.iloc[xdata]
+            text = f"Open:{vela['Open']}\nHigh:{vela['High']}\nLow:{vela['Low']}\nClose:{vela['Close']}\nVol:{vela['Volume']}"
+            self._crear_tooltip(event.guiEvent.x_root, event.guiEvent.y_root, text)
         else:
-            self._cargar_csv_externa()
+            self._ocultar_tooltip()
 
-    def _cargar_csv_interna(self):
-        carpeta_csv = os.path.join(os.getcwd(), "csv")
-        if not os.path.exists(carpeta_csv):
-            messagebox.showwarning("Atención", "No existe la carpeta 'csv' en el proyecto.")
-            return
+    def _crear_tooltip(self, x, y, text):
+        self._ocultar_tooltip()
+        self.tooltip = tk.Toplevel(self.root)
+        self.tooltip.wm_overrideredirect(True)
+        self.tooltip.wm_geometry(f"+{x+10}+{y+10}")
+        tk.Label(self.tooltip, text=text, background="yellow", relief="solid", borderwidth=1).pack()
 
-        archivo = filedialog.askopenfilename(
-            initialdir=carpeta_csv,
-            title="Selecciona un CSV",
-            filetypes=(("Archivos CSV","*.csv"),)
-        )
-        if archivo:
-            self.cargar_grafica(desde_csv=True, ruta_csv=archivo)
+    def _ocultar_tooltip(self):
+        if self.tooltip:
+            self.tooltip.destroy()
+            self.tooltip = None
 
-    def _cargar_csv_externa(self):
-        archivo = filedialog.askopenfilename(
-            title="Selecciona un CSV",
-            filetypes=(("Archivos CSV","*.csv"),)
-        )
-        if archivo:
-            self.cargar_grafica(desde_csv=True, ruta_csv=archivo)
+    # ---------------- Modal 429 ----------------
+    def mostrar_modal_429(self):
+        modal = tk.Toplevel(self.root)
+        modal.title("Error 429")
+        tk.Label(modal, text="Se han hecho demasiadas solicitudes a Yahoo Finance. Intenta más tarde.").pack(padx=20, pady=20)
+        tk.Button(modal, text="Cerrar", command=modal.destroy).pack(pady=10)
+        modal.transient(self.root)
+        modal.grab_set()
+        self.root.wait_window(modal)
+
+    # ---------------- Zoom y Pan ----------------
+    def toggle_zoom(self):
+        self.zoom_activado = not self.zoom_activado
+        if self.zoom_activado:
+            self.btn_zoom.config(relief="sunken")
+            self._activar_zoom()
+        else:
+            self.btn_zoom.config(relief="raised")
+            if self.rect_zoom: self.rect_zoom.remove(); self.rect_zoom=None; self.canvas_grafico.draw_idle()
+
+    def _activar_zoom(self):
+        if not self.canvas_grafico: return
+        self.canvas_grafico.mpl_connect("button_press_event", self._iniciar_zoom)
+        self.canvas_grafico.mpl_connect("motion_notify_event", self._actualizar_rect)
+        self.canvas_grafico.mpl_connect("button_release_event", self._finalizar_zoom)
+
+    def _iniciar_zoom(self, event):
+        if event.inaxes is None: return
+        self.zoom_x0, self.zoom_y0 = event.xdata, event.ydata
+        self.rect_zoom = Rectangle((self.zoom_x0, self.zoom_y0), 0, 0, linewidth=1, edgecolor='gray', linestyle='--', facecolor='none')
+        event.inaxes.add_patch(self.rect_zoom)
+
+    def _actualizar_rect(self, event):
+        if not self.zoom_activado or not self.rect_zoom or event.inaxes is None: return
+        self.rect_zoom.set_width(event.xdata - self.zoom_x0)
+        self.rect_zoom.set_height(event.ydata - self.zoom_y0)
+        self.canvas_grafico.draw_idle()
+
+    def _finalizar_zoom(self, event):
+        if not self.zoom_activado or event.inaxes is None: return
+        ax = event.inaxes
+        ax.set_xlim(min(self.zoom_x0, event.xdata), max(self.zoom_x0, event.xdata))
+        ax.set_ylim(min(self.zoom_y0, event.ydata), max(self.zoom_y0, event.ydata))
+        if self.rect_zoom: self.rect_zoom.remove(); self.rect_zoom=None
+        self.canvas_grafico.draw_idle()
+
+    def toggle_pan(self):
+        self.pan_activado = not self.pan_activado
+        if self.pan_activado:
+            self.btn_pan.config(relief="sunken")
+            self._activar_pan()
+        else:
+            self.btn_pan.config(relief="raised")
+            self.pan_x0 = self.pan_y0 = None
+            self.limites_x0 = self.limites_y0 = None
+
+    def _activar_pan(self):
+        if not self.canvas_grafico: return
+        self.canvas_grafico.mpl_connect("button_press_event", self._iniciar_pan)
+        self.canvas_grafico.mpl_connect("motion_notify_event", self._actualizar_pan)
+        self.canvas_grafico.mpl_connect("button_release_event", self._finalizar_pan)
+
+    def _iniciar_pan(self, event):
+        if event.inaxes is None or event.button != 1: return
+        self.pan_x0, self.pan_y0 = event.xdata, event.ydata
+        self.limites_x0 = event.inaxes.get_xlim()
+        self.limites_y0 = event.inaxes.get_ylim()
+
+    def _actualizar_pan(self, event):
+        if event.inaxes is None or event.button != 1 or self.pan_x0 is None: return
+        dx, dy = self.pan_x0 - event.xdata, self.pan_y0 - event.ydata
+        x_min, x_max = self.limites_x0
+        y_min, y_max = self.limites_y0
+        event.inaxes.set_xlim(x_min + dx, x_max + dx)
+        event.inaxes.set_ylim(y_min + dy, y_max + dy)
+        self.canvas_grafico.draw_idle()
+
+    def _finalizar_pan(self, event):
+        self.pan_x0 = self.pan_y0 = None
+        self.limites_x0 = self.limites_y0 = None
+
+    # ---------------- Clear gráfico ----------------
+    def clear_grafica(self):
+        if self.canvas_grafico: 
+            self.canvas_grafico.get_tk_widget().destroy()
+            self.canvas_grafico = None
 
     # ---------- Entrenamiento RL ----------
     def entrenar_agente_thread(self):
@@ -331,6 +367,6 @@ class Window:
         self.canvas_grafico.draw()
         self.canvas_grafico.get_tk_widget().pack(fill="both", expand=True)
 
-    # ---------- Run ----------
+    # ---------------- Run ----------------
     def run(self):
         self.root.mainloop()

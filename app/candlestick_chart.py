@@ -1,99 +1,70 @@
 # app/candlestick_chart.py
-# app/candlestick_chart.py
-import yfinance as yf
-import mplfinance as mpf
+
 import pandas as pd
-from app.forex_pairs import ForexPairs
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+from matplotlib import ticker
+from mplfinance.original_flavor import candlestick_ohlc
 
 class CandlestickChart:
-    def __init__(self, base=None, cotizada=None, period="1mo", interval="1d", data=None):
-        """
-        base, cotizada: usados para yfinance
-        data: DataFrame opcional para usar datos de CSV u otra fuente
-        """
-        self.base = base.upper() if base else None
-        self.cotizada = cotizada.upper() if cotizada else None
+    def __init__(self, base=None, cotizada=None, period='1mo', interval='1d'):
+        self.base = base
+        self.cotizada = cotizada
         self.period = period
         self.interval = interval
-        self.data = data
-        self.ultima_fecha = None
-
-        if base and cotizada:
-            self.ticker_symbol, self.invertido = ForexPairs.ticker_valido(self.base, self.cotizada)
-        else:
-            self.ticker_symbol, self.invertido = None, False
-
-    def obtener_datos(self):
-        """
-        Descarga datos desde Yahoo Finance si no hay DataFrame ya cargado.
-        """
-        if self.data is not None:
-            return self.data
-
-        if not self.ticker_symbol:
-            raise ValueError("No se proporcionó ticker ni datos")
-
-        try:
-            ticker = yf.Ticker(self.ticker_symbol)
-            nueva_data = ticker.history(period=self.period, interval=self.interval)
-        except Exception as e:
-            if "429" in str(e):
-                raise RuntimeError("Acceso limitado (429) a Yahoo Finance") from e
-            else:
-                raise
-
-        if nueva_data.empty:
-            raise ValueError(f"No se encontraron datos para {self.base}/{self.cotizada}")
-
-        if self.invertido:
-            nueva_data = nueva_data.rename(columns={"Open":"Open_tmp","High":"High_tmp","Low":"Low_tmp","Close":"Close_tmp"})
-            nueva_data["Open"] = 1 / nueva_data["Close_tmp"]
-            nueva_data["High"] = 1 / nueva_data["Low_tmp"]
-            nueva_data["Low"] = 1 / nueva_data["High_tmp"]
-            nueva_data["Close"] = 1 / nueva_data["Open_tmp"]
-            nueva_data.drop(columns=["Open_tmp","High_tmp","Low_tmp","Close_tmp"], inplace=True)
-
-        self.data = nueva_data
-        self.ultima_fecha = self.data.index[-1]
-        return self.data
+        self.data = None
 
     @classmethod
     def from_dataframe(cls, df):
         """
-        Crea un CandlestickChart a partir de un DataFrame ya cargado (CSV u otra fuente).
+        Crea una instancia de CandlestickChart a partir de un DataFrame.
+        El DataFrame debe tener columnas: DateTime, Open, High, Low, Close, Volume
         """
+        obj = cls()
         df = df.copy()
-        # Normalizar nombres de columnas a los que usa mplfinance
-        df.rename(columns={
-            'Open':'Open', 'High':'High', 'Low':'Low', 'Close':'Close', 'Volume':'Volume'
-        }, inplace=True)
-        return cls(data=df)
+        if 'DateTime' in df.columns:
+            df['DateTime'] = pd.to_datetime(df['DateTime'], format='%Y%m%d %H%M%S', errors='coerce')
+            df.set_index('DateTime', inplace=True)
+        obj.data = df
+        return obj
 
-    def crear_figura(self, ax=None, style="yahoo", mostrar_volumen=True):
-        if self.data is None:
-            self.obtener_datos()
+    def obtener_datos(self):
+        """Obtiene datos de yfinance si no hay CSV."""
+        import yfinance as yf
+        if not self.base or not self.cotizada:
+            raise ValueError("Base y cotizada deben estar definidas para descargar datos.")
+        ticker_str = f"{self.base}{self.cotizada}=X"
+        df = yf.download(ticker_str, period=self.period, interval=self.interval)
+        if df.empty:
+            raise ValueError("No se pudieron obtener datos de Yahoo Finance")
+        df.reset_index(inplace=True)
+        df.rename(columns={'Date': 'DateTime', 'Open':'Open', 'High':'High',
+                           'Low':'Low', 'Close':'Close', 'Volume':'Volume'}, inplace=True)
+        df['DateTime'] = pd.to_datetime(df['DateTime'])
+        df.set_index('DateTime', inplace=True)
+        self.data = df
+
+    def crear_figura(self, ax=None):
+        """Dibuja la gráfica de velas."""
+        if self.data is None or self.data.empty:
+            raise ValueError("No hay datos para graficar.")
+
+        df = self.data.copy()
+        df_ohlc = df[['Open','High','Low','Close']].copy()
+        df_ohlc.reset_index(inplace=True)
+        df_ohlc['DateTime'] = df_ohlc['DateTime'].map(mdates.date2num)
 
         if ax is None:
-            fig, axlist = mpf.plot(
-            self.data,
-            type='candle',
-            style=style,
-            title=f"{self.base}/{self.cotizada}" if self.base and self.cotizada else "Datos CSV",
-            ylabel="Precio",
-            volume=mostrar_volumen,
-            returnfig=True
-        )
+            fig, ax = plt.subplots(figsize=(12,6))
         else:
-            fig, axlist = mpf.plot(
-            self.data,
-            type='candle',
-            style=style,
-            title=f"{self.base}/{self.cotizada}" if self.base and self.cotizada else "Datos CSV",
-            ylabel="Precio",
-            volume=mostrar_volumen,
-            returnfig=True,
-            ax=ax
-        )
+            fig = ax.figure
+            ax.clear()
 
-        return fig
+        candlestick_ohlc(ax, df_ohlc.values, width=0.0008, colorup='green', colordown='red', alpha=0.8)
 
+        ax.xaxis_date()
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M'))
+        ax.set_ylabel(f"{self.base}/{self.cotizada}" if self.base and self.cotizada else "Precio")
+        ax.grid(True)
+        fig.autofmt_xdate()
+        return fig, ax
