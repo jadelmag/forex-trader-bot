@@ -3,6 +3,8 @@
 from matplotlib.patches import Rectangle
 import matplotlib.pyplot as plt
 import tkinter as tk
+import numpy as np
+from datetime import datetime
 
 class TooltipZoomPan:
     def __init__(self, root, canvas, grafico):
@@ -17,12 +19,11 @@ class TooltipZoomPan:
         self.end_y = None
         self.zoom_initial = None
         self.dragging = False
-        self.current_event = None
 
         # Guardar límites iniciales
         self._guardar_zoom_inicial()
 
-        # Conectar eventos - separados para mejor control
+        # Conectar eventos
         self.cid_motion = self.canvas.mpl_connect("motion_notify_event", self.on_motion)
         self.cid_scroll = self.canvas.mpl_connect("scroll_event", self.on_scroll)
         self.cid_press = self.canvas.mpl_connect("button_press_event", self.on_press)
@@ -44,32 +45,34 @@ class TooltipZoomPan:
             self.canvas.draw()
 
     def on_scroll(self, event):
-        """Zoom con scroll del ratón"""
-        if event.inaxes != self.grafico.ax:
+        """Zoom centrado en la posición del puntero"""
+        if event.inaxes != self.grafico.ax or event.xdata is None or event.ydata is None:
             return
 
+        # Factor de zoom
         scale_factor = 1.1 if event.button == 'up' else 0.9
+
+        # Límites actuales
         xlim = self.grafico.ax.get_xlim()
         ylim = self.grafico.ax.get_ylim()
 
-        # Centro del zoom en la posición del cursor
+        # Posición del cursor
         x_center = event.xdata
         y_center = event.ydata
 
-        # Aplicar zoom
+        # Nuevo ancho y alto del zoom
         new_width = (xlim[1] - xlim[0]) * scale_factor
         new_height = (ylim[1] - ylim[0]) * scale_factor
 
-        self.grafico.ax.set_xlim([
-            x_center - new_width / 2,
-            x_center + new_width / 2
-        ])
-        self.grafico.ax.set_ylim([
-            y_center - new_height / 2,
-            y_center + new_height / 2
-        ])
+        # Ajustar límites manteniendo el cursor como centro
+        x_min = x_center - (x_center - xlim[0]) * scale_factor
+        x_max = x_center + (xlim[1] - x_center) * scale_factor
+        y_min = y_center - (y_center - ylim[0]) * scale_factor
+        y_max = y_center + (ylim[1] - y_center) * scale_factor
 
-        self.canvas.draw()
+        self.grafico.ax.set_xlim([x_min, x_max])
+        self.grafico.ax.set_ylim([y_min, y_max])
+        self.canvas.draw_idle()
 
     def on_press(self, event):
         """Inicia la selección de área"""
@@ -80,12 +83,17 @@ class TooltipZoomPan:
             self.start_x = event.xdata
             self.start_y = event.ydata
             self.dragging = True
-            # Desconectar temporalmente el motion para tooltip durante el drag
-            self.canvas.mpl_disconnect(self.cid_motion)
-            self.cid_motion = self.canvas.mpl_connect("motion_notify_event", self.on_drag_motion)
+            self._ocultar_tooltip()  # Ocultar tooltip durante el drag
+
+    def on_motion(self, event):
+        """Maneja tanto el tooltip como el drag"""
+        if self.dragging:
+            self.on_drag_motion(event)
+        else:
+            self.mostrar_tooltip(event)
 
     def on_drag_motion(self, event):
-        """Maneja el movimiento durante el drag (sin tooltip)"""
+        """Maneja el movimiento durante el drag"""
         if not self.dragging or event.inaxes != self.grafico.ax:
             return
 
@@ -110,17 +118,8 @@ class TooltipZoomPan:
         self.grafico.ax.add_patch(self.rect)
         self.canvas.draw()
 
-    def on_motion(self, event):
-        """Maneja el movimiento normal (con tooltip)"""
-        # Primero verificar si estamos en modo drag
-        if self.dragging:
-            return
-            
-        # Luego manejar el tooltip
-        self.mostrar_tooltip(event)
-
     def on_release(self, event):
-        """Aplica el zoom al área seleccionada y restaura tooltip"""
+        """Aplica el zoom al área seleccionada"""
         if not self.dragging or event.inaxes != self.grafico.ax:
             return
 
@@ -128,95 +127,117 @@ class TooltipZoomPan:
         self.end_x = event.xdata
         self.end_y = event.ydata
 
-        # Aplicar zoom al área seleccionada solo si hay un área significativa
-        if abs(self.end_x - self.start_x) > 5 and abs(self.end_y - self.start_y) > 5:
-            x_min = min(self.start_x, self.end_x)
-            x_max = max(self.start_x, self.end_x)
-            y_min = min(self.start_y, self.end_y)
-            y_max = max(self.start_y, self.end_y)
+        # Verificar que ambos puntos estén definidos
+        if self.start_x is None or self.start_y is None or self.end_x is None or self.end_y is None:
+            return
 
-            self.grafico.ax.set_xlim([x_min, x_max])
-            self.grafico.ax.set_ylim([y_min, y_max])
+        # Calcular límites del área seleccionada
+        x_min = min(self.start_x, self.end_x)
+        x_max = max(self.start_x, self.end_x)
+        y_min = min(self.start_y, self.end_y)
+        y_max = max(self.start_y, self.end_y)
+
+        # Evitar zoom con área demasiado pequeña
+        if abs(x_max - x_min) < 1e-6 or abs(y_max - y_min) < 1e-6:
+            if self.rect:
+                self.rect.remove()
+                self.rect = None
+            self.canvas.draw_idle()
+            return
+
+        # Aplicar límites al gráfico
+        self.grafico.ax.set_xlim([x_min, x_max])
+        self.grafico.ax.set_ylim([y_min, y_max])
 
         # Limpiar rectángulo
         if self.rect:
             self.rect.remove()
             self.rect = None
 
-        # Restaurar conexión para tooltip
-        self.canvas.mpl_disconnect(self.cid_motion)
-        self.cid_motion = self.canvas.mpl_connect("motion_notify_event", self.on_motion)
-
-        self.canvas.draw()
+        self.canvas.draw_idle()
 
     def mostrar_tooltip(self, event):
         """Muestra tooltip con información de la vela"""
-        if event.inaxes is None or self.grafico is None or not hasattr(self.grafico, 'data'):
+        if (event.inaxes is None or self.grafico is None or 
+            not hasattr(self.grafico, 'data') or self.grafico.data is None or
+            self.grafico.data.empty):
             self._ocultar_tooltip()
             return
 
         try:
-            # Encontrar la vela más cercana a la posición x del cursor
-            xdata = event.xdata
-            if xdata is None:
+            # Convertir la fecha del evento a timestamp
+            event_time = event.xdata
+            if event_time is None:
                 self._ocultar_tooltip()
                 return
 
-            # Convertir a índice basado en el rango de tiempo visible
-            xlim = self.grafico.ax.get_xlim()
-            visible_range = xlim[1] - xlim[0]
-            
-            # Estimación del índice basado en la posición relativa
-            if len(self.grafico.data) > 0:
-                rel_position = (xdata - xlim[0]) / visible_range
-                index = int(rel_position * len(self.grafico.data))
-                index = max(0, min(index, len(self.grafico.data) - 1))
+            # Encontrar la vela más cercana usando las fechas del índice
+            if hasattr(self.grafico.data.index, 'view'):
+                # Convertir fechas a numéricas para comparación
+                dates_numeric = self.grafico.data.index.view('int64') / 1e9  # Convertir nanosegundos a segundos
                 
-                vela = self.grafico.data.iloc[index]
-                texto = (
-                    f"Fecha: {self.grafico.data.index[index].strftime('%Y-%m-%d %H:%M')}\n"
-                    f"Open: {vela['Open']:.5f}\n"
-                    f"High: {vela['High']:.5f}\n"
-                    f"Low: {vela['Low']:.5f}\n"
-                    f"Close: {vela['Close']:.5f}\n"
-                    f"Volume: {vela['Volume']:,.0f}"
-                )
-                self._crear_tooltip(event.guiEvent.x_root + 20, event.guiEvent.y_root + 20, texto)
-            else:
-                self._ocultar_tooltip()
+                # Encontrar el índice más cercano
+                idx = np.abs(dates_numeric - event_time).argmin()
                 
-        except (IndexError, ValueError, AttributeError) as e:
-            self._ocultar_tooltip()
+                if idx < len(self.grafico.data):
+                    vela = self.grafico.data.iloc[idx]
+                    fecha = self.grafico.data.index[idx]
+                    
+                    texto = (
+                        f"Fecha: {fecha.strftime('%Y-%m-%d %H:%M')}\n"
+                        f"Open: {vela['Open']:.5f}\n"
+                        f"High: {vela['High']:.5f}\n"
+                        f"Low: {vela['Low']:.5f}\n"
+                        f"Close: {vela['Close']:.5f}\n"
+                        f"Volume: {vela['Volume']:,.0f}"
+                    )
+                    self._crear_tooltip(event.guiEvent.x_root + 20, event.guiEvent.y_root + 20, texto)
+                    return
+                    
+        except Exception as e:
+            print(f"Error en tooltip: {e}")
+        
+        self._ocultar_tooltip()
 
     def _crear_tooltip(self, x, y, texto):
         """Crea la ventana de tooltip"""
         self._ocultar_tooltip()
         
-        self.tooltip = tk.Toplevel(self.root)
-        self.tooltip.wm_overrideredirect(True)
-        self.tooltip.wm_geometry(f"+{int(x)}+{int(y)}")
-        
-        label = tk.Label(
-            self.tooltip, 
-            text=texto, 
-            background="lightyellow", 
-            relief="solid", 
-            borderwidth=1,
-            font=("Arial", 9),
-            justify="left"
-        )
-        label.pack(padx=2, pady=2)
+        try:
+            self.tooltip = tk.Toplevel(self.root)
+            self.tooltip.wm_overrideredirect(True)
+            self.tooltip.wm_geometry(f"+{int(x)}+{int(y)}")
+            self.tooltip.wm_attributes("-topmost", True)
+            
+            label = tk.Label(
+                self.tooltip, 
+                text=texto, 
+                background="lightyellow", 
+                relief="solid", 
+                borderwidth=1,
+                font=("Consolas", 8),
+                justify="left"
+            )
+            label.pack(padx=3, pady=3)
+        except Exception as e:
+            print(f"Error creando tooltip: {e}")
 
     def _ocultar_tooltip(self):
         """Oculta el tooltip"""
         if self.tooltip:
-            self.tooltip.destroy()
-            self.tooltip = None
+            try:
+                self.tooltip.destroy()
+            except:
+                pass
+            finally:
+                self.tooltip = None
 
     def cleanup(self):
         """Limpia todas las conexiones de eventos"""
-        for cid in [self.cid_motion, self.cid_scroll, self.cid_press, self.cid_release]:
-            try:
-                self.canvas.mpl_disconnect(cid)
-            except:
-                pass
+        try:
+            self.canvas.mpl_disconnect(self.cid_motion)
+            self.canvas.mpl_disconnect(self.cid_scroll)
+            self.canvas.mpl_disconnect(self.cid_press)
+            self.canvas.mpl_disconnect(self.cid_release)
+        except:
+            pass

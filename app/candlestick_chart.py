@@ -67,4 +67,7 @@ class CandlestickChart:
         ax.set_ylabel(f"{self.base}/{self.cotizada}" if self.base and self.cotizada else "Precio")
         ax.grid(True)
         fig.autofmt_xdate()
+        
+        # Guardar referencia al axes
+        self.ax = ax
         return fig, ax
