@@ -4,10 +4,10 @@ Bot de trading Forex con interfaz gráfica (Tkinter) y soporte de Reinforcement 
 
 Este proyecto permite:
 
-* Seleccionar pares de divisas.
+* Cargar pares de divisas en CSV.
 * Cargar gráficos de velas con tooltips.
 * Ejecutar estrategias de RL y backtesting.
-* Exportar datos históricos a CSV.
+* Exportar datos históricos a PKL.
 
 ---
 
@@ -31,22 +31,27 @@ forex-trader-bot/
 ├─ assets/                  # Archivos de assets
 │ └─ icon.png               # Icono de la aplicación
 |  
+├─ processed/               # Carpeta donde se guardan los archivos procesados (.pkl)
+├─ backtesting/             # Carpeta donde se guardan los archivos de backtesting
+├─ strategies/              # Carpeta donde se guardan los archivos de estrategias
+├─ patterns/                # Carpeta donde se guardan los archivos de patrones de velas
+|
+|
 ├─ app/                     # Paquete principal
 │ ├─ __init__.py            # Inicializa el paquete, importa Window
-│ ├─ window.py              # Clase Window principal, coordina la GUI
-│ ├─ gui_main.py            # Clase GUIPrincipal que organiza frames y widgets
 │ ├─ candlestick_chart.py   # Clase CandlestickChart, dibuja velas de CSV o yfinance
-│ ├─ forex_pairs.py         # Lista de pares de divisas e intervalos permitidos
-│ ├─ tooltip_zoom_pan.py    # Funciones para tooltip, zoom y pan
+│ ├─ csv_loader_modal.py    # Clase CSVLoaderModal, permite cargar CSVs
 │ ├─ csv_manager.py         # Clase CSVManager para manejar archivos CSV
 │ ├─ grafico_manager.py     # Clase GraficoManager para manejar gráficos
-│ ├─ yfinance_manager.py    # Clase YFinanceManager para manejar datos de Yahoo Finance
-│ ├─ processed_data/        # Carpeta donde se guardan los archivos procesados (.pkl)
-│ └─ main.py                # Función main() para ejecutar la app
+│ ├─ gui_main.py            # Clase GUIPrincipal que organiza frames y widgets
+│ ├─ main.py                # Función main() para ejecutar la app
+│ ├─ progress_modal.py      # Clase ProgressModal, muestra progreso de operaciones
+│ ├─ tooltip_zoom_pan.py    # Funciones para tooltip, zoom y pan
+│ └─ window.py              # Clase Window principal, coordina la GUI
 │
-├─ setup.py                 # Configuración del paquete y entry point
 ├─ requirements.txt         # Dependencias necesarias
 ├─ csv_parser.py            # Script para convertir CSV crudos de Dukascopy al formato estándar
+├─ setup.py                 # Configuración del paquete y entry point
 └─ README.md                # Instrucciones de instalación y uso
 ```
 
@@ -119,12 +124,13 @@ deactivate
 
 ## Uso básico
 
-1. Selecciona la **moneda base** y la **moneda cotizada**.
-2. Haz clic en **Confirmar**.
-3. Selecciona el **periodo** y el **intervalo** de las velas.
-4. Haz clic en **Cargar Gráfica** para visualizar las velas.
-5. Usa los botones **Zoom**, **Pan** y **Exportar** según necesites.
-6. Ejecuta estrategias RL haciendo clic en **Estrategia**.
+0. Opcional: Descarga más datos de velas de `https://drive.google.com/drive/folders/1IG_5SM3SLsxVeaDJlmL2qskex5EsTwjG`.
+1. Haz clic en **Cargar Gráfica** para visualizar las velas.
+2. Guarda los datos en el archivo `processed/processed_EURUSD_M1_2024.pkl` para cargarlos más rápido en otro momento y para que puedas usarlos en el backtesting.
+3. Usa los botones **Zoom**, **Pan** y **Exportar** según necesites.
+4. Aplica diferentes estrategias de RL en el botón **Estrategia**.
+5. Enseñale a encontrar patrones de velas en el botón **Entrenar**.
+6. Ejecuta el backtesting en el botón **Backtesting**.
 
 ---
 
@@ -146,11 +152,64 @@ pip install --upgrade git+https://github.com/AI4Finance-Foundation/FinRL.git
 
 ---
 
-## Problemas comunes
+## Ficheros CSV - FX-1-Minute-Data
 
-1. **Error de `websockets`**: asegúrate de tener la versión exacta `websockets==10.4`.
-2. **Datos no encontrados**: algunos pares exóticos pueden no estar disponibles en Yahoo Finance.
-3. **Problemas de Python**: este proyecto está probado con Python 3.11.
+Los ficheros se han obtenido de `https://github.com/philipperemy/FX-1-Minute-Data`.
+
+Su proyecto permite [descargar los ficheros de velas de Forex](https://drive.google.com/drive/folders/1IG_5SM3SLsxVeaDJlmL2qskex5EsTwjG) y guardarlos en el directorio `csv/`.
+
+
+
+El repositorio https://github.com/philipperemy/FX-1-Minute-Data de Philippe Remy es una base de datos completa de datos históricos de Forex (FX) en resolución de 1 minuto.
+
+📊 Qué contiene:
+Datos de 27 pares de divisas principales:
+
+- EUR/USD, GBP/USD, USD/JPY, AUD/USD, USD/CAD, USD/CHF, NZD/USD
+- Y cruces como EUR/GBP, EUR/JPY, GBP/JPY, etc.
+- Período cubierto: Desde 1999 hasta 2020 (dependiendo del par)
+- Datos en formato CSV comprimido (.zip)
+
+Estructura de datos:
+Cada archivo CSV contiene:
+
+| Timestamp           | Open | High | Low | Close | Volume |
+|---------------------|------|------|-----|-------|--------|
+| 2003-05-04 17:00:00 | 1.1234 | 1.1235 | 1.1233 | 1.1234 | 125 |
+| 2003-05-04 17:01:00 | 1.1234 | 1.1236 | 1.1233 | 1.1235 | 118 |
+
+🚀 Para qué sirve:
+1. Backtesting de alta frecuencia
+Ideal para probar estrategias de scalping o trading intradía
+
+Resolución de 1 minuto permite análisis detallado
+
+2. Investigación cuantitativa
+Entrenamiento de modelos de machine learning
+
+Análisis estadístico de mercados Forex
+
+3. Desarrollo de bots de trading
+Datos limpios y consistentes para desarrollo
+
+Gran volumen de datos históricos
+
+⚡ Ventajas para tu bot de trading:
+✅ Calidad de datos:
+Datos ya limpios y preprocesados
+
+Sin gaps significativos en las series temporales
+
+✅ Evita límites de APIs:
+No dependes de Yahoo Finance ni sus límites
+
+Datos disponibles localmente
+
+✅ Mayor histórico:
++20 años de datos vs. límite de Yahoo Finance
+
+Ideal para backtesting a largo plazo
+* Yahoo Finance tiene datos de 1 minuto pero con histórico muy limitado
 
 ## Licencia
 

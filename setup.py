@@ -3,36 +3,51 @@ from setuptools import setup, find_packages
 setup(
     name="forex_trader_bot",
     version="1.0.0",
-    description="Forex Trading Bot con Tkinter, FinRL y Reinforcement Learning",
+    description="Visualizador avanzado de datos Forex CSV con gráficos de velas",
     author="jadelmag",
     author_email="kientienemibarraespaciadora@gmail.com",
+    
+    # Paquetes a incluir
     packages=find_packages(where="."),
     package_dir={"": "."},
+    
+    # Incluir archivos de datos importantes
+    package_data={
+        '': ['*.csv', '*.pkl', '*.png'],
+    },
+    include_package_data=True,
+    
+    # Dependencias optimizadas
     install_requires=[
-        "yfinance==0.2.25",
-        "pandas==2.2.3",
-        "numpy==1.26.4",
-        "matplotlib>=3.8.0",
-        "mplfinance>=0.12.10b0",
-        "stable-baselines3>=2.7.0",
-        "torch>=2.8.0",
-        "gymnasium>=0.30.0",          # reemplaza gym
-        "tensorboard>=2.15.0",
-        "requests==2.32.5",
-        "scikit-learn>=1.3.0",
-        "websockets==10.4",
-        "wrds==3.4.0",
-        # FinRL desde GitHub con PEP 508
-        "FinRL @ git+https://github.com/AI4Finance-Foundation/FinRL.git",
+        "pandas==2.2.3",           # Manejo de datos CSV
+        "numpy==1.26.4",           # Operaciones numéricas
+        "matplotlib==3.8.0",       # Gráficos básicos
+        "mplfinance==0.12.10b0",   # Gráficos de velas
+        "scikit-learn==1.3.0",     # Para análisis técnico futuro
     ],
+    
+    # Scripts de consola
     entry_points={
         "console_scripts": [
-            "forex-trader-bot=forex_trader_bot.main:main"
+            "forex-viewer=app.main:main"          # Viewer principal
         ]
     },
+    
+    # Metadatos adicionales
     classifiers=[
         "Programming Language :: Python :: 3.11",
         "Operating System :: OS Independent",
+        "Topic :: Office/Business :: Financial :: Investment",
+        "Topic :: Scientific/Engineering :: Visualization",
+        "License :: OSI Approved :: MIT License",
     ],
+    keywords="forex, csv, visualization, candlestick, dukascopy",
+    python_requires=">=3.8",
+    
+    # URLs del proyecto
+    url="https://github.com/jadelmag/forex-trader-bot",
+    project_urls={
+        "Bug Reports": "https://github.com/jadelmag/forex-trader-bot/issues",
+        "Source": "https://github.com/jadelmag/forex-trader-bot",
+    },
 )
-

@@ -2,12 +2,10 @@
 
 import tkinter as tk
 from .gui_main import GUIPrincipal
-from .forex_pairs import ForexPairs
 
 class Window:
-    def __init__(self, root, monedas=None):
+    def __init__(self, root):
         self.root = root
-        self.monedas = monedas or ForexPairs.CURRENCIES
         # Instanciamos GUIPrincipal dentro de Window
         self.gui = GUIPrincipal(root)
 

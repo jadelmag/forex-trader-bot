@@ -1,22 +1,19 @@
-# app/main.py
-
 import tkinter as tk
-from app import Window, ForexPairs
+from app import Window
 
 def main():
     """
     Función principal para iniciar la aplicación.
     """
     root = tk.Tk()
-    root.title("Forex Trader Bot")
-    root.geometry("1500x750")  # tamaño amplio para que quepa el gráfico
+    root.title("CSV Data Viewer")
+    root.geometry("1500x750")
     
     # Crear instancia de la ventana principal
-    app = Window(root=root, monedas=ForexPairs.CURRENCIES)
+    app = Window(root=root)
     
     # Ejecutar loop principal de Tkinter
     app.run()
 
-# Esto permite ejecutar con python app/main.py
 if __name__ == "__main__":
     main()

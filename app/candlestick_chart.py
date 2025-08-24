@@ -1,5 +1,3 @@
-# app/candlestick_chart.py
-
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
@@ -13,6 +11,7 @@ class CandlestickChart:
         self.period = period
         self.interval = interval
         self.data = None
+        self.ax = None
 
     @classmethod
     def from_dataframe(cls, df):
@@ -27,22 +26,6 @@ class CandlestickChart:
             df.set_index('DateTime', inplace=True)
         obj.data = df
         return obj
-
-    def obtener_datos(self):
-        """Obtiene datos de yfinance si no hay CSV."""
-        import yfinance as yf
-        if not self.base or not self.cotizada:
-            raise ValueError("Base y cotizada deben estar definidas para descargar datos.")
-        ticker_str = f"{self.base}{self.cotizada}=X"
-        df = yf.download(ticker_str, period=self.period, interval=self.interval)
-        if df.empty:
-            raise ValueError("No se pudieron obtener datos de Yahoo Finance")
-        df.reset_index(inplace=True)
-        df.rename(columns={'Date': 'DateTime', 'Open':'Open', 'High':'High',
-                           'Low':'Low', 'Close':'Close', 'Volume':'Volume'}, inplace=True)
-        df['DateTime'] = pd.to_datetime(df['DateTime'])
-        df.set_index('DateTime', inplace=True)
-        self.data = df
 
     def crear_figura(self, ax=None):
         """Dibuja la gráfica de velas."""
@@ -64,7 +47,13 @@ class CandlestickChart:
 
         ax.xaxis_date()
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M'))
-        ax.set_ylabel(f"{self.base}/{self.cotizada}" if self.base and self.cotizada else "Precio")
+        
+        # Mostrar símbolo si está disponible, sino genérico
+        if self.base and self.cotizada:
+            ax.set_ylabel(f"{self.base}/{self.cotizada}")
+        else:
+            ax.set_ylabel("Precio")
+            
         ax.grid(True)
         fig.autofmt_xdate()
         

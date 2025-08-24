@@ -1,17 +1,11 @@
-# Dependencias PyPI con versiones compatibles
-yfinance==0.2.25          # compatible con websockets<11
-pandas==2.2.3             # compatible con wrds y FinRL
-numpy==1.26.4             # compatible con pandas y torch
-matplotlib>=3.8.0
-mplfinance>=0.12.10b0
-websockets==10.4           # compatible con alpaca-trade-api
-stable-baselines3>=2.7.0
-torch>=2.8.0
-gymnasium>=0.30.0          # reemplaza gym, versión mantenida
-tensorboard>=2.15.0
-scikit-learn>=1.3.0
-wrds==3.4.0                # versión compatible con pandas==2.2.3
-requests==2.32.5
+# Dependencias principales
+pandas==2.2.3
+numpy==1.26.4
+matplotlib==3.8.0
+mplfinance==0.12.10b0
+scikit-learn==1.3.0
 
-# FinRL desde GitHub (última versión)
-git+https://github.com/AI4Finance-Foundation/FinRL.git
+# Dependencias de desarrollo (opcionales)
+black==23.11.0
+flake8==6.1.0
+pytest==7.4.3
