@@ -122,6 +122,41 @@ deactivate
 
 ---
 
+## Sin entorno virtual
+
+### 1. Clonar el repositorio
+
+```bash
+git clone https://github.com/jadelmag/forex-trader-bot.git
+cd forex-trader-bot
+```
+
+### 2. Instalar dependencias
+
+Si no quieres usar un entorno virtual, puedes instalar las dependencias directamente en tu sistema:
+
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Ejecutar el bot
+
+Opcion 1:
+
+```bash
+forex-trader-bot
+```
+
+Opcion 2:
+
+```bash
+python -m app.main
+```
+
+> Esto abrirá la interfaz gráfica de Tkinter.
+
+--
+
 ## Uso básico
 
 0. Opcional: Descarga más datos de velas de `https://drive.google.com/drive/folders/1IG_5SM3SLsxVeaDJlmL2qskex5EsTwjG`.
