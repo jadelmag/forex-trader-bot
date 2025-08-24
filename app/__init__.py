@@ -13,6 +13,8 @@ from .csv_manager import CSVManager
 from .grafico_manager import GraficoManager
 from .yfinance_manager import YFinanceManager
 from .tooltip_zoom_pan import TooltipZoomPan
+from .progress_modal import ProgressModal
+from .csv_loader_modal import CSVLoaderModal
 
 __all__ = [
     "Window",
@@ -22,5 +24,7 @@ __all__ = [
     "CSVManager",
     "GraficoManager",
     "YFinanceManager",
-    "TooltipZoomPan"
+    "TooltipZoomPan",
+    "ProgressModal",
+    "CSVLoaderModal"
 ]

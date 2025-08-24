@@ -1,7 +1,12 @@
 # app/csv_loader_modal.py
 
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import ttk
+import threading
+import time
+
+from .progress_modal import ProgressModal, centrar_ventana
+
 
 class CSVLoaderModal(tk.Toplevel):
     def __init__(self, parent, df, callback):
@@ -12,7 +17,10 @@ class CSVLoaderModal(tk.Toplevel):
         self.title("Seleccionar filas a cargar")
         self.geometry("300x150")
         self.resizable(False, False)
-        self.grab_set()
+        self.grab_set()  # Modal
+
+        # Centrar sobre ventana principal
+        centrar_ventana(self, parent)
 
         tk.Label(self, text=f"Total de elementos: {len(df)}").grid(row=0, column=0, columnspan=2, pady=10)
 
@@ -62,10 +70,31 @@ class CSVLoaderModal(tk.Toplevel):
             self.btn_aceptar.config(state="disabled")
 
     def _aceptar(self):
+        # Determinar filas a cargar
         if self.var_cargar_todo.get():
             df_seleccion = self.df
         else:
             n = int(self.entry_n.get())
             df_seleccion = self.df.head(n)
-        self.callback(df_seleccion)
+
+        # Cerrar modal original
         self.destroy()
+
+        # Crear modal de progreso
+        progress_modal = ProgressModal(self.parent, len(df_seleccion))
+
+        def cargar_elementos():
+            for idx, row in df_seleccion.iterrows():
+                if progress_modal.cancelled:
+                    break
+                # Simula procesamiento de cada fila (reemplazar con tu lógica real)
+                time.sleep(0.05)
+                # Actualiza barra en hilo principal
+                self.parent.after(0, progress_modal.actualizar)
+
+            # Llamar callback al terminar si no se canceló
+            if not progress_modal.cancelled:
+                self.parent.after(0, lambda: self.callback(df_seleccion))
+
+        # Ejecutar la carga en hilo separado
+        threading.Thread(target=cargar_elementos, daemon=True).start()

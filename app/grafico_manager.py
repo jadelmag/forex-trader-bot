@@ -31,3 +31,13 @@ class GraficoManager:
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.frame)
         self.canvas.draw()
         self.canvas.get_tk_widget().pack(fill="both", expand=True)
+
+    def limpiar(self):
+        """Limpia la figura y el canvas"""
+        if hasattr(self, 'grafico') and self.grafico:
+            if hasattr(self.grafico, 'ax') and self.grafico.ax:
+                self.grafico.ax.clear()
+            if hasattr(self.grafico, 'fig') and self.grafico.fig:
+                self.grafico.fig.clf()
+            if hasattr(self, 'canvas') and self.canvas:
+                self.canvas.draw_idle()
