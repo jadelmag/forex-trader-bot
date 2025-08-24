@@ -24,24 +24,30 @@ Este proyecto permite:
 ```
 forex-trader-bot/
 │
-├─ csv/ # Archivos CSV de velas
+├─ csv/                     # Archivos CSV de velas
 │ ├─ DAT_ASCII_EURUSD_M1_2023.csv # Velas de EUR/USD
-│ ├─ DAT_ASCII_EURUSD_M1_2024.csv # Velas de EUR/USD
-│ └─ DAT_ASCII_EURUSD_M1_2025.csv # Velas de EUR/USD
+│ └─ DAT_ASCII_EURUSD_M1_2024.csv # Velas de EUR/USD
 |
-├─ assets/ # Archivos de assets
-│ └─ icon.png # Icono de la aplicación
+├─ assets/                  # Archivos de assets
+│ └─ icon.png               # Icono de la aplicación
 |  
-├─ app/ # Paquete principal
-│ ├─ __init__.py # Importa automáticamente Window, CandlestickChart, ForexPairs
-│ ├─ window.py # Clase Window con Tkinter y lógica de gráficos
-│ ├─ candlestick_chart.py # Clase CandlestickChart para obtener y dibujar velas
-│ ├─ forex_pairs.py # Clase ForexPairs con pares de divisas e intervalos
-│ └─ main.py # Función main() para ejecutar la app
+├─ app/                     # Paquete principal
+│ ├─ __init__.py            # Inicializa el paquete, importa Window
+│ ├─ window.py              # Clase Window principal, coordina la GUI
+│ ├─ gui_main.py            # Clase GUIPrincipal que organiza frames y widgets
+│ ├─ candlestick_chart.py   # Clase CandlestickChart, dibuja velas de CSV o yfinance
+│ ├─ forex_pairs.py         # Lista de pares de divisas e intervalos permitidos
+│ ├─ tooltip_zoom_pan.py    # Funciones para tooltip, zoom y pan
+│ ├─ csv_manager.py         # Clase CSVManager para manejar archivos CSV
+│ ├─ grafico_manager.py     # Clase GraficoManager para manejar gráficos
+│ ├─ yfinance_manager.py    # Clase YFinanceManager para manejar datos de Yahoo Finance
+│ ├─ processed_data/        # Carpeta donde se guardan los archivos procesados (.pkl)
+│ └─ main.py                # Función main() para ejecutar la app
 │
-├─ setup.py # Configuración del paquete y entry point
-├─ requirements.txt # Dependencias necesarias
-└─ README.md # Instrucciones de instalación y uso
+├─ setup.py                 # Configuración del paquete y entry point
+├─ requirements.txt         # Dependencias necesarias
+├─ csv_parser.py            # Script para convertir CSV crudos de Dukascopy al formato estándar
+└─ README.md                # Instrucciones de instalación y uso
 ```
 
 ---
