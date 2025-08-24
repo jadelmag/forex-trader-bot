@@ -1,3 +1,5 @@
+# app/grafico_manager.py
+
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from .candlestick_chart import CandlestickChart

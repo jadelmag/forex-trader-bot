@@ -19,10 +19,10 @@ class GUIPrincipal:
         # ---------------- Inicializaciones ----------------
         self.monedas = ForexPairs.CURRENCIES
         self.csv_manager = CSVManager(root)
-        self.grafico_manager = GraficoManager(frame=None)  # Se asignará frame después
+        self.grafico_manager = GraficoManager(frame=None)
         self.yfinance_manager = YFinanceManager()
         self.tooltip_zoom_pan = None
-        self.df_actual = None  # DataFrame cargado actualmente
+        self.df_actual = None
 
         # ---------------- Frames ----------------
         self.frame_main = tk.Frame(self.root, bg="#F0F0F0")
@@ -62,6 +62,10 @@ class GUIPrincipal:
         # Botón YFinance
         self.btn_yfinance = tk.Button(self.frame_main, text="Cargar YFinance", command=self.cargar_yfinance)
         self.btn_yfinance.grid(row=1, column=7, padx=5)
+
+        # Botón Reset Zoom (NUEVO)
+        self.btn_reset_zoom = tk.Button(self.frame_main, text="Reset Zoom", command=self.reset_zoom, state="disabled")
+        self.btn_reset_zoom.grid(row=1, column=8, padx=5)
 
     # ---------------- Funciones Combobox ----------------
     def actualizar_segundo(self):
@@ -103,6 +107,7 @@ class GUIPrincipal:
         self.df_actual = df_seleccion
         self._dibujar_grafico(df_seleccion)
         self.btn_guardar_procesados.config(state="normal")
+        self.btn_reset_zoom.config(state="normal")  # Habilitar reset zoom
 
     # ---------------- Cargar datos procesados ----------------
     def cargar_procesados(self):
@@ -111,6 +116,7 @@ class GUIPrincipal:
             self.df_actual = df
             self._dibujar_grafico(df)
             self.btn_guardar_procesados.config(state="normal")
+            self.btn_reset_zoom.config(state="normal")  # Habilitar reset zoom
 
     # ---------------- Guardar datos procesados ----------------
     def guardar_procesados(self):
@@ -126,12 +132,18 @@ class GUIPrincipal:
             return
         self.df_actual = self.yfinance_manager.obtener_datos(base, cotizada, "1mo", "1d")
         self._dibujar_grafico(self.df_actual)
+        self.btn_reset_zoom.config(state="normal")  # Habilitar reset zoom
 
     # ---------------- Dibujar gráfico ----------------
     def _dibujar_grafico(self, df):
         self.grafico_manager.dibujar_csv(df)
         self.tooltip_zoom_pan = TooltipZoomPan(self.root, self.grafico_manager.canvas, self.grafico_manager.grafico)
-        self.grafico_manager.canvas.mpl_connect("motion_notify_event", self.tooltip_zoom_pan.mostrar_tooltip)
+
+    # ---------------- Reset Zoom (NUEVO) ----------------
+    def reset_zoom(self):
+        """Restaura el zoom inicial del gráfico"""
+        if self.tooltip_zoom_pan:
+            self.tooltip_zoom_pan.reset_zoom()
 
     # ---------------- Run ----------------
     def run(self):

@@ -1,3 +1,5 @@
+# app/yfinance_manager.py
+
 from .candlestick_chart import CandlestickChart
 
 class YFinanceManager:

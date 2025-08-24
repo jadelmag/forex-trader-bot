@@ -1,4 +1,5 @@
 # app/forex_pairs.py
+
 import yfinance as yf
 
 class ForexPairs:

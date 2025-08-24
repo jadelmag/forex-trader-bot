@@ -1,3 +1,5 @@
+# app/csv_loader_modal.py
+
 import tkinter as tk
 from tkinter import messagebox
 
@@ -8,7 +10,7 @@ class CSVLoaderModal(tk.Toplevel):
         self.df = df
         self.callback = callback
         self.title("Seleccionar filas a cargar")
-        self.geometry("400x200")
+        self.geometry("300x150")
         self.resizable(False, False)
         self.grab_set()
 
