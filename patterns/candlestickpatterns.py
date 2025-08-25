@@ -211,22 +211,3 @@ class CandlestickPatterns:
         df.loc[has_bear & ~has_bull, 'Final_Signal'] = -1
         return df
 
-# # ---------------- Example usage ----------------
-# if __name__ == "__main__":
-#     # Simulated data
-#     data = pd.DataFrame({
-#         'Open': np.random.rand(100)*1.1,
-#         'High': np.random.rand(100)*1.1,
-#         'Low': np.random.rand(100)*1.1,
-#         'Close': np.random.rand(100)*1.1
-#     })
-
-#     patterns = CandlestickPatterns(data)
-    
-#     # Detect all patterns
-#     all_signals = patterns.detect_all_patterns()
-#     print(all_signals.head())
-
-#     # Get combined final signal
-#     final_signals = patterns.combined_signal_optimized()
-#     print(final_signals[['Open','High','Low','Close','Final_Signal']].head())

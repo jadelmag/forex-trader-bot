@@ -1,7 +1,7 @@
 # app/main.py
 
 import tkinter as tk
-from app import Window
+from .window import Window
 
 def main():
     """

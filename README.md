@@ -33,8 +33,15 @@ forex-trader-bot/
 |  
 ├─ processed/               # Carpeta donde se guardan los archivos procesados (.pkl)
 ├─ backtesting/             # Carpeta donde se guardan los archivos de backtesting
+| ├─ __init__.py            # ForexBacktester
+| └─ backtester.py          # Fichero de backtesting
+| 
 ├─ strategies/              # Carpeta donde se guardan los archivos de estrategias
+| ├─ __init__.py            # ForexStrategies
+| └─ strategies.py          # Estrategias de trading
 ├─ patterns/                # Carpeta donde se guardan los archivos de patrones de velas
+| ├─ __init__.py            # CandlestickPatterns
+| └─ candlestickpatterns.py # Patrones de velas
 |
 |
 ├─ app/                     # Paquete principal

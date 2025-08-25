@@ -2,7 +2,7 @@
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from .candlestick_chart import CandlestickChart
+from .candlestick_chart import CandlestickChart  # sigue en app/
 
 class GraficoManager:
     def __init__(self, frame):

@@ -1,23 +1,8 @@
 # app/__init__.py
-"""
-Inicialización del paquete 'app'.
-Importa los módulos más importantes para facilitar los imports.
-"""
 
-from .window import Window
-from .candlestick_chart import CandlestickChart
-from .gui_main import GUIPrincipal
-from .csv_manager import CSVManager
-from .grafico_manager import GraficoManager
-from .tooltip_zoom_pan import TooltipZoomPan
-from .csv_loader_modal import CSVLoaderModal
+# Inicializa el paquete principal `app`.
+# Puede permanecer vacío o exportar componentes si quieres.
 
-__all__ = [
-    "Window",
-    "CandlestickChart",
-    "GUIPrincipal",
-    "CSVManager",
-    "GraficoManager",
-    "TooltipZoomPan",
-    "CSVLoaderModal"
-]
+# Ejemplo de export opcional:
+# from .window import Window
+# __all__ = ["Window"]

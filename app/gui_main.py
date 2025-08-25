@@ -6,6 +6,12 @@ from .csv_manager import CSVManager
 from .grafico_manager import GraficoManager
 from .tooltip_zoom_pan import TooltipZoomPan
 from .csv_loader_modal import CSVLoaderModal
+from .patterns_modal import PatternsModal
+from .strategies_modal import EstrategiasModal
+
+# Imports externos
+from strategies.strategies import ForexStrategies
+from backtesting.backtester import ForexBacktester
 
 class GUIPrincipal:
     def __init__(self, root):
@@ -14,40 +20,72 @@ class GUIPrincipal:
         self.root.geometry("1500x750")
         self.root.configure(bg="#F0F0F0")
 
-        # ---------------- Inicializaciones ----------------
+        # Inicializaciones
         self.csv_manager = CSVManager(root)
         self.grafico_manager = GraficoManager(frame=None)
         self.tooltip_zoom_pan = None
         self.df_actual = None
+        self.dinero_ficticio = 0
+        self.beneficios = 0
+        self.perdidas = 0
 
-        # ---------------- Frames ----------------
+        # Frames principales
         self.frame_controls = tk.Frame(self.root, bg="#F0F0F0")
-        self.frame_controls.pack(padx=20, pady=20, anchor="w")
-        
-        self.frame_grafico = tk.Frame(self.root, bg="#FFFFFF", relief="sunken", bd=1)
-        self.frame_grafico.pack(fill="both", expand=True, padx=20, pady=20)
+        self.frame_controls.pack(fill="x", padx=20, pady=10)
 
+        self.frame_grafico = tk.Frame(self.root, bg="#FFFFFF", relief="sunken", bd=1)
+        self.frame_grafico.pack(fill="both", expand=True, padx=20, pady=(0,20))
         self.grafico_manager.frame = self.frame_grafico
 
-        # ---------------- Widgets ----------------
-        # Botones CSV / Procesados
-        self.btn_cargar_csv = ttk.Button(self.frame_controls, text="Cargar CSV", 
-                                command=self.cargar_csv, style="TButton")
-        self.btn_cargar_csv.pack(side="left", padx=5, pady=5)
+        # Contenedores de botones
+        self.frame_left = tk.Frame(self.frame_controls, bg="#F0F0F0")
+        self.frame_left.pack(side="left", anchor="w")
 
-        self.btn_cargar_procesados = ttk.Button(self.frame_controls, text="Cargar datos procesados", 
-                                            command=self.cargar_procesados, style="TButton")
-        self.btn_cargar_procesados.pack(side="left", padx=5, pady=5)
+        self.frame_center = tk.Frame(self.frame_controls, bg="#F0F0F0")
+        self.frame_center.pack(side="left", expand=True)
 
-        self.btn_guardar_procesados = ttk.Button(self.frame_controls, text="Guardar datos procesados", 
-                                                command=self.guardar_procesados, style="TButton")
-        self.btn_guardar_procesados.pack(side="left", padx=5, pady=5)
+        self.frame_right = tk.Frame(self.frame_controls, bg="#F0F0F0")
+        self.frame_right.pack(side="right", anchor="e")
 
-        self.btn_reset_zoom = ttk.Button(self.frame_controls, text="Reset Zoom", 
-                                        command=self.reset_zoom, style="TButton")
-        self.btn_reset_zoom.pack(side="left", padx=5, pady=5)
+        # ---------------- Botones CSV (izquierda) ----------------
+        self.btn_cargar_csv = ttk.Button(self.frame_left, text="Cargar CSV", command=self.cargar_csv)
+        self.btn_cargar_csv.pack(side="left", padx=5)
 
-    # ---------------- Cargar CSV ----------------
+        self.btn_cargar_procesados = ttk.Button(self.frame_left, text="Cargar datos procesados", command=self.cargar_procesados)
+        self.btn_cargar_procesados.pack(side="left", padx=5)
+
+        self.btn_guardar_procesados = ttk.Button(self.frame_left, text="Guardar datos procesados", command=self.guardar_procesados)
+        self.btn_guardar_procesados.pack(side="left", padx=5)
+
+        self.btn_reset_zoom = ttk.Button(self.frame_left, text="Reset Zoom", command=self.reset_zoom)
+        self.btn_reset_zoom.pack(side="left", padx=5)
+
+        # ---------------- Dinero/beneficios/pérdidas (centro) ----------------
+        self.label_dinero = tk.Label(self.frame_center, text=f"Dinero: ${self.dinero_ficticio:,.2f}", fg="black", bg="#F0F0F0")
+        self.label_dinero.pack(side="left", padx=10)
+
+        self.label_beneficios = tk.Label(self.frame_center, text=f"Beneficios: ${self.beneficios:,.2f}", fg="green", bg="#F0F0F0")
+        self.label_beneficios.pack(side="left", padx=10)
+
+        self.label_perdidas = tk.Label(self.frame_center, text=f"Pérdidas: ${self.perdidas:,.2f}", fg="red", bg="#F0F0F0")
+        self.label_perdidas.pack(side="left", padx=10)
+
+        # ---------------- Botones derecha ----------------
+        self.entry_dinero = ttk.Entry(self.frame_right, width=10)
+        self.entry_dinero.pack(side="left", padx=5)
+        self.btn_add_dinero = ttk.Button(self.frame_right, text="Añadir", command=self.add_dinero)
+        self.btn_add_dinero.pack(side="left", padx=5)
+
+        self.btn_cargar_estrategias = ttk.Button(self.frame_right, text="Cargar Estrategias", command=self.cargar_estrategias)
+        self.btn_cargar_estrategias.pack(side="left", padx=5)
+
+        self.btn_aplicar_patrones = ttk.Button(self.frame_right, text="Aplicar Patrones", command=self.abrir_modal_patrones)
+        self.btn_aplicar_patrones.pack(side="left", padx=5)
+
+        self.btn_backtesting = ttk.Button(self.frame_right, text="Iniciar Backtesting", command=self.iniciar_backtesting)
+        self.btn_backtesting.pack(side="left", padx=5)
+
+    # ---------------- Funciones CSV ----------------
     def cargar_csv(self):
         df = self.csv_manager.cargar_csv()
         if df is not None:
@@ -56,51 +94,75 @@ class GUIPrincipal:
     def _on_csv_cargado(self, df_seleccion):
         self.df_actual = df_seleccion
         self._dibujar_grafico(df_seleccion)
-        self.btn_guardar_procesados.config(state="normal")
-        self.btn_reset_zoom.config(state="normal")
 
-    # ---------------- Cargar datos procesados ----------------
     def cargar_procesados(self):
         df = self.csv_manager.cargar_procesados()
         if df is not None:
             self.df_actual = df
             self._dibujar_grafico(df)
-            self.btn_guardar_procesados.config(state="normal")
-            self.btn_reset_zoom.config(state="normal")
 
-    # ---------------- Guardar datos procesados ----------------
     def guardar_procesados(self):
         self.csv_manager.df_cache = self.df_actual
         self.csv_manager.guardar_procesados()
 
-    # ---------------- Dibujar gráfico ----------------
+    # ---------------- Funciones Dinero ----------------
+    def add_dinero(self):
+        try:
+            cantidad = float(self.entry_dinero.get())
+            self.dinero_ficticio += cantidad
+            self.actualizar_labels()
+        except ValueError:
+            messagebox.showerror("Error", "Ingrese un número válido")
+
+    def actualizar_labels(self):
+        self.label_dinero.config(text=f"Dinero: ${self.dinero_ficticio:,.2f}")
+        self.label_beneficios.config(text=f"Beneficios: ${self.beneficios:,.2f}")
+        self.label_perdidas.config(text=f"Pérdidas: ${self.perdidas:,.2f}")
+
+    # ---------------- Funciones Estrategias ----------------
+    def cargar_estrategias(self):
+        if self.df_actual is None:
+            messagebox.showwarning("Atención", "Cargue primero un CSV o datos procesados")
+            return
+        self.strategies = ForexStrategies(self.df_actual)
+        messagebox.showinfo("Éxito", "Estrategias cargadas")
+
+    def iniciar_backtesting(self):
+        if not hasattr(self, "strategies") or self.df_actual is None:
+            messagebox.showwarning("Atención", "Cargue CSV y estrategias primero")
+            return
+        backtester = ForexBacktester(self.df_actual)
+        resultados = backtester.compare_strategies()
+        self.beneficios = sum(v - self.dinero_ficticio for v in resultados.values() if v > self.dinero_ficticio)
+        self.perdidas = sum(self.dinero_ficticio - v for v in resultados.values() if v < self.dinero_ficticio)
+        self.actualizar_labels()
+        messagebox.showinfo("Resultados Backtesting", str(resultados))
+
+    # ---------------- Funciones Patrones ----------------
+    def abrir_modal_patrones(self):
+        if self.df_actual is not None:
+            PatternsModal(self.root, self.df_actual, self.grafico_manager)
+        else:
+            messagebox.showwarning("Atención", "No hay datos cargados para aplicar patrones")
+
+    # ---------------- Funciones Gráficos ----------------
     def _dibujar_grafico(self, df):
         self.grafico_manager.dibujar_csv(df)
         self.tooltip_zoom_pan = TooltipZoomPan(self.root, self.grafico_manager.canvas, self.grafico_manager.grafico)
 
-    # ---------------- Reset Zoom ----------------
     def reset_zoom(self):
         if self.tooltip_zoom_pan:
             self.tooltip_zoom_pan.reset_zoom()
 
-    # ---------------- Limpiar Gráfico ----------------
     def limpiar_grafico(self):
-        """Elimina los datos y oculta la gráfica por completo"""
         self.df_actual = None
-
-        # Limpiar y destruir tooltip
         if self.tooltip_zoom_pan:
             self.tooltip_zoom_pan.cleanup()
         self.tooltip_zoom_pan = None
-
-        # Limpiar la figura en GraficoManager
         if hasattr(self.grafico_manager, 'limpiar'):
             self.grafico_manager.limpiar()
-
-        # Ocultar o destruir el canvas de Matplotlib
         if hasattr(self.grafico_manager, 'canvas') and self.grafico_manager.canvas:
-            self.grafico_manager.canvas.get_tk_widget().pack_forget()  # Oculta el canvas
-            # self.grafico_manager.canvas.get_tk_widget().destroy()  # Si quieres destruirlo completamente
+            self.grafico_manager.canvas.get_tk_widget().pack_forget()
             self.grafico_manager.canvas = None
 
     # ---------------- Run ----------------
