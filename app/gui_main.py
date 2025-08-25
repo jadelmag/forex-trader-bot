@@ -71,9 +71,11 @@ class GUIPrincipal:
         self.label_perdidas.pack(side="left", padx=10)
 
         # ---------------- Botones derecha ----------------
+        self.label_entry_dinero = tk.Label(self.frame_right, text="Dinero ficticio:", bg="#F0F0F0")
+        self.label_entry_dinero.pack(side="left", padx=5)
         self.entry_dinero = ttk.Entry(self.frame_right, width=10)
         self.entry_dinero.pack(side="left", padx=5)
-        self.btn_add_dinero = ttk.Button(self.frame_right, text="Añadir", command=self.add_dinero)
+        self.btn_add_dinero = ttk.Button(self.frame_right, text="Añadir dinero", command=self.add_dinero)
         self.btn_add_dinero.pack(side="left", padx=5)
 
         self.btn_cargar_estrategias = ttk.Button(self.frame_right, text="Cargar Estrategias", command=self.cargar_estrategias)
