@@ -1,4 +1,4 @@
-# app/backtester.py
+# backtesting/backtester.py
 
 import pandas as pd
 import numpy as np
@@ -80,14 +80,3 @@ class ForexBacktester:
             results[strategy.__name__] = final_balance
         return results
 
-# # ---------------- EJEMPLO DE USO ----------------
-# data = pd.DataFrame({
-#     'Open': np.random.rand(100) * 1.1,
-#     'High': np.random.rand(100) * 1.1,
-#     'Low': np.random.rand(100) * 1.1,
-#     'Close': np.random.rand(100) * 1.1
-# })
-
-# forex_bt = ForexBacktester(data)
-# comparison = forex_bt.compare_strategies()
-# print("Resultado final por estrategia:", comparison)

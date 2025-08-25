@@ -1,4 +1,4 @@
-# app/candlestickpatterns.py
+# patterns/candlestickpatterns.py
 
 import pandas as pd
 import numpy as np

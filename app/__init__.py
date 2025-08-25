@@ -1,3 +1,4 @@
+# app/__init__.py
 """
 Inicialización del paquete 'app'.
 Importa los módulos más importantes para facilitar los imports.

@@ -1,4 +1,4 @@
-# app/strategies.py
+# strategies/strategies.py
 
 import pandas as pd
 import numpy as np
