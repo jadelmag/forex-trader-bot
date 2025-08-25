@@ -22,33 +22,30 @@ class GUIPrincipal:
 
         # ---------------- Frames ----------------
         self.frame_controls = tk.Frame(self.root, bg="#F0F0F0")
-        self.frame_controls.pack(padx=20, pady=10, anchor="w")
+        self.frame_controls.pack(padx=20, pady=20, anchor="w")
         
         self.frame_grafico = tk.Frame(self.root, bg="#FFFFFF", relief="sunken", bd=1)
-        self.frame_grafico.pack(fill="both", expand=True, padx=20, pady=10)
+        self.frame_grafico.pack(fill="both", expand=True, padx=20, pady=20)
 
         self.grafico_manager.frame = self.frame_grafico
 
         # ---------------- Widgets ----------------
         # Botones CSV / Procesados
-        self.btn_cargar_csv = tk.Button(self.frame_controls, text="Cargar CSV", 
-                                       command=self.cargar_csv, width=15, height=2)
-        self.btn_cargar_csv.pack(side="left", padx=5)
-        
-        self.btn_cargar_procesados = tk.Button(self.frame_controls, text="Cargar datos procesados", 
-                                              command=self.cargar_procesados, width=20, height=2)
-        self.btn_cargar_procesados.pack(side="left", padx=5)
-        
-        self.btn_guardar_procesados = tk.Button(self.frame_controls, text="Guardar datos procesados", 
-                                               command=self.guardar_procesados, state="disabled", 
-                                               width=20, height=2)
-        self.btn_guardar_procesados.pack(side="left", padx=5)
+        self.btn_cargar_csv = ttk.Button(self.frame_controls, text="Cargar CSV", 
+                                command=self.cargar_csv, style="TButton")
+        self.btn_cargar_csv.pack(side="left", padx=5, pady=5)
 
-        # Botón Reset Zoom
-        self.btn_reset_zoom = tk.Button(self.frame_controls, text="Reset Zoom", 
-                                       command=self.reset_zoom, state="disabled", 
-                                       width=15, height=2)
-        self.btn_reset_zoom.pack(side="left", padx=5)
+        self.btn_cargar_procesados = ttk.Button(self.frame_controls, text="Cargar datos procesados", 
+                                            command=self.cargar_procesados, style="TButton")
+        self.btn_cargar_procesados.pack(side="left", padx=5, pady=5)
+
+        self.btn_guardar_procesados = ttk.Button(self.frame_controls, text="Guardar datos procesados", 
+                                                command=self.guardar_procesados, style="TButton")
+        self.btn_guardar_procesados.pack(side="left", padx=5, pady=5)
+
+        self.btn_reset_zoom = ttk.Button(self.frame_controls, text="Reset Zoom", 
+                                        command=self.reset_zoom, style="TButton")
+        self.btn_reset_zoom.pack(side="left", padx=5, pady=5)
 
     # ---------------- Cargar CSV ----------------
     def cargar_csv(self):
