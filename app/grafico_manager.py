@@ -34,3 +34,9 @@ class GraficoManager:
                 self.grafico.fig.clf()
             if hasattr(self, 'canvas') and self.canvas:
                 self.canvas.draw_idle()
+
+    # --- Dibujar senales RL: ENTRENAMIENTO ---
+    def dibujar_senales_rl(self, signals):
+        if self.grafico and self.ax:
+            self.grafico.dibujar_senales(signals)
+            self.canvas.draw()

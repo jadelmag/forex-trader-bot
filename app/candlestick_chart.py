@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib import ticker
 from mplfinance.original_flavor import candlestick_ohlc
+import numpy as np
 
 class CandlestickChart:
     def __init__(self, base=None, cotizada=None, period='1mo', interval='1d'):
@@ -62,3 +63,23 @@ class CandlestickChart:
         # Guardar referencia al axes
         self.ax = ax
         return fig, ax
+
+    # --- Dibujar senales RL: ENTRENAMIENTO ---
+    def dibujar_senales(self, signals):
+        """
+        Dibuja flechas de compra/venta sobre el gráfico.
+        signals: array o Serie de 0=mantener, 1=comprar, 2=vender
+        """
+        if self.ax is None:
+            raise ValueError("Debe crear la figura primero con crear_figura()")
+        
+        df_plot = self.data.reset_index()
+        for i, signal in enumerate(signals):
+            if signal == 1:  # comprar
+                self.ax.annotate('↑', xy=(mdates.date2num(df_plot['DateTime'].iloc[i]),
+                                           df_plot['Low'].iloc[i]*0.995),
+                                 color='green', fontsize=12, ha='center')
+            elif signal == 2:  # vender
+                self.ax.annotate('↓', xy=(mdates.date2num(df_plot['DateTime'].iloc[i]),
+                                           df_plot['High'].iloc[i]*1.005),
+                                 color='red', fontsize=12, ha='center')

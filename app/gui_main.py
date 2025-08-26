@@ -167,6 +167,20 @@ class GUIPrincipal:
             self.grafico_manager.canvas.get_tk_widget().pack_forget()
             self.grafico_manager.canvas = None
 
+    # ---------------- Funciones RL ----------------
+    def aplicar_senales_rl(self):
+        if self.rl_agent is None:
+            messagebox.showwarning("Atención", "Entrene primero el agente RL")
+            return
+
+        self.rl_signals = self.rl_agent.generar_senales()
+    
+        if self.grafico_manager:
+            self.grafico_manager.dibujar_senales_rl(self.rl_signals)
+    
+        messagebox.showinfo("Señales RL", "Señales del agente RL aplicadas y graficadas")
+
+
     # ---------------- Run ----------------
     def run(self):
         self.root.mainloop()
