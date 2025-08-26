@@ -12,12 +12,14 @@ from .strategies_modal import EstrategiasModal
 # Imports externos
 from strategies.strategies import ForexStrategies
 from backtesting.backtester import ForexBacktester
+from rl.rl_agent import RLTradingAgent
+
 
 class GUIPrincipal:
     def __init__(self, root):
         self.root = root
         self.root.title("Trading Bot - CSV Data Viewer")
-        self.root.geometry("1900x1000")  # ventana más grande
+        self.root.geometry("1900x950")
         self.root.configure(bg="#F0F0F0")
 
         # Inicializaciones
@@ -28,7 +30,7 @@ class GUIPrincipal:
         self.dinero_ficticio = 0
         self.beneficios = 0
         self.perdidas = 0
-        self.rl_agent = None  # agente RL placeholder
+        self.rl_agent = None
         self.rl_signals = []
         self.compra_activa = None
 
@@ -37,15 +39,18 @@ class GUIPrincipal:
         self.frame_controls.pack(fill="x", padx=20, pady=10)
 
         self.frame_grafico = tk.Frame(self.root, bg="#FFFFFF", relief="sunken", bd=1)
-        self.frame_grafico.pack(fill="both", expand=True, padx=20, pady=(0,10))
+        self.frame_grafico.pack(fill="both", expand=True, padx=20, pady=(0, 10))
         self.grafico_manager.frame = self.frame_grafico
 
-        # Log debajo del gráfico
         self.frame_log = tk.Frame(self.root, bg="#F8F8F8", relief="sunken", bd=1)
-        self.frame_log.pack(fill="x", expand=False, padx=20, pady=(0,20))
+        self.frame_log.pack(fill="both", expand=False, padx=20, pady=(0, 20), ipady=120)
         self.text_log = tk.Text(
-            self.frame_log, height=12, bg="black", fg="white",
-            state="disabled", font=("Consolas", 10)
+            self.frame_log,
+            height=12,
+            bg="black",
+            fg="white",
+            state="disabled",
+            font=("Consolas", 10),
         )
         self.text_log.pack(fill="both", expand=True)
 
@@ -63,23 +68,33 @@ class GUIPrincipal:
         self.btn_cargar_csv = ttk.Button(self.frame_left, text="Cargar CSV", command=self.cargar_csv)
         self.btn_cargar_csv.pack(side="left", padx=5)
 
-        self.btn_cargar_procesados = ttk.Button(self.frame_left, text="Cargar datos procesados", command=self.cargar_procesados)
+        self.btn_cargar_procesados = ttk.Button(
+            self.frame_left, text="Cargar datos procesados", command=self.cargar_procesados
+        )
         self.btn_cargar_procesados.pack(side="left", padx=5)
 
-        self.btn_guardar_procesados = ttk.Button(self.frame_left, text="Guardar datos procesados", command=self.guardar_procesados)
+        self.btn_guardar_procesados = ttk.Button(
+            self.frame_left, text="Guardar datos procesados", command=self.guardar_procesados
+        )
         self.btn_guardar_procesados.pack(side="left", padx=5)
 
         self.btn_reset_zoom = ttk.Button(self.frame_left, text="Reset Zoom", command=self.reset_zoom)
         self.btn_reset_zoom.pack(side="left", padx=5)
 
         # ---------------- Dinero/beneficios/pérdidas (centro) ----------------
-        self.label_dinero = tk.Label(self.frame_center, text=f"Dinero: ${self.dinero_ficticio:,.2f}", fg="black", bg="#F0F0F0")
+        self.label_dinero = tk.Label(
+            self.frame_center, text=f"Dinero: ${self.dinero_ficticio:,.2f}", fg="black", bg="#F0F0F0"
+        )
         self.label_dinero.pack(side="left", padx=10)
 
-        self.label_beneficios = tk.Label(self.frame_center, text=f"Beneficios: ${self.beneficios:,.2f}", fg="green", bg="#F0F0F0")
+        self.label_beneficios = tk.Label(
+            self.frame_center, text=f"Beneficios: ${self.beneficios:,.2f}", fg="green", bg="#F0F0F0"
+        )
         self.label_beneficios.pack(side="left", padx=10)
 
-        self.label_perdidas = tk.Label(self.frame_center, text=f"Pérdidas: ${self.perdidas:,.2f}", fg="red", bg="#F0F0F0")
+        self.label_perdidas = tk.Label(
+            self.frame_center, text=f"Pérdidas: ${self.perdidas:,.2f}", fg="red", bg="#F0F0F0"
+        )
         self.label_perdidas.pack(side="left", padx=10)
 
         # ---------------- Botones derecha ----------------
@@ -90,16 +105,35 @@ class GUIPrincipal:
         self.btn_add_dinero = ttk.Button(self.frame_right, text="Añadir dinero", command=self.add_dinero)
         self.btn_add_dinero.pack(side="left", padx=5)
 
-        self.btn_cargar_estrategias = ttk.Button(self.frame_right, text="Cargar Estrategias", command=self.cargar_estrategias)
+        self.btn_cargar_estrategias = ttk.Button(
+            self.frame_right, text="Cargar Estrategias", command=self.cargar_estrategias
+        )
         self.btn_cargar_estrategias.pack(side="left", padx=5)
 
-        self.btn_aplicar_patrones = ttk.Button(self.frame_right, text="Aplicar Patrones", command=self.abrir_modal_patrones)
+        self.btn_aplicar_patrones = ttk.Button(
+            self.frame_right, text="Aplicar Patrones", command=self.abrir_modal_patrones
+        )
         self.btn_aplicar_patrones.pack(side="left", padx=5)
 
-        self.btn_backtesting = ttk.Button(self.frame_right, text="Iniciar Backtesting", command=self.iniciar_backtesting)
+        self.btn_backtesting = ttk.Button(
+            self.frame_right, text="Iniciar Backtesting", command=self.iniciar_backtesting
+        )
         self.btn_backtesting.pack(side="left", padx=5)
 
-        self.btn_aplicar_rl = ttk.Button(self.frame_right, text="Aplicar Señales RL", command=self.aplicar_senales_rl)
+        # ---------------- Botones RL ----------------
+        self.btn_entrenar_rl = ttk.Button(
+            self.frame_right, text="Entrenar RL", command=self.entrenar_rl
+        )
+        self.btn_entrenar_rl.pack(side="left", padx=5)
+
+        self.btn_cargar_rl = ttk.Button(
+            self.frame_right, text="Cargar RL", command=self.cargar_rl
+        )
+        self.btn_cargar_rl.pack(side="left", padx=5)
+
+        self.btn_aplicar_rl = ttk.Button(
+            self.frame_right, text="Aplicar Señales RL", command=self.aplicar_senales_rl
+        )
         self.btn_aplicar_rl.pack(side="left", padx=5)
 
     # ---------------- Funciones CSV ----------------
@@ -162,6 +196,61 @@ class GUIPrincipal:
         else:
             messagebox.showwarning("Atención", "No hay datos cargados para aplicar patrones")
 
+    # ---------------- Funciones RL ----------------
+    def entrenar_rl(self):
+        if self.df_actual is None:
+            messagebox.showwarning("Atención", "Debe cargar un CSV primero")
+            return
+        self.rl_agent = RLTradingAgent(self.df_actual)
+        self.rl_agent.entrenar(timesteps=50_000)
+        messagebox.showinfo("RL", "Entrenamiento completado y modelo guardado")
+
+    def cargar_rl(self):
+        if self.df_actual is None:
+            messagebox.showwarning("Atención", "Debe cargar un CSV primero")
+            return
+        self.rl_agent = RLTradingAgent(self.df_actual)
+        cargado = self.rl_agent.cargar_modelo()
+        if cargado:
+            messagebox.showinfo("RL", "Modelo cargado correctamente")
+
+    def aplicar_senales_rl(self):
+        if self.rl_agent is None or self.df_actual is None:
+            messagebox.showwarning("Atención", "Entrene o cargue primero el agente RL")
+            return
+
+        self.rl_signals = self.rl_agent.generar_senales()
+        self.text_log.configure(state="normal")
+        self.text_log.delete("1.0", "end")
+        self.text_log.configure(state="disabled")
+        self.compra_activa = None
+
+        for i, row in self.df_actual.iterrows():
+            mensaje = f"{i.strftime('%Y-%m-%d %H:%M')} | Close: {row['Close']:.5f}"
+            signal = self.rl_signals[i] if i < len(self.rl_signals) else 0
+
+            if signal == 1:
+                self.compra_activa = (row["Close"], i)
+                mensaje += f" | SEÑAL RL: COMPRA a {row['Close']:.5f}"
+                self.log(mensaje, color="green")
+            elif signal == 2 and self.compra_activa:
+                precio_compra, fecha_compra = self.compra_activa
+                ganancia = row["Close"] - precio_compra
+                if ganancia >= 0:
+                    color = "green"
+                    msg_gan = f"Ganancia: +{ganancia:.5f}"
+                else:
+                    color = "red"
+                    msg_gan = f"Pérdida: {ganancia:.5f}"
+                mensaje += f" | SEÑAL RL: VENTA a {row['Close']:.5f} | {msg_gan}"
+                self.log(mensaje, color=color)
+                self.compra_activa = None
+            else:
+                self.log(mensaje, color="white")
+
+        if self.grafico_manager:
+            self.grafico_manager.dibujar_senales_rl(self.rl_signals)
+
     # ---------------- Funciones Gráficos ----------------
     def _dibujar_grafico(self, df):
         self.grafico_manager.dibujar_csv(df)
@@ -176,9 +265,9 @@ class GUIPrincipal:
         if self.tooltip_zoom_pan:
             self.tooltip_zoom_pan.cleanup()
         self.tooltip_zoom_pan = None
-        if hasattr(self.grafico_manager, 'limpiar'):
+        if hasattr(self.grafico_manager, "limpiar"):
             self.grafico_manager.limpiar()
-        if hasattr(self.grafico_manager, 'canvas') and self.grafico_manager.canvas:
+        if hasattr(self.grafico_manager, "canvas") and self.grafico_manager.canvas:
             self.grafico_manager.canvas.get_tk_widget().pack_forget()
             self.grafico_manager.canvas = None
 
@@ -189,44 +278,6 @@ class GUIPrincipal:
         self.text_log.tag_configure(color, foreground=color)
         self.text_log.see("end")
         self.text_log.configure(state="disabled")
-
-    # ---------------- Aplicar señales RL ----------------
-    def aplicar_senales_rl(self):
-        if self.rl_agent is None or self.df_actual is None:
-            messagebox.showwarning("Atención", "Entrene primero el agente RL y cargue datos")
-            return
-
-        self.rl_signals = self.rl_agent.generar_senales()  # lista de 0,1,2
-        self.text_log.configure(state="normal")
-        self.text_log.delete("1.0", "end")
-        self.text_log.configure(state="disabled")
-        self.compra_activa = None
-
-        for i, row in self.df_actual.iterrows():
-            mensaje = f"{i.strftime('%Y-%m-%d %H:%M')} | Close: {row['Close']:.5f}"
-            signal = self.rl_signals[i]
-            if signal == 1:
-                self.compra_activa = (row['Close'], i)
-                mensaje += f" | SEÑAL RL: COMPRA a {row['Close']:.5f}"
-                self.log(mensaje, color="green")
-            elif signal == 2 and self.compra_activa:
-                precio_compra, fecha_compra = self.compra_activa
-                ganancia = row['Close'] - precio_compra
-                if ganancia >= 0:
-                    color = "green"
-                    msg_gan = f"Ganancia: +{ganancia:.5f}"
-                else:
-                    color = "red"
-                    msg_gan = f"Pérdida: {ganancia:.5f}"
-                mensaje += f" | SEÑAL RL: VENTA a {row['Close']:.5f} | {msg_gan}"
-                self.log(mensaje, color=color)
-                self.compra_activa = None
-            else:
-                self.log(mensaje, color="white")
-
-        # 🔹 Dibujar flechas RL en el gráfico
-        if self.grafico_manager:
-            self.grafico_manager.dibujar_senales_rl(self.rl_signals)
 
     # ---------------- Run ----------------
     def run(self):
