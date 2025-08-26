@@ -30,7 +30,11 @@ forex-trader-bot/
 |
 ├─ assets/                  # Archivos de assets
 │ └─ icon.png               # Icono de la aplicación
-|  
+|
+├─ ia/                      # Archivos de IA
+│ ├─ __init__.py            # ForexIA
+│ └─ trading_rl_agent.py    # Fichero de IA
+|
 ├─ processed/               # Carpeta donde se guardan los archivos procesados (.pkl)
 ├─ backtesting/             # Carpeta donde se guardan los archivos de backtesting
 | ├─ __init__.py            # ForexBacktester

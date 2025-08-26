@@ -17,7 +17,7 @@ class GUIPrincipal:
     def __init__(self, root):
         self.root = root
         self.root.title("Trading Bot - CSV Data Viewer")
-        self.root.geometry("1500x750")
+        self.root.geometry("1900x1000")  # ventana más grande
         self.root.configure(bg="#F0F0F0")
 
         # Inicializaciones
@@ -28,14 +28,26 @@ class GUIPrincipal:
         self.dinero_ficticio = 0
         self.beneficios = 0
         self.perdidas = 0
+        self.rl_agent = None  # agente RL placeholder
+        self.rl_signals = []
+        self.compra_activa = None
 
         # Frames principales
         self.frame_controls = tk.Frame(self.root, bg="#F0F0F0")
         self.frame_controls.pack(fill="x", padx=20, pady=10)
 
         self.frame_grafico = tk.Frame(self.root, bg="#FFFFFF", relief="sunken", bd=1)
-        self.frame_grafico.pack(fill="both", expand=True, padx=20, pady=(0,20))
+        self.frame_grafico.pack(fill="both", expand=True, padx=20, pady=(0,10))
         self.grafico_manager.frame = self.frame_grafico
+
+        # Log debajo del gráfico
+        self.frame_log = tk.Frame(self.root, bg="#F8F8F8", relief="sunken", bd=1)
+        self.frame_log.pack(fill="x", expand=False, padx=20, pady=(0,20))
+        self.text_log = tk.Text(
+            self.frame_log, height=12, bg="black", fg="white",
+            state="disabled", font=("Consolas", 10)
+        )
+        self.text_log.pack(fill="both", expand=True)
 
         # Contenedores de botones
         self.frame_left = tk.Frame(self.frame_controls, bg="#F0F0F0")
@@ -86,6 +98,9 @@ class GUIPrincipal:
 
         self.btn_backtesting = ttk.Button(self.frame_right, text="Iniciar Backtesting", command=self.iniciar_backtesting)
         self.btn_backtesting.pack(side="left", padx=5)
+
+        self.btn_aplicar_rl = ttk.Button(self.frame_right, text="Aplicar Señales RL", command=self.aplicar_senales_rl)
+        self.btn_aplicar_rl.pack(side="left", padx=5)
 
     # ---------------- Funciones CSV ----------------
     def cargar_csv(self):
@@ -167,19 +182,51 @@ class GUIPrincipal:
             self.grafico_manager.canvas.get_tk_widget().pack_forget()
             self.grafico_manager.canvas = None
 
-    # ---------------- Funciones RL ----------------
+    # ---------------- Función Log ----------------
+    def log(self, mensaje, color="white"):
+        self.text_log.configure(state="normal")
+        self.text_log.insert("end", mensaje + "\n", color)
+        self.text_log.tag_configure(color, foreground=color)
+        self.text_log.see("end")
+        self.text_log.configure(state="disabled")
+
+    # ---------------- Aplicar señales RL ----------------
     def aplicar_senales_rl(self):
-        if self.rl_agent is None:
-            messagebox.showwarning("Atención", "Entrene primero el agente RL")
+        if self.rl_agent is None or self.df_actual is None:
+            messagebox.showwarning("Atención", "Entrene primero el agente RL y cargue datos")
             return
 
-        self.rl_signals = self.rl_agent.generar_senales()
-    
+        self.rl_signals = self.rl_agent.generar_senales()  # lista de 0,1,2
+        self.text_log.configure(state="normal")
+        self.text_log.delete("1.0", "end")
+        self.text_log.configure(state="disabled")
+        self.compra_activa = None
+
+        for i, row in self.df_actual.iterrows():
+            mensaje = f"{i.strftime('%Y-%m-%d %H:%M')} | Close: {row['Close']:.5f}"
+            signal = self.rl_signals[i]
+            if signal == 1:
+                self.compra_activa = (row['Close'], i)
+                mensaje += f" | SEÑAL RL: COMPRA a {row['Close']:.5f}"
+                self.log(mensaje, color="green")
+            elif signal == 2 and self.compra_activa:
+                precio_compra, fecha_compra = self.compra_activa
+                ganancia = row['Close'] - precio_compra
+                if ganancia >= 0:
+                    color = "green"
+                    msg_gan = f"Ganancia: +{ganancia:.5f}"
+                else:
+                    color = "red"
+                    msg_gan = f"Pérdida: {ganancia:.5f}"
+                mensaje += f" | SEÑAL RL: VENTA a {row['Close']:.5f} | {msg_gan}"
+                self.log(mensaje, color=color)
+                self.compra_activa = None
+            else:
+                self.log(mensaje, color="white")
+
+        # 🔹 Dibujar flechas RL en el gráfico
         if self.grafico_manager:
             self.grafico_manager.dibujar_senales_rl(self.rl_signals)
-    
-        messagebox.showinfo("Señales RL", "Señales del agente RL aplicadas y graficadas")
-
 
     # ---------------- Run ----------------
     def run(self):

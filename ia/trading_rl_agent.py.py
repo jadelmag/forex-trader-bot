@@ -1,4 +1,4 @@
-# trading_rl_agent.py
+# ia/trading_rl_agent.py
 
 import gym
 from gym import spaces

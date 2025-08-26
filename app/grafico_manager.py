@@ -2,7 +2,8 @@
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from .candlestick_chart import CandlestickChart  # sigue en app/
+from .candlestick_chart import CandlestickChart
+import numpy as np
 
 class GraficoManager:
     def __init__(self, frame):
@@ -35,8 +36,40 @@ class GraficoManager:
             if hasattr(self, 'canvas') and self.canvas:
                 self.canvas.draw_idle()
 
-    # --- Dibujar senales RL: ENTRENAMIENTO ---
     def dibujar_senales_rl(self, signals):
-        if self.grafico and self.ax:
-            self.grafico.dibujar_senales(signals)
-            self.canvas.draw()
+        """
+        Dibuja flechas de compra/venta sobre la gráfica de velas
+        signals: lista de 0=mantener, 1=comprar, 2=vender
+        """
+        if self.grafico is None or self.ax is None:
+            return
+        df = self.grafico.data.reset_index()
+        # Limpiar flechas anteriores
+        self.ax.collections = [c for c in self.ax.collections if not hasattr(c, 'es_flecha_rl')]
+        self.ax.lines = [l for l in self.ax.lines if not hasattr(l, 'es_flecha_rl')]
+
+        for i, signal in enumerate(signals):
+            if signal == 1:  # Compra
+                self.ax.annotate(
+                    "▲",
+                    xy=(i, df['Low'].iloc[i] * 0.9995),
+                    xytext=(0, 0),
+                    textcoords="offset points",
+                    color="green",
+                    fontsize=12,
+                    ha="center",
+                    va="bottom"
+                )
+            elif signal == 2:  # Venta
+                self.ax.annotate(
+                    "▼",
+                    xy=(i, df['High'].iloc[i] * 1.0005),
+                    xytext=(0, 0),
+                    textcoords="offset points",
+                    color="red",
+                    fontsize=12,
+                    ha="center",
+                    va="top"
+                )
+
+        self.canvas.draw_idle()
