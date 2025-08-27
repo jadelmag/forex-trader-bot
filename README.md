@@ -263,3 +263,55 @@ Ideal para backtesting a largo plazo
 
 MIT
 
+## Backtesting
+
+1. Definir la estrategia con reglas claras
+
+Entradas: ¿Qué condiciones técnicas o fundamentales disparan una orden?
+Salidas: ¿Cuándo cierras la operación? (take profit, stop loss, trailing stop, condiciones técnicas, etc.)
+Gestión de riesgo: % de capital arriesgado por operación.
+Sin reglas claras, no puedes medir resultados de forma consistente.
+
+2. Conseguir datos históricos de calidad
+
+Idealmente tick data o al menos velas de 1 minuto.
+
+3. Simulación realista
+
+Modelar spreads y comisiones: el spread en Forex cambia con volatilidad, no es fijo.
+
+Slippage: en alta volatilidad, no siempre entras/sales al precio deseado.
+
+Horario de mercado: no todos los pares tienen la misma liquidez.
+
+Esto evita que tu backtest sea demasiado optimista.
+
+4. Herramientas para backtesting
+
+Plataformas listas:
+
+MetaTrader 4/5 → con Strategy Tester.
+
+TradingView → backtest en Pine Script.
+
+Programación personalizada:
+
+Python → librerías como backtrader, zipline, quantconnect.
+
+R o Matlab para análisis más matemático.
+
+5. Evaluación de resultados
+
+Más allá de la ganancia neta, mide:
+
+Sharpe ratio / Sortino ratio → relación riesgo/beneficio.
+
+Drawdown máximo → cuánto cae tu cuenta en la peor racha.
+
+Win rate y profit factor (ganancia promedio / pérdida promedio).
+
+Expectancy → beneficio esperado por operación.
+
+6. Walk-forward y validación fuera de muestra
+
+4. Lo que quiero es que cuando después de pulsar en aceptar el modal los patrones seleccionados se muestre en la grafica se destaque los patrones y que muestre cuando empiece y cuando acaba el patron.

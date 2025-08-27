@@ -106,7 +106,7 @@ class GUIPrincipal:
         self.btn_add_dinero.pack(side="left", padx=5)
 
         self.btn_cargar_estrategias = ttk.Button(
-            self.frame_right, text="Cargar Estrategias", command=self.cargar_estrategias
+            self.frame_right, text="Mostrar Estrategias", command=self.cargar_estrategias
         )
         self.btn_cargar_estrategias.pack(side="left", padx=5)
 
