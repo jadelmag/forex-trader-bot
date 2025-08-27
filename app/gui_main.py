@@ -111,7 +111,7 @@ class GUIPrincipal:
         self.btn_cargar_estrategias.pack(side="left", padx=5)
 
         self.btn_aplicar_patrones = ttk.Button(
-            self.frame_right, text="Aplicar Patrones", command=self.abrir_modal_patrones
+            self.frame_right, text="Mostrar Patrones", command=self.abrir_modal_patrones
         )
         self.btn_aplicar_patrones.pack(side="left", padx=5)
 
