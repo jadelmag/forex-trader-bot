@@ -44,6 +44,24 @@ class GUIPrincipal:
 
         self.frame_log = tk.Frame(self.root, bg="#F8F8F8", relief="sunken", bd=1)
         self.frame_log.pack(fill="both", expand=False, padx=20, pady=(0, 20), ipady=120)
+        
+        # Estilo exclusivo para el scrollbar de logs (no afecta botones)
+        self._logs_style = ttk.Style()
+        self._logs_style.configure(
+            "Logs.Vertical.TScrollbar",
+            troughcolor="#EFEFEF",
+            background="#B5B5B5",
+            bordercolor="#EFEFEF",
+            lightcolor="#EFEFEF",
+            darkcolor="#EFEFEF",
+            arrowcolor="#7A7A7A",
+        )
+        self._logs_style.map(
+            "Logs.Vertical.TScrollbar",
+            background=[("active", "#A0A0A0"), ("pressed", "#8C8C8C")],
+        )
+
+        # Área de logs con scrollbar vertical a la derecha
         self.text_log = tk.Text(
             self.frame_log,
             height=12,
@@ -52,7 +70,17 @@ class GUIPrincipal:
             state="disabled",
             font=("Consolas", 10),
         )
-        self.text_log.pack(fill="both", expand=True)
+        self.scrollbar_log_y = ttk.Scrollbar(
+            self.frame_log,
+            orient="vertical",
+            style="Logs.Vertical.TScrollbar",
+            command=self.text_log.yview,
+        )
+        self.text_log.configure(yscrollcommand=self.scrollbar_log_y.set)
+
+        # Layout
+        self.text_log.pack(side="left", fill="both", expand=True)
+        self.scrollbar_log_y.pack(side="right", fill="y")
 
         # Contenedores de botones
         self.frame_left = tk.Frame(self.frame_controls, bg="#F0F0F0")
@@ -145,6 +173,8 @@ class GUIPrincipal:
     def _on_csv_cargado(self, df_seleccion):
         self.df_actual = df_seleccion
         self._dibujar_grafico(df_seleccion)
+        # Habilitar botón de patrones tras cargar datos
+        self.btn_aplicar_patrones.config(state="normal")
 
     def cargar_procesados(self):
         df = self.csv_manager.cargar_procesados()
@@ -193,7 +223,8 @@ class GUIPrincipal:
     # ---------------- Funciones Patrones ----------------
     def abrir_modal_patrones(self):
         if self.df_actual is not None:
-            PatternsModal(self.root, self.df_actual, self.grafico_manager)
+            # Pasar callback para reinstalar zoom/hover tras redibujar
+            PatternsModal(self.root, self.df_actual, self.grafico_manager, self, callback=self._on_patrones_aplicados)
         else:
             messagebox.showwarning("Atención", "No hay datos cargados para aplicar patrones")
 
@@ -279,6 +310,26 @@ class GUIPrincipal:
         self.text_log.tag_configure(color, foreground=color)
         self.text_log.see("end")
         self.text_log.configure(state="disabled")
+
+    # ---------------- Función callback para patrones ----------------
+    def _on_patrones_aplicados(self, df_actualizado):
+        """Callback desde PatternsModal tras aplicar y dibujar patrones.
+        Reasigna df_actual y reinstala los handlers de zoom/hover sobre el nuevo canvas/figura.
+        """
+        self.df_actual = df_actualizado
+        # Si existía un gestor previo de zoom/hover, desconectarlo limpiamente
+        if self.tooltip_zoom_pan:
+            try:
+                self.tooltip_zoom_pan.cleanup()
+            except Exception:
+                pass
+        # Instalar nuevo gestor con el canvas/figura recién creados
+        if hasattr(self.grafico_manager, "canvas") and hasattr(self.grafico_manager, "grafico"):
+            self.tooltip_zoom_pan = TooltipZoomPan(
+                self.root,
+                self.grafico_manager.canvas,
+                self.grafico_manager.grafico,
+            )
 
     # ---------------- Run ----------------
     def run(self):
