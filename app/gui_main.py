@@ -111,7 +111,7 @@ class GUIPrincipal:
         self.btn_cargar_estrategias.pack(side="left", padx=5)
 
         self.btn_aplicar_patrones = ttk.Button(
-            self.frame_right, text="Mostrar Patrones", command=self.abrir_modal_patrones
+            self.frame_right, text="Mostrar Patrones", command=self.abrir_modal_patrones, state="disabled"
         )
         self.btn_aplicar_patrones.pack(side="left", padx=5)
 
@@ -151,6 +151,7 @@ class GUIPrincipal:
         if df is not None:
             self.df_actual = df
             self._dibujar_grafico(df)
+            self.btn_aplicar_patrones.config(state="normal")
 
     def guardar_procesados(self):
         self.csv_manager.df_cache = self.df_actual
