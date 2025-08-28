@@ -273,3 +273,9 @@ Ideal para backtesting a largo plazo
 ## Licencia
 
 MIT
+
+
+## En proceso
+
+* Entrenamiento de RL
+* Backtesting de RL
