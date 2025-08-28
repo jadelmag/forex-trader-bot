@@ -1,5 +1,6 @@
 # app/gui_main.py
 
+import os
 import tkinter as tk
 from tkinter import ttk, messagebox
 from .csv_manager import CSVManager
@@ -19,9 +20,17 @@ from rl.rl_agent import RLTradingAgent
 class GUIPrincipal:
     def __init__(self, root):
         self.root = root
-        self.root.title("Trading Bot - CSV Data Viewer")
+        self.root.title("Trading Bot - Forex Market")
         self.root.geometry("1900x950")
         self.root.configure(bg="#F0F0F0")
+
+        # Set window icon
+        try:
+            icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets', 'icon.png')
+            icon = tk.PhotoImage(file=icon_path)
+            self.root.iconphoto(False, icon)
+        except Exception as e:
+            print(f"Error al cargar el icono: {e}")
 
         # Inicializaciones
         self.csv_manager = CSVManager(root)
@@ -151,17 +160,17 @@ class GUIPrincipal:
 
         # ---------------- Botones RL ----------------
         self.btn_entrenar_rl = ttk.Button(
-            self.frame_right, text="Entrenar RL", command=self.entrenar_rl
+            self.frame_right, text="Entrenar RL", command=self.entrenar_rl, state="disabled"
         )
         self.btn_entrenar_rl.pack(side="left", padx=5)
 
         self.btn_cargar_rl = ttk.Button(
-            self.frame_right, text="Cargar RL", command=self.cargar_rl
+            self.frame_right, text="Cargar RL", command=self.cargar_rl, state="disabled"
         )
         self.btn_cargar_rl.pack(side="left", padx=5)
 
         self.btn_aplicar_rl = ttk.Button(
-            self.frame_right, text="Aplicar Señales RL", command=self.aplicar_senales_rl
+            self.frame_right, text="Aplicar Señales RL", command=self.aplicar_senales_rl, state="disabled"
         )
         self.btn_aplicar_rl.pack(side="left", padx=5)
 
@@ -184,6 +193,9 @@ class GUIPrincipal:
             self.btn_aplicar_patrones.config(state="normal")
             self.btn_cargar_estrategias.config(state="normal")
             self.btn_backtesting.config(state="normal")
+            self.btn_entrenar_rl.config(state="normal")
+            self.btn_cargar_rl.config(state="normal")
+            self.btn_aplicar_rl.config(state="normal")
 
     def guardar_procesados(self):
         self.csv_manager.df_cache = self.df_actual
