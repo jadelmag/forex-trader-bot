@@ -8,6 +8,7 @@ from .tooltip_zoom_pan import TooltipZoomPan
 from .csv_loader_modal import CSVLoaderModal
 from .patterns_modal import PatternsModal
 from .strategies_modal import EstrategiasModal
+from patterns.candlestickpatterns import CandlestickPatterns
 
 # Imports externos
 from strategies.strategies import ForexStrategies
@@ -144,7 +145,7 @@ class GUIPrincipal:
         self.btn_aplicar_patrones.pack(side="left", padx=5)
 
         self.btn_backtesting = ttk.Button(
-            self.frame_right, text="Iniciar Backtesting", command=self.iniciar_backtesting, state="disabled"
+            self.frame_right, text="Iniciar Backtesting", command=self.abrir_modal_backtesting, state="disabled"
         )
         self.btn_backtesting.pack(side="left", padx=5)
 
@@ -173,17 +174,16 @@ class GUIPrincipal:
     def _on_csv_cargado(self, df_seleccion):
         self.df_actual = df_seleccion
         self._dibujar_grafico(df_seleccion)
-        # Habilitar botón de patrones tras cargar datos
-        self.btn_aplicar_patrones.config(state="normal")
-        self.btn_cargar_estrategias.config(state="normal")
-        self.btn_backtesting.config(state="normal")
 
     def cargar_procesados(self):
         df = self.csv_manager.cargar_procesados()
         if df is not None:
             self.df_actual = df
             self._dibujar_grafico(df)
+            # Habilitar botón de patrones tras cargar datos
             self.btn_aplicar_patrones.config(state="normal")
+            self.btn_cargar_estrategias.config(state="normal")
+            self.btn_backtesting.config(state="normal")
 
     def guardar_procesados(self):
         self.csv_manager.df_cache = self.df_actual
@@ -260,16 +260,83 @@ class GUIPrincipal:
         if hasattr(self.grafico_manager, 'canvas') and hasattr(self.grafico_manager, 'grafico'):
             self.tooltip_zoom_pan = TooltipZoomPan(self.root, self.grafico_manager.canvas, self.grafico_manager.grafico)
 
-    def iniciar_backtesting(self):
-        if not hasattr(self, "strategies") or self.df_actual is None:
-            messagebox.showwarning("Atención", "Cargue CSV y estrategias primero")
+    # ---------------- Backtesting (modal de selección) ----------------
+    def abrir_modal_backtesting(self):
+        if self.df_actual is None:
+            messagebox.showwarning("Atención", "Cargue primero un CSV o datos procesados")
+            return
+        # Estrategias disponibles a partir de la clase ForexStrategies
+        estrategias_disponibles = [
+            nombre for nombre in dir(ForexStrategies)
+            if callable(getattr(ForexStrategies, nombre)) and not nombre.startswith("_")
+        ]
+        # Reutilizamos el modal de patrones con sección de estrategias
+        PatternsModal(
+            self.root,
+            self.df_actual,
+            self.grafico_manager,
+            self,
+            callback=None,
+            include_strategies=True,
+            strategies_list=estrategias_disponibles,
+            on_accept_backtesting=self._on_backtesting_selected,
+        )
+
+    def _on_backtesting_selected(self, patrones_sel, estrategias_sel):
+        """Lanza el backtesting con estrategias seleccionadas y detecta (log) los patrones marcados.
+        - Detecta patrones y los escribe en el log (no altera señales de backtest).
+        - Ejecuta cada estrategia con ForexBacktester.backtest_with_events y loguea BUY/SELL.
+        """
+        if self.df_actual is None:
+            return
+
+        # 1) Detectar patrones seleccionados y loguearlos
+        try:
+            if patrones_sel:
+                patterns = CandlestickPatterns(self.df_actual)
+                for p in patrones_sel:
+                    try:
+                        serie = patterns.__getattribute__(p)()['Signal']
+                        for idx, val in serie.items():
+                            if val != 0:
+                                row = self.df_actual.loc[idx]
+                                fecha_str = idx.strftime('%d/%m/%Y') if hasattr(idx, 'strftime') else str(idx)
+                                color = 'green' if row['Close'] > row['Open'] else ('red' if row['Close'] < row['Open'] else 'gray')
+                                self.log(
+                                    f"Patrón: {p} | Fecha: {fecha_str} | Open: {row['Open']:.5f} | Close: {row['Close']:.5f}",
+                                    color=color,
+                                )
+                    except Exception as e:
+                        self.log(f"Error detectando patrón {p}: {e}", color='red')
+        except Exception as e:
+            self.log(f"Error en detección de patrones: {e}", color='red')
+
+        # 2) Ejecutar backtesting por estrategia y loguear BUY/SELL
+        if not estrategias_sel:
+            messagebox.showinfo("Backtesting", "No se seleccionaron estrategias")
             return
         backtester = ForexBacktester(self.df_actual)
-        resultados = backtester.compare_strategies()
-        self.beneficios = sum(v - self.dinero_ficticio for v in resultados.values() if v > self.dinero_ficticio)
-        self.perdidas = sum(self.dinero_ficticio - v for v in resultados.values() if v < self.dinero_ficticio)
-        self.actualizar_labels()
-        messagebox.showinfo("Resultados Backtesting", str(resultados))
+        for nombre in estrategias_sel:
+            try:
+                metodo = getattr(backtester, nombre, None)
+                if not callable(metodo):
+                    self.log(f"Estrategia no válida: {nombre}", color='red')
+                    continue
+                df_sig = metodo()
+                if 'Signal' not in df_sig.columns:
+                    self.log(f"Estrategia {nombre} no generó columna 'Signal'", color='red')
+                    continue
+                balance_final, events = backtester.backtest_with_events(df_sig)
+                self.log(f"[Backtesting] Estrategia: {nombre}", color='cyan')
+                for ev in events:
+                    t = ev['time']
+                    fecha_str = t.strftime('%d/%m/%Y %H:%M') if hasattr(t, 'strftime') else str(t)
+                    tipo = 'COMPRA' if ev['type'] == 'BUY' else 'VENTA'
+                    color = 'green' if tipo == 'COMPRA' else 'red'
+                    self.log(f"{fecha_str} | {tipo} a {ev['price']:.5f}", color=color)
+                self.log(f"Balance final (simulado): ${balance_final:,.2f}", color='white')
+            except Exception as e:
+                self.log(f"Error en backtesting {nombre}: {e}", color='red')
 
     # ---------------- Funciones Patrones ----------------
     def abrir_modal_patrones(self):

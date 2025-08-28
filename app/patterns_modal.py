@@ -41,13 +41,17 @@ class ScrollableFrame(ttk.Frame):
         self.scrollable_frame.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
 
 class PatternsModal(tk.Toplevel):
-    def __init__(self, master, df, grafico_manager, gui_principal, callback=None):
+    def __init__(self, master, df, grafico_manager, gui_principal, callback=None,
+                 include_strategies=False, strategies_list=None, on_accept_backtesting=None):
         super().__init__(master)
         self.df = df
         self.grafico_manager = grafico_manager
         self.gui_principal = gui_principal
         self.callback = callback
-        self.selected_patterns = []
+        # Backtesting mode
+        self.include_strategies = include_strategies
+        self.strategies_list = strategies_list or []
+        self.on_accept_backtesting = on_accept_backtesting
 
         self.title("Seleccionar patrones")
         self.geometry("350x450")
@@ -68,6 +72,7 @@ class PatternsModal(tk.Toplevel):
         self.other_patterns = []
 
         self.vars = {}
+        self.vars_strat = {}
 
         scroll_frame = ScrollableFrame(self)
         scroll_frame.pack(fill="both", expand=True, padx=10, pady=10)
@@ -89,6 +94,16 @@ class PatternsModal(tk.Toplevel):
         add_section("----- Patrones de dos velas -----", self.two_candle_patterns)
         add_section("----- Patrones de tres velas -----", self.three_candle_patterns)
         add_section("----- Otros patrones -----", self.other_patterns)
+
+        # Opcional: sección de estrategias para backtesting
+        if self.include_strategies and self.strategies_list:
+            lbl_s = ttk.Label(scroll_frame.scrollable_frame, text="----- Estrategias -----", font=("Segoe UI", 10, "bold"))
+            lbl_s.pack(anchor="w", pady=(12, 2))
+            for strat in self.strategies_list:
+                var = tk.IntVar(value=1)
+                chk = ttk.Checkbutton(scroll_frame.scrollable_frame, text=strat.replace('_',' ').title(), variable=var)
+                chk.pack(fill="x", anchor="w", pady=1)
+                self.vars_strat[strat] = var
 
         # Barra de progreso y estado
         self.frame_progress = ttk.Frame(self)
@@ -120,23 +135,31 @@ class PatternsModal(tk.Toplevel):
         self.geometry(f"{w}x{h}+{x}+{y}")
 
     def on_accept(self):
-        # Determinar selección y preparar progreso
-        self.selected_patterns = [p for p, var in self.vars.items() if var.get() == 1]
-        if not self.selected_patterns:
-            self.lbl_progress.config(text="Seleccione al menos un patrón")
+        # Si estamos en modo backtesting: devolver selecciones y cerrar
+        if self.include_strategies and self.on_accept_backtesting:
+            selected_patterns = [p for p, v in self.vars.items() if v.get() == 1]
+            selected_strategies = [s for s, v in self.vars_strat.items() if v.get() == 1]
+            try:
+                self.on_accept_backtesting(selected_patterns, selected_strategies)
+            finally:
+                self.destroy()
             return
-        self.progress.config(maximum=len(self.selected_patterns), value=0)
-        self.lbl_progress.config(text=f"Procesando 0/{len(self.selected_patterns)} patrones...")
-        # Deshabilitar aceptar mientras procesa
-        self.btn_accept.state(["disabled"])
-        # Ejecutar procesamiento en thread para no bloquear GUI
+
+        # Modo normal: aplicar patrones y redibujar con progreso/logs
         thread = threading.Thread(target=self.aplicar_patrones_thread)
         thread.start()
 
     def aplicar_patrones_thread(self):
         patterns = CandlestickPatterns(self.df)
-        selected_patterns = self.selected_patterns
-
+        selected_patterns = [p for p, var in self.vars.items() if var.get() == 1]
+        if not selected_patterns:
+            self.lbl_progress.config(text="Seleccione al menos un patrón")
+            return
+        self.progress.config(maximum=len(selected_patterns), value=0)
+        self.lbl_progress.config(text=f"Procesando 0/{len(selected_patterns)} patrones...")
+        # Deshabilitar aceptar mientras procesa
+        self.btn_accept.state(["disabled"])
+        # Ejecutar procesamiento en thread para no bloquear GUI
         df_patrones = self.df.copy()
         encontrados_totales = 0
         for pattern_name in selected_patterns:
