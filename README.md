@@ -24,31 +24,6 @@ Este proyecto permite:
 ```
 forex-trader-bot/
 │
-├─ csv/                     # Archivos CSV de velas
-│ ├─ DAT_ASCII_EURUSD_M1_2023.csv # Velas de EUR/USD
-│ └─ DAT_ASCII_EURUSD_M1_2024.csv # Velas de EUR/USD
-|
-├─ assets/                  # Archivos de assets
-│ └─ icon.png               # Icono de la aplicación
-|
-|
-├─ rl/                      # Archivos de RL
-│ ├─ __init__.py            # ForexRL
-│ └─ rl_agent.py            # Incluye ForexRLAgent y el entorno ForexTradingEnv
-│ └─ rl_env.py              # El entorno Gymnasium (TradingEnv)
-|
-├─ processed/               # Carpeta donde se guardan los archivos procesados (.pkl)
-├─ backtesting/             # Carpeta donde se guardan los archivos de backtesting
-| ├─ __init__.py            # ForexBacktester
-| └─ backtester.py          # Fichero de backtesting
-| 
-├─ strategies/              # Carpeta donde se guardan los archivos de estrategias
-| ├─ __init__.py            # ForexStrategies
-| └─ strategies.py          # Estrategias de trading
-├─ patterns/                # Carpeta donde se guardan los archivos de patrones de velas
-| ├─ __init__.py            # CandlestickPatterns
-| └─ candlestickpatterns.py # Patrones de velas
-|
 |
 ├─ app/                     # Paquete principal
 │ ├─ __init__.py            # Inicializa el paquete, importa Window
@@ -58,14 +33,50 @@ forex-trader-bot/
 │ ├─ grafico_manager.py     # Clase GraficoManager para manejar gráficos
 │ ├─ gui_main.py            # Clase GUIPrincipal que organiza frames y widgets
 │ ├─ main.py                # Función main() para ejecutar la app
+| ├─ patterns_modal.py      # Clase PatternsModal, permite cargar patrones de velas
 │ ├─ progress_modal.py      # Clase ProgressModal, muestra progreso de operaciones
+│ ├─ strategies_modal.py    # Clase StrategiesModal, permite cargar estrategias de RL
 │ ├─ tooltip_zoom_pan.py    # Funciones para tooltip, zoom y pan
 │ └─ window.py              # Clase Window principal, coordina la GUI
-│
-├─ requirements.txt         # Dependencias necesarias
+|
+├─ assets/                  # Archivos de assets
+│ └─ icon.png               # Icono de la aplicación
+|
+├─ backtesting/             # Carpeta donde se guardan los archivos de backtesting
+│ ├─ __init__.py            # ForexBacktester
+│ └─ backtester.py          # Fichero de backtesting
+|
+├─ csv/                     # Archivos CSV de velas
+│ ├─ DAT_ASCII_EURUSD_M1_2023.csv # Velas de EUR/USD
+│ └─ DAT_ASCII_EURUSD_M1_2024.csv # Velas de EUR/USD
+|
+├─ ia/                      # Carpeta donde se guardan los archivos de IA
+│ ├─ __init__.py            # ForexIA
+│ └─ trading_rl_agent.py    # Fichero de IA
+|
+├─ models_rl/               # Carpeta donde se guardan los archivos de modelos de RL
+│ └─ ppo_trading.zip        # Fichero de modelos de RL
+|
+├─ patterns/                # Carpeta donde se guardan los archivos de patrones de velas
+| ├─ __init__.py            # CandlestickPatterns
+| └─ candlestickpatterns.py # Patrones de velas
+|
+├─ processed/               # Carpeta donde se guardan los archivos procesados (.pkl)
+|
+├─ rl/                      # Carpeta donde se guardan los archivos de RL
+│ ├─ __init__.py            # ForexRL
+│ └─ rl_agent.py            # Fichero de RL
+│ └─ rl_env.py              # El entorno Gymnasium (TradingEnv)
+|
+├─ strategies/              # Carpeta donde se guardan los archivos de estrategias
+│ ├─ __init__.py            # ForexStrategies
+│ └─ strategies.py          # Estrategias de trading
+|
+├─ .gitignore               # Fichero .gitignore
 ├─ csv_parser.py            # Script para convertir CSV crudos de Dukascopy al formato estándar
-├─ setup.py                 # Configuración del paquete y entry point
-└─ README.md                # Instrucciones de instalación y uso
+├─ README.md                # Instrucciones de instalación y uso
+├─ requirements.txt         # Dependencias necesarias
+└─ setup.py                 # Configuración del paquete y entry point
 ```
 
 ---
@@ -221,10 +232,10 @@ Datos de 27 pares de divisas principales:
 Estructura de datos:
 Cada archivo CSV contiene:
 
-| Timestamp           | Open | High | Low | Close | Volume |
-|---------------------|------|------|-----|-------|--------|
-| 2003-05-04 17:00:00 | 1.1234 | 1.1235 | 1.1233 | 1.1234 | 125 |
-| 2003-05-04 17:01:00 | 1.1234 | 1.1236 | 1.1233 | 1.1235 | 118 |
+| Timestamp           | Open   | High   | Low     | Close  | Volume |
+|---------------------|--------|--------|---------|--------|--------|
+| 2003-05-04 17:00:00 | 1.1234 | 1.1235 | 1.1233  | 1.1234 |   125  |
+| 2003-05-04 17:01:00 | 1.1234 | 1.1236 | 1.1233  | 1.1235 |   118  |
 
 🚀 Para qué sirve:
 1. Backtesting de alta frecuencia
