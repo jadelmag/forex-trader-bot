@@ -134,7 +134,7 @@ class GUIPrincipal:
         self.btn_add_dinero.pack(side="left", padx=5)
 
         self.btn_cargar_estrategias = ttk.Button(
-            self.frame_right, text="Mostrar Estrategias", command=self.cargar_estrategias
+            self.frame_right, text="Mostrar Estrategias", command=self.cargar_estrategias, state="disabled"
         )
         self.btn_cargar_estrategias.pack(side="left", padx=5)
 
@@ -175,6 +175,7 @@ class GUIPrincipal:
         self._dibujar_grafico(df_seleccion)
         # Habilitar botón de patrones tras cargar datos
         self.btn_aplicar_patrones.config(state="normal")
+        self.btn_cargar_estrategias.config(state="normal")
 
     def cargar_procesados(self):
         df = self.csv_manager.cargar_procesados()
@@ -206,8 +207,57 @@ class GUIPrincipal:
         if self.df_actual is None:
             messagebox.showwarning("Atención", "Cargue primero un CSV o datos procesados")
             return
+        # Instanciar estrategias con el DataFrame actual
         self.strategies = ForexStrategies(self.df_actual)
-        messagebox.showinfo("Éxito", "Estrategias cargadas")
+        # Descubrir métodos públicos de la clase como nombres de estrategias
+        estrategias_disponibles = [
+            nombre for nombre in dir(ForexStrategies)
+            if callable(getattr(ForexStrategies, nombre)) and not nombre.startswith("_")
+        ]
+        # Abrir modal con checkboxes y callback
+        EstrategiasModal(self.root, estrategias_disponibles, callback=self._on_estrategias_seleccionadas)
+
+    def _on_estrategias_seleccionadas(self, estrategias):
+        """Aplica las estrategias seleccionadas sobre el DataFrame actual.
+        Añade columnas <estrategia>_Signal y redibuja el gráfico, reinstalando zoom/hover.
+        """
+        if not estrategias or self.df_actual is None or not hasattr(self, 'strategies'):
+            return
+
+        df_new = self.df_actual.copy()
+
+        for nombre in estrategias:
+            try:
+                metodo = getattr(self.strategies, nombre, None)
+                if not callable(metodo):
+                    continue
+                df_res = metodo()
+                if 'Signal' in df_res.columns:
+                    col_name = f"{nombre}_Signal"
+                    # Alinear por índice
+                    df_new[col_name] = df_res['Signal']
+                    # Loguear eventos de la estrategia
+                    for idx, val in df_res['Signal'].items():
+                        if val != 0:
+                            close_val = df_new.loc[idx, 'Close'] if 'Close' in df_new.columns else None
+                            fecha_str = idx.strftime('%d/%m/%Y') if hasattr(idx, 'strftime') else str(idx)
+                            msg = f"Estrategia: {nombre} | Fecha: {fecha_str} | Señal: {val}"
+                            if close_val is not None:
+                                msg += f" | Close: {close_val:.5f}"
+                            self.log(msg, color='cyan')
+            except Exception as e:
+                self.log(f"Error aplicando estrategia {nombre}: {e}", color='red')
+
+        # Redibujar y reinstalar TooltipZoomPan
+        self.grafico_manager.dibujar_csv(df_new)
+        self.df_actual = df_new
+        if self.tooltip_zoom_pan:
+            try:
+                self.tooltip_zoom_pan.cleanup()
+            except Exception:
+                pass
+        if hasattr(self.grafico_manager, 'canvas') and hasattr(self.grafico_manager, 'grafico'):
+            self.tooltip_zoom_pan = TooltipZoomPan(self.root, self.grafico_manager.canvas, self.grafico_manager.grafico)
 
     def iniciar_backtesting(self):
         if not hasattr(self, "strategies") or self.df_actual is None:
