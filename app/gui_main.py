@@ -144,7 +144,7 @@ class GUIPrincipal:
         self.btn_aplicar_patrones.pack(side="left", padx=5)
 
         self.btn_backtesting = ttk.Button(
-            self.frame_right, text="Iniciar Backtesting", command=self.iniciar_backtesting
+            self.frame_right, text="Iniciar Backtesting", command=self.iniciar_backtesting, state="disabled"
         )
         self.btn_backtesting.pack(side="left", padx=5)
 
@@ -176,6 +176,7 @@ class GUIPrincipal:
         # Habilitar botón de patrones tras cargar datos
         self.btn_aplicar_patrones.config(state="normal")
         self.btn_cargar_estrategias.config(state="normal")
+        self.btn_backtesting.config(state="normal")
 
     def cargar_procesados(self):
         df = self.csv_manager.cargar_procesados()
