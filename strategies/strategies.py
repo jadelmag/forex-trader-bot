@@ -137,10 +137,9 @@ class ForexStrategies:
 
         cond = df['EMA_short'] > df['EMA_long']
         
-        # Usar el método recomendado por pandas para evitar downcasting
+        # Usar numpy para manejar los NaN de manera más eficiente
         cond_shifted = cond.shift(1)
-        cond_shifted_filled = cond_shifted.fillna(False)
-        cond_shifted_filled = cond_shifted_filled.infer_objects(copy=False)  # <-- Método recomendado
+        cond_shifted_filled = cond_shifted.where(cond_shifted.notna(), False)
         
         cross_up = cond & (~cond_shifted_filled)
         cross_dn = (~cond) & cond_shifted_filled
@@ -151,8 +150,7 @@ class ForexStrategies:
 
         df = self._apply_risk_management(df, **risk_kwargs)
         return self._attach_execution(df[['Close','EMA_short','EMA_long',
-                                        'Signal','StopLoss','TakeProfit','PositionSize']], exec_lag)
-
+                                        'Signal','StopLoss','TakeProfit','PositionSize']], exec_lag)   
 
     # ---------------- Breakout ----------------
     def breakout(self, window=20, exec_lag=1, **risk_kwargs):
