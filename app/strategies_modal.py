@@ -14,11 +14,11 @@ class EstrategiasModal(tk.Toplevel):
 
         # Calcular altura basada en el número total de estrategias
         total_estrategias = len(estrategias_fx) + len(estrategias_candle)
-        h = 150 + 40 * total_estrategias  # altura ajustada para ambas secciones
+        h = 120 + 40 * total_estrategias  # altura aumentada para los nuevos checkboxes
 
         # Centrar ventana sobre el padre
         self.update_idletasks()
-        w = 500  # ancho aumentado para acomodar las secciones
+        w = 500
         x = parent.winfo_rootx() + (parent.winfo_width() - w) // 2
         y = parent.winfo_rooty() + (parent.winfo_height() - h) // 2
         self.geometry(f"{w}x{h}+{x}+{y}")
@@ -108,6 +108,30 @@ class EstrategiasModal(tk.Toplevel):
                     "tipo": "candle"
                 }
 
+        # ---------------- CHECKBOXES DE OPCIONES ----------------
+        # Calcular la fila donde colocar los checkboxes
+        options_row = start_row + len(estrategias_candle) + 2 if estrategias_candle else len(estrategias_fx) + 2
+        
+        # Checkbox para mostrar detección de patrones
+        self.var_mostrar_deteccion = tk.IntVar(value=1)  # Habilitado por defecto
+        chk_deteccion = tk.Checkbutton(
+            scrollable_frame, 
+            text="Mostrar detección de patrones", 
+            variable=self.var_mostrar_deteccion,
+            anchor="w"
+        )
+        chk_deteccion.grid(row=options_row, column=0, columnspan=3, sticky="w", padx=5, pady=(20, 5))
+        
+        # Checkbox para mostrar simulación
+        self.var_mostrar_simulacion = tk.IntVar(value=1)  # Habilitado por defecto
+        chk_simulacion = tk.Checkbutton(
+            scrollable_frame, 
+            text="Mostrar simulación con Risk Manager", 
+            variable=self.var_mostrar_simulacion,
+            anchor="w"
+        )
+        chk_simulacion.grid(row=options_row + 1, column=0, columnspan=3, sticky="w", padx=5, pady=5)
+
         # ---------------- CAMPO MAX ORDENES ----------------
         frame_max = tk.Frame(self)
         frame_max.pack(pady=5)
@@ -140,12 +164,17 @@ class EstrategiasModal(tk.Toplevel):
                     # Para Candle Strategies: solo marcar como seleccionada
                     seleccion[nombre] = {"tipo": "candle"}
 
-        # Añadir max_orders al resultado
+        # Añadir max_orders y opciones de visualización al resultado
         try:
             max_orders = int(self.max_orders_var.get())
         except ValueError:
             max_orders = 5  # valor por defecto en caso de error
 
+        opciones = {
+            "mostrar_deteccion": bool(self.var_mostrar_deteccion.get()),
+            "mostrar_simulacion": bool(self.var_mostrar_simulacion.get())
+        }
+
         self.destroy()
         if self.callback:
-            self.callback(seleccion, max_orders)
+            self.callback(seleccion, max_orders, opciones)
