@@ -136,8 +136,14 @@ class ForexStrategies:
         df['EMA_long']  = df['Close'].ewm(span=long_window, adjust=False).mean()
 
         cond = df['EMA_short'] > df['EMA_long']
-        cross_up = cond & (~cond.shift(1).fillna(False))
-        cross_dn = (~cond) & (cond.shift(1).fillna(False))
+        
+        # Usar el método recomendado por pandas para evitar downcasting
+        cond_shifted = cond.shift(1)
+        cond_shifted_filled = cond_shifted.fillna(False)
+        cond_shifted_filled = cond_shifted_filled.infer_objects(copy=False)  # <-- Método recomendado
+        
+        cross_up = cond & (~cond_shifted_filled)
+        cross_dn = (~cond) & cond_shifted_filled
 
         df['Signal'] = 0
         df.loc[cross_up, 'Signal'] = 1
@@ -145,7 +151,8 @@ class ForexStrategies:
 
         df = self._apply_risk_management(df, **risk_kwargs)
         return self._attach_execution(df[['Close','EMA_short','EMA_long',
-                                          'Signal','StopLoss','TakeProfit','PositionSize']], exec_lag)
+                                        'Signal','StopLoss','TakeProfit','PositionSize']], exec_lag)
+
 
     # ---------------- Breakout ----------------
     def breakout(self, window=20, exec_lag=1, **risk_kwargs):
