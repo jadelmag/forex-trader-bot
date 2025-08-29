@@ -70,7 +70,9 @@ forex-trader-bot/
 |
 ├─ strategies/              # Carpeta donde se guardan los archivos de estrategias
 │ ├─ __init__.py            # ForexStrategies
-│ └─ strategies.py          # Estrategias de trading
+│ ├─ strategies.py          # Estrategias de Forex
+│ ├─ candle_strategies.py   # Estrategias de velas
+│ └─ risk_manager.py        # Gestión de riesgo
 |
 ├─ .gitignore               # Fichero .gitignore
 ├─ csv_parser.py            # Script para convertir CSV crudos de Dukascopy al formato estándar
