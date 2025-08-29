@@ -197,12 +197,8 @@ class GUIPrincipal:
             self.df_actual = df
             self._dibujar_grafico(df)
             # Habilitar botón de patrones tras cargar datos
-            self.btn_aplicar_patrones.config(state="normal")
-            self.btn_cargar_estrategias.config(state="normal")
-            self.btn_backtesting.config(state="normal")
-            self.btn_entrenar_rl.config(state="normal")
-            self.btn_cargar_rl.config(state="normal")
-            self.btn_aplicar_rl.config(state="normal")
+            self._update_btn_aplicar_patrones()
+            self._update_btn_cargar_estrategias()
 
     def guardar_procesados(self):
         self.csv_manager.df_cache = self.df_actual
@@ -214,6 +210,8 @@ class GUIPrincipal:
             cantidad = float(self.entry_dinero.get())
             self.dinero_ficticio += cantidad
             self.actualizar_labels()
+            self._update_btn_aplicar_patrones()
+            self._update_btn_cargar_estrategias()
         except ValueError:
             messagebox.showerror("Error", "Ingrese un número válido")
 
@@ -333,10 +331,8 @@ class GUIPrincipal:
         if opciones["mostrar_simulacion"]:
             self.log("="*60, color='white')
             self.log("INICIANDO SIMULACIÓN CON RISK MANAGER", color='yellow')
-            self.log(f"Máximo de operaciones activas: {max_orders}", color='white')
-            self.log(f"Capital inicial: ${capital_inicial:,.2f}", color='white')
             self.log("="*60, color='white')
-
+            
             # Calcular ATR para el Risk Manager
             df_new['ATR'] = (df_new['High'] - df_new['Low']).rolling(14).mean()
             # Rellenar NaN values con un valor por defecto
@@ -719,6 +715,17 @@ class GUIPrincipal:
                 self.grafico_manager.canvas,
                 self.grafico_manager.grafico,
             )
+
+    # ---------------- Funciones de habilitación de botones ----------------
+    def _update_btn_aplicar_patrones(self):
+        """Habilita 'Mostrar Patrones' solo si se han cargado procesados y se ha añadido dinero ficticio (> 0)."""
+        habilitar = self.df_actual is not None and (self.dinero_ficticio > 0)
+        self.btn_aplicar_patrones.config(state="normal" if habilitar else "disabled")
+
+    def _update_btn_cargar_estrategias(self):
+        """Habilita 'Mostrar Estrategias' solo si se han cargado procesados y se ha añadido dinero ficticio (> 0)."""
+        habilitar = self.df_actual is not None and (self.dinero_ficticio > 0)
+        self.btn_cargar_estrategias.config(state="normal" if habilitar else "disabled")
 
     # ---------------- Run ----------------
     def run(self):
