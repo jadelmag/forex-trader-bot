@@ -276,6 +276,26 @@ Datos disponibles localmente
 Ideal para backtesting a largo plazo
 * Yahoo Finance tiene datos de 1 minuto pero con histórico muy limitado
 
+## Telegram API
+
+Pasos para obtenerlos:
+
+Ve a 👉 https://my.telegram.org
+
+1. Inicia sesión con tu número de teléfono (el mismo que usas en la app de Telegram).
+
+2. Te llegará un código por Telegram para verificar.
+
+3. Una vez dentro, haz clic en ``API development tools``.
+
+4. Rellena el formulario con cualquier nombre de aplicación (ejemplo: ForexNotifier) y una URL (puedes poner cualquier cosa, no es obligatorio que exista).
+
+5. Después de enviarlo, verás:
+
+    * **API_ID** → un número entero.
+    * **API_HASH** → una cadena larga de letras y números.
+
+
 ## Licencia
 
 MIT

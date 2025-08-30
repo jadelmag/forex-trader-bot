@@ -1,4 +1,3 @@
-
 # telegram/telegram-notifier.py
 
 from telethon import TelegramClient, functions
@@ -18,6 +17,10 @@ class TelegramNotifier:
         self.client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
         self.loop = asyncio.new_event_loop()
         self._thread = None
+        self.title = DEFAULT_TITLE
+        self.description = DEFAULT_DESCRIPTION
+        self.channel = None
+        self.invite_link = None
 
     async def save_title_and_description(self, title: str, description: str):
         self.title = title
@@ -55,7 +58,9 @@ class TelegramNotifier:
             try:
                 await self._connect()
                 channel = await self._create_private_channel(title, description)
+                self.channel = channel
                 invite_link = await self._generate_invite_link(channel)
+                self.invite_link = invite_link
                 
                 if callback:
                     callback(invite_link, None)
@@ -65,6 +70,7 @@ class TelegramNotifier:
                 if callback:
                     callback(None, str(e))
             finally:
+                # Cerrar sesión tras crear el canal; se volverá a conectar para envíos puntuales
                 await self.client.disconnect()
 
         # Ejecutar en el loop del hilo
@@ -104,6 +110,36 @@ class TelegramNotifier:
     def is_running(self):
         """Verifica si está ejecutándose"""
         return self._thread and self._thread.is_alive()
+
+    def send_message(self, text: str):
+        """Envía un mensaje al canal creado (o al título guardado) en un hilo separado."""
+        def _worker():
+            async def _async_send():
+                try:
+                    await self.client.start()
+                    target = self.channel
+                    if target is None:
+                        # Intentar resolver por título si no hay channel en memoria
+                        if not hasattr(self, 'title') or not self.title:
+                            raise RuntimeError("No hay canal ni título configurado para enviar")
+                        target = await self.client.get_entity(self.title)
+                    await self.client.send_message(target, text)
+                    print("✉️ Mensaje enviado al canal")
+                except Exception as e:
+                    print(f"❌ Error enviando mensaje: {e}")
+                finally:
+                    try:
+                        await self.client.disconnect()
+                    except Exception:
+                        pass
+            # Ejecutar en un loop temporal para este envío
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(_async_send())
+            loop.close()
+
+        t = threading.Thread(target=_worker, daemon=True)
+        t.start()
 
     def __del__(self):
         """Limpia recursos al destruir el objeto"""

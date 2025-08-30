@@ -57,9 +57,44 @@ class GUIPrincipal:
         self.frame_controls = tk.Frame(self.root, bg="#F0F0F0")
         self.frame_controls.pack(fill="x", padx=20, pady=10)
 
-        self.frame_grafico = tk.Frame(self.root, bg="#FFFFFF", relief="sunken", bd=1)
-        self.frame_grafico.pack(fill="both", expand=True, padx=20, pady=(0, 10))
+        # Contenedor central: gráfico (izquierda) + panel Telegram (derecha)
+        self.frame_middle = tk.Frame(self.root, bg="#F0F0F0")
+        self.frame_middle.pack(fill="both", expand=True, padx=20, pady=(0, 10))
+
+        self.frame_grafico = tk.Frame(self.frame_middle, bg="#FFFFFF", relief="sunken", bd=1)
+        self.frame_grafico.pack(side="left", fill="both", expand=True)
         self.grafico_manager.frame = self.frame_grafico
+
+        # Panel lateral de Telegram
+        self.frame_telegram_panel = tk.Frame(self.frame_middle, bg="#F8F8F8", relief="sunken", bd=1, width=360)
+        self.frame_telegram_panel.pack(side="right", fill="y")
+        self.frame_telegram_panel.pack_propagate(False)
+
+        # Cabecera panel telegram
+        tk.Label(self.frame_telegram_panel, text="Telegram", bg="#F8F8F8", font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=10, pady=(10,5))
+        self.btn_telegram_connect = ttk.Button(self.frame_telegram_panel, text="Conectar y crear canal", command=self.conectar_telegram, state="disabled")
+        self.btn_telegram_connect.pack(fill="x", padx=10)
+
+        # Link de invitación + copiar
+        link_frame = tk.Frame(self.frame_telegram_panel, bg="#F8F8F8")
+        link_frame.pack(fill="x", padx=10, pady=(10, 0))
+        tk.Label(link_frame, text="Enlace de invitación:", bg="#F8F8F8").pack(anchor="w")
+        self.var_invite = tk.StringVar(value="(sin conectar)")
+        self.lbl_invite = tk.Label(link_frame, textvariable=self.var_invite, bg="#F8F8F8", fg="#0066CC", wraplength=320, justify="left")
+        self.lbl_invite.pack(fill="x")
+        self.btn_copy_link = ttk.Button(link_frame, text="Copiar enlace", command=self._copy_invite_link, state="disabled")
+        self.btn_copy_link.pack(anchor="e", pady=(4, 0))
+
+        # Área de mensajes tipo canal
+        tk.Label(self.frame_telegram_panel, text="Mensajes del canal:", bg="#F8F8F8").pack(anchor="w", padx=10, pady=(10,0))
+        self.text_telegram = tk.Text(self.frame_telegram_panel, height=10, bg="black", fg="white", state="disabled", font=("Consolas", 10))
+        self.scroll_telegram = ttk.Scrollbar(self.frame_telegram_panel, orient="vertical", style="Logs.Vertical.TScrollbar", command=self.text_telegram.yview)
+        self.text_telegram.configure(yscrollcommand=self.scroll_telegram.set)
+        # Layout del área de mensajes
+        msg_frame = tk.Frame(self.frame_telegram_panel, bg="#F8F8F8")
+        msg_frame.pack(fill="both", expand=True, padx=10, pady=(5,10))
+        self.text_telegram.pack(in_=msg_frame, side="left", fill="both", expand=True)
+        self.scroll_telegram.pack(in_=msg_frame, side="right", fill="y")
 
         self.frame_log = tk.Frame(self.root, bg="#F8F8F8", relief="sunken", bd=1)
         self.frame_log.pack(fill="both", expand=False, padx=20, pady=(0, 20), ipady=120)
@@ -391,6 +426,7 @@ class GUIPrincipal:
                     
                     color = 'green' if op.resultado == 'GANANCIA' else 'red'
                     self.log(f"CIERRE AUTOMÁTICO: {op} -> {op.resultado} | Profit: ${profit:+.2f}", color=color)
+                    self._insert_clickable_send_link(f"CIERRE AUTOMÁTICO: {op} -> {op.resultado} | Profit: ${profit:+.2f}")
 
                 # Procesar nuevas señales de todas las estrategias
                 señales_del_dia = []
@@ -427,6 +463,7 @@ class GUIPrincipal:
                             })
                             
                             self.log(f"APERTURA: {operacion} | Estrategia: {señal_info['estrategia']}", color='green')
+                            self._insert_clickable_send_link(f"APERTURA: {operacion} | Estrategia: {señal_info['estrategia']}")
                             operaciones_abiertas += 1
 
                 # Actualizar contador de operaciones activas en cada iteración
@@ -468,6 +505,7 @@ class GUIPrincipal:
                         
                         color = 'green' if profit >= 0 else 'red'
                         self.log(f"CIERRE FINAL: {op} | Profit: ${profit:+.2f}", color=color)
+                        self._insert_clickable_send_link(f"CIERRE FINAL: {op} | Profit: ${profit:+.2f}")
                         
                         # Mover a cerradas
                         self.risk_manager.operaciones_cerradas.append(op)
@@ -703,6 +741,94 @@ class GUIPrincipal:
         self.text_log.see("end")
         self.text_log.configure(state="disabled")
 
+    def _insert_clickable_send_link(self, mensaje):
+        """Inserta un enlace clicable en el logger para enviar a Telegram y reflejar en el panel."""
+        def on_click(event, text=mensaje):
+            self._enviar_telegram_y_reflejar(text)
+        self.text_log.configure(state="normal")
+        start = self.text_log.index("end-1c")
+        self.text_log.insert("end", " [Enviar a Telegram]\n", ("link_tag",))
+        self.text_log.tag_configure("link_tag", foreground="#4EA1FF", underline=True)
+        self.text_log.tag_bind("link_tag", "<Button-1>", on_click)
+        self.text_log.see("end")
+        self.text_log.configure(state="disabled")
+
+    def _append_telegram_panel(self, mensaje, color="white"):
+        self.text_telegram.configure(state="normal")
+        self.text_telegram.insert("end", mensaje + "\n", color)
+        self.text_telegram.tag_configure(color, foreground=color)
+        self.text_telegram.see("end")
+        self.text_telegram.configure(state="disabled")
+
+    def _copy_invite_link(self):
+        link = self.var_invite.get()
+        if link and link != "(sin conectar)":
+            try:
+                self.root.clipboard_clear()
+                self.root.clipboard_append(link)
+                self.root.update()
+                messagebox.showinfo("Telegram", "Enlace copiado al portapapeles")
+            except Exception as e:
+                messagebox.showerror("Telegram", f"No se pudo copiar: {e}")
+
+    def conectar_telegram(self):
+        # Verificar datos
+        title = getattr(self, "telegram_title", None)
+        description = getattr(self, "telegram_description", None)
+        if not title:
+            messagebox.showwarning("Telegram", "Configure primero el título y la descripción")
+            return
+        # Asegurar instancia
+        try:
+            if not hasattr(self, "telegram_notifier") or self.telegram_notifier is None:
+                base_dir = os.path.dirname(os.path.dirname(__file__))
+                module_path = os.path.join(base_dir, "telegram", "telegram-notifier.py")
+                spec = importlib.util.spec_from_file_location("telegram_notifier", module_path)
+                if spec is None or spec.loader is None:
+                    raise ImportError("No se pudo cargar el módulo telegram-notifier.py")
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                self.telegram_notifier = mod.TelegramNotifier()
+        except Exception as e:
+            messagebox.showerror("Telegram", f"Error cargando TelegramNotifier: {e}")
+            return
+
+        # Iniciar conexión en hilo y manejar callback
+        self.btn_telegram_connect.config(state="disabled")
+        self.var_invite.set("Conectando y creando canal...")
+
+        def cb(invite_link, error):
+            # Asegurar ejecución en hilo de Tk
+            def _ui_update():
+                if error:
+                    messagebox.showerror("Telegram", f"Error: {error}")
+                    self.btn_telegram_connect.config(state="normal")
+                    self.var_invite.set("(sin conectar)")
+                else:
+                    self.var_invite.set(invite_link or "(sin enlace)")
+                    self.btn_copy_link.config(state="normal")
+                    messagebox.showinfo("Telegram", "Canal creado y enlace listo")
+            self.root.after(0, _ui_update)
+
+        try:
+            self.telegram_notifier.init_telegram(title, description, callback=cb)
+        except Exception as e:
+            messagebox.showerror("Telegram", f"Error iniciando Telegram: {e}")
+            self.btn_telegram_connect.config(state="normal")
+
+    def _enviar_telegram_y_reflejar(self, mensaje):
+        # Reflejar en panel
+        self._append_telegram_panel(mensaje, color="white")
+        # Enviar a Telegram si está conectado
+        notifier = getattr(self, "telegram_notifier", None)
+        try:
+            if notifier and hasattr(notifier, "send_message"):
+                notifier.send_message(mensaje)
+            else:
+                self._append_telegram_panel("(No conectado a Telegram)", color="yellow")
+        except Exception as e:
+            self._append_telegram_panel(f"Error enviando a Telegram: {e}", color="red")
+
     # ---------------- Función callback para patrones ----------------
     def _on_patrones_aplicados(self, df_actualizado):
         """Callback desde PatternsModal tras aplicar y dibujar patrones.
@@ -760,6 +886,28 @@ class GUIPrincipal:
         text_desc = tk.Text(frame, height=5, width=40)
         text_desc.grid(row=3, column=0, sticky="we", pady=(2, 10))
 
+        # Prefill con valores por defecto o los últimos guardados
+        try:
+            base_dir = os.path.dirname(os.path.dirname(__file__))
+            module_path = os.path.join(base_dir, "telegram", "telegram-notifier.py")
+            spec = importlib.util.spec_from_file_location("telegram_notifier", module_path)
+            if spec and spec.loader:
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                default_title = getattr(self, "telegram_title", None) or getattr(mod, "DEFAULT_TITLE", "")
+                default_desc = getattr(self, "telegram_description", None) or getattr(mod, "DEFAULT_DESCRIPTION", "")
+            else:
+                default_title = getattr(self, "telegram_title", "")
+                default_desc = getattr(self, "telegram_description", "")
+        except Exception:
+            default_title = getattr(self, "telegram_title", "")
+            default_desc = getattr(self, "telegram_description", "")
+
+        if default_title:
+            entry_title.insert(0, default_title)
+        if default_desc:
+            text_desc.insert("1.0", default_desc)
+
         frame.columnconfigure(0, weight=1)
 
         # Acciones
@@ -792,6 +940,11 @@ class GUIPrincipal:
                 # Guardar título y descripción (método async)
                 try:
                     asyncio.run(self.telegram_notifier.save_title_and_description(title, description))
+                    # Guardar también en GUI para usar al conectar
+                    self.telegram_title = title
+                    self.telegram_description = description
+                    # Habilitar botón conectar
+                    self.btn_telegram_connect.config(state="normal")
                     messagebox.showinfo("Telegram", "Título y descripción guardados")
                     top.destroy()
                 except Exception as e:
