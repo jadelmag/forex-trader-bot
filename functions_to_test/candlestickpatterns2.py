@@ -14,7 +14,7 @@ class CandlestickPatterns:
     def doji(self):
         df = self.data.copy()
         df['Signal'] = np.where(abs(df['Close'] - df['Open']) <= (df['High'] - df['Low'])*0.1, 0, 0)
-        return df
+        return df[['Open','High','Low','Close','Signal']]
 
     def hammer(self):
         df = self.data.copy()
@@ -23,7 +23,7 @@ class CandlestickPatterns:
         lower_shadow = df[['Open','Close']].min(axis=1) - df['Low']
         upper_shadow = df['High'] - df[['Open','Close']].max(axis=1)
         df['Signal'] = np.where((lower_shadow >= 2*body) & (upper_shadow <= body), 1, 0)
-        return df
+        return df[['Open','High','Low','Close','Signal']]
 
     def hanging_man(self):
         df = self.hammer()
@@ -37,12 +37,12 @@ class CandlestickPatterns:
         upper_shadow = df['High'] - df[['Open','Close']].max(axis=1)
         lower_shadow = df[['Open','Close']].min(axis=1) - df['Low']
         df['Signal'] = np.where((upper_shadow >= 2*body) & (lower_shadow <= body), -1, 0)
-        return df
+        return df[['Open','High','Low','Close','Signal']]
 
     def spinning_top(self):
         df = self.data.copy()
         df['Signal'] = np.where(abs(df['Close'] - df['Open']) <= (df['High'] - df['Low'])*0.3, 0, 0)
-        return df
+        return df[['Open','High','Low','Close','Signal']]
 
     def inverted_hammer(self):
         df = self.data.copy()
@@ -51,7 +51,7 @@ class CandlestickPatterns:
         upper_shadow = df['High'] - df[['Open','Close']].max(axis=1)
         lower_shadow = df[['Open','Close']].min(axis=1) - df['Low']
         df['Signal'] = np.where((upper_shadow >= 2*body) & (lower_shadow <= body), 1, 0)
-        return df
+        return df[['Open','High','Low','Close','Signal']]
 
     # ---------------- Double Candles ----------------
     def bullish_engulfing(self):
@@ -61,7 +61,7 @@ class CandlestickPatterns:
             (df['Close'].shift(1) < df['Open'].shift(1)) &
             (df['Open'] < df['Close'].shift(1)) &
             (df['Close'] > df['Open'].shift(1)), 1, 0)
-        return df
+        return df[['Open','High','Low','Close','Signal']]
 
     def bearish_engulfing(self):
         df = self.data.copy()
@@ -70,7 +70,7 @@ class CandlestickPatterns:
             (df['Close'].shift(1) > df['Open'].shift(1)) &
             (df['Open'] > df['Close'].shift(1)) &
             (df['Close'] < df['Open'].shift(1)), -1, 0)
-        return df
+        return df[['Open','High','Low','Close','Signal']]
 
     def piercing_line(self):
         df = self.data.copy()
@@ -78,7 +78,7 @@ class CandlestickPatterns:
             (df['Close'].shift(1) < df['Open'].shift(1)) &
             (df['Close'] > (df['Open'].shift(1) + df['Close'].shift(1))/2) &
             (df['Open'] < df['Close'].shift(1)), 1, 0)
-        return df
+        return df[['Open','High','Low','Close','Signal']]
 
     def dark_cloud_cover(self):
         df = self.data.copy()
@@ -86,19 +86,19 @@ class CandlestickPatterns:
             (df['Close'].shift(1) > df['Open'].shift(1)) &
             (df['Close'] < (df['Open'].shift(1) + df['Close'].shift(1))/2) &
             (df['Open'] > df['Close'].shift(1)), -1, 0)
-        return df
+        return df[['Open','High','Low','Close','Signal']]
 
     def tweezer_top(self):
         df = self.data.copy()
         df['Signal'] = np.where(
             (df['High'].shift(1).round(5) == df['High'].round(5)), -1, 0)
-        return df
+        return df[['Open','High','Low','Close','Signal']]
 
     def tweezer_bottom(self):
         df = self.data.copy()
         df['Signal'] = np.where(
             (df['Low'].shift(1).round(5) == df['Low'].round(5)), 1, 0)
-        return df
+        return df[['Open','High','Low','Close','Signal']]
 
     # ---------------- Triple Candles ----------------
     def morning_star(self):
@@ -107,7 +107,7 @@ class CandlestickPatterns:
             (df['Close'].shift(2) < df['Open'].shift(2)) &
             (abs(df['Close'].shift(1) - df['Open'].shift(1)) < abs(df['Close'].shift(2) - df['Open'].shift(2))/2) &
             (df['Close'] > df['Open'].shift(1)), 1, 0)
-        return df
+        return df[['Open','High','Low','Close','Signal']]
 
     def evening_star(self):
         df = self.data.copy()
@@ -115,7 +115,7 @@ class CandlestickPatterns:
             (df['Close'].shift(2) > df['Open'].shift(2)) &
             (abs(df['Close'].shift(1) - df['Open'].shift(1)) < abs(df['Close'].shift(2) - df['Open'].shift(2))/2) &
             (df['Close'] < df['Open'].shift(1)), -1, 0)
-        return df
+        return df[['Open','High','Low','Close','Signal']]
 
     def three_white_soldiers(self):
         df = self.data.copy()
@@ -171,7 +171,7 @@ class CandlestickPatterns:
         )
 
         df['Signal'] = np.where(cond, 1, 0)
-        return df
+        return df[['Open', 'High', 'Low', 'Close', 'Signal']]
 
     def three_black_crows(self):
         df = self.data.copy()
@@ -183,7 +183,7 @@ class CandlestickPatterns:
             (df['Close'].shift(1) < df['Close'].shift(2))
         )
         df['Signal'] = np.where(cond, -1, 0)
-        return df
+        return df[['Open','High','Low','Close','Signal']]
 
     def three_inside_up(self):
         df = self.data.copy()
@@ -193,7 +193,7 @@ class CandlestickPatterns:
             (df['Close'] > df['Open'].shift(2))
         )
         df['Signal'] = np.where(cond, 1, 0)
-        return df
+        return df[['Open','High','Low','Close','Signal']]
 
     def three_inside_down(self):
         df = self.data.copy()
@@ -215,7 +215,7 @@ class CandlestickPatterns:
             (df['Close'] > df['Open'].shift(4))
         )
         df['Signal'] = np.where(cond, 1, 0)
-        return df
+        return df[['Open','High','Low','Close','Signal']]
 
     def falling_three_methods(self):
         df = self.data.copy()
@@ -227,7 +227,7 @@ class CandlestickPatterns:
             (df['Close'] < df['Open'].shift(4))
         )
         df['Signal'] = np.where(cond, -1, 0)
-        return df
+        return df[['Open','High','Low','Close','Signal']]
 
     # ---------------- Detect all patterns ----------------
     def detect_all_patterns(self):

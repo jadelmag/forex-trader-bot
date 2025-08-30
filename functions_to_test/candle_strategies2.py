@@ -68,7 +68,7 @@ class CandleStrategies:
         )
 
         df['Signal'] = np.where(cond, 1, 0)
-        return df
+        return df[['Open', 'High', 'Low', 'Close', 'EMA20', 'Signal']]
 
     def morning_star_swing(self):
         """Estrella de la mañana como señal swing (confirmada con 2 velas)"""
@@ -126,8 +126,8 @@ class CandleStrategies:
         )
 
         df['Signal'] = np.where(cond, -1, 0)
-        return df
-
+        return df[['Open','High','Low','Close','EMA20','Signal']]
+    
     def evening_star_swing(self):
         """Patrón Evening Star optimizado con confirmación de tendencia alcista previa"""
         df = self.data.copy()
@@ -165,7 +165,7 @@ class CandleStrategies:
         )
 
         df['Signal'] = np.where(cond, -1, 0)
-        return df
+        return df[['Open', 'High', 'Low', 'Close', 'EMA50', 'Signal']]
 
     # ---------------- Estrategias de indecisión / continuación ----------------
     def doji_indecision(self):
@@ -181,7 +181,7 @@ class CandleStrategies:
         df['Signal'] = 0
         df.loc[(df['Body'] > df['UpperShadow']*3) & (df['Body'] > df['LowerShadow']*3) & (df['Close'] > df['Open']), 'Signal'] = 1
         df.loc[(df['Body'] > df['UpperShadow']*3) & (df['Body'] > df['LowerShadow']*3) & (df['Close'] < df['Open']), 'Signal'] = -1
-        return df
+        return df[['Open','High','Low','Close','Signal']]
 
     # ---------------- Estrategias de múltiples velas ----------------
     def three_white_soldiers(self):
@@ -226,4 +226,4 @@ class CandleStrategies:
                            np.where(df['Signal'] == -1, df['Close'] + df['ATR'], np.nan))
         df['TakeProfit'] = np.where(df['Signal'] == 1, df['Close'] + df['ATR']*rr_ratio,
                              np.where(df['Signal'] == -1, df['Close'] - df['ATR']*rr_ratio, np.nan))
-        return df
+        return df[['Open','High','Low','Close','Signal','StopLoss','TakeProfit']]
