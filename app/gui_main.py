@@ -3,8 +3,10 @@
 import os
 import tkinter as tk
 from tkinter import ttk, messagebox
-import numpy as np  # <-- AÑADIR ESTA IMPORTACIÓN
-import pandas as pd  # <-- También es buena práctica añadir pandas
+import numpy as np  
+import pandas as pd  
+import asyncio
+import importlib.util
 
 from .csv_manager import CSVManager
 from .grafico_manager import GraficoManager
@@ -18,7 +20,7 @@ from patterns.candlestickpatterns import CandlestickPatterns
 from strategies import ForexStrategies, CandleStrategies
 from backtesting.backtester import ForexBacktester
 from rl.rl_agent import RLTradingAgent
-from strategies.risk_manager import RiskManager, RiskManagerIntegration, Operacion  # <-- Asegurar esta importación
+from strategies.risk_manager import RiskManager, RiskManagerIntegration, Operacion  
 
 class GUIPrincipal:
     def __init__(self, root):
@@ -164,6 +166,11 @@ class GUIPrincipal:
             self.frame_right, text="Iniciar Backtesting", command=self.abrir_modal_backtesting, state="disabled"
         )
         self.btn_backtesting.pack(side="left", padx=5)
+
+        self.btn_telegram = ttk.Button(
+            self.frame_right, text="Telegram", command=self.abrir_modal_telegram, state="disabled"
+        )
+        self.btn_telegram.pack(side="left", padx=5)
 
         # ---------------- Botones RL ----------------
         self.btn_entrenar_rl = ttk.Button(
@@ -721,11 +728,91 @@ class GUIPrincipal:
         """Habilita 'Mostrar Patrones' solo si se han cargado procesados y se ha añadido dinero ficticio (> 0)."""
         habilitar = self.df_actual is not None and (self.dinero_ficticio > 0)
         self.btn_aplicar_patrones.config(state="normal" if habilitar else "disabled")
+        self.btn_telegram.config(state="normal" if habilitar else "disabled")
 
     def _update_btn_cargar_estrategias(self):
         """Habilita 'Mostrar Estrategias' solo si se han cargado procesados y se ha añadido dinero ficticio (> 0)."""
         habilitar = self.df_actual is not None and (self.dinero_ficticio > 0)
         self.btn_cargar_estrategias.config(state="normal" if habilitar else "disabled")
+        self.btn_telegram.config(state="normal" if habilitar else "disabled")
+
+    # ---------------- Telegram ----------------
+    def abrir_modal_telegram(self):
+        """Abre el modal de Telegram"""
+        # Crear ventana modal
+        top = tk.Toplevel(self.root)
+        top.title("Configurar Telegram")
+        top.transient(self.root)
+        top.grab_set()
+        top.configure(bg="#F0F0F0")
+
+        # Contenedor
+        frame = tk.Frame(top, bg="#F0F0F0", padx=15, pady=15)
+        frame.pack(fill="both", expand=True)
+
+        # Título
+        tk.Label(frame, text="Título del canal:", bg="#F0F0F0").grid(row=0, column=0, sticky="w")
+        entry_title = ttk.Entry(frame, width=40)
+        entry_title.grid(row=1, column=0, sticky="we", pady=(2, 10))
+
+        # Descripción
+        tk.Label(frame, text="Descripción:", bg="#F0F0F0").grid(row=2, column=0, sticky="w")
+        text_desc = tk.Text(frame, height=5, width=40)
+        text_desc.grid(row=3, column=0, sticky="we", pady=(2, 10))
+
+        frame.columnconfigure(0, weight=1)
+
+        # Acciones
+        btns = tk.Frame(frame, bg="#F0F0F0")
+        btns.grid(row=4, column=0, sticky="e")
+
+        def on_cancel():
+            top.destroy()
+
+        def on_accept():
+            title = entry_title.get().strip()
+            description = text_desc.get("1.0", "end").strip()
+            if not title:
+                messagebox.showwarning("Telegram", "El título no puede estar vacío")
+                return
+
+            # Cargar dinámicamente TelegramNotifier desde telegram/telegram-notifier.py
+            try:
+                base_dir = os.path.dirname(os.path.dirname(__file__))
+                module_path = os.path.join(base_dir, "telegram", "telegram-notifier.py")
+                spec = importlib.util.spec_from_file_location("telegram_notifier", module_path)
+                if spec is None or spec.loader is None:
+                    raise ImportError("No se pudo cargar el módulo telegram-notifier.py")
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                # Instanciar (cachear en self para reuso)
+                if not hasattr(self, "telegram_notifier") or self.telegram_notifier is None:
+                    self.telegram_notifier = mod.TelegramNotifier()
+
+                # Guardar título y descripción (método async)
+                try:
+                    asyncio.run(self.telegram_notifier.save_title_and_description(title, description))
+                    messagebox.showinfo("Telegram", "Título y descripción guardados")
+                    top.destroy()
+                except Exception as e:
+                    messagebox.showerror("Telegram", f"Error guardando datos: {e}")
+            except Exception as e:
+                messagebox.showerror("Telegram", f"Error cargando TelegramNotifier: {e}")
+
+        ttk.Button(btns, text="Cancelar", command=on_cancel).pack(side="right", padx=5)
+        ttk.Button(btns, text="Aceptar", command=on_accept).pack(side="right")
+
+        # Centrar el modal respecto a la ventana padre
+        try:
+            top.update_idletasks()
+            pw, ph = self.root.winfo_width(), self.root.winfo_height()
+            px, py = self.root.winfo_rootx(), self.root.winfo_rooty()
+            ww, wh = top.winfo_width(), top.winfo_height()
+            x = px + max(0, (pw - ww) // 2)
+            y = py + max(0, (ph - wh) // 2)
+            top.geometry(f"+{x}+{y}")
+        except Exception:
+            pass
 
     # ---------------- Run ----------------
     def run(self):

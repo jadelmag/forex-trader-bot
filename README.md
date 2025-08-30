@@ -74,6 +74,10 @@ forex-trader-bot/
 │ ├─ candle_strategies.py   # Estrategias de velas
 │ └─ risk_manager.py        # Gestión de riesgo
 |
+├─ telegram/                # Carpeta donde se guardan los archivos de Telegram
+│ ├─ __init__.py            # TelegramNotifier
+│ └─ telegram-notifier.py   # Notificador de Telegram
+|
 ├─ .gitignore               # Fichero .gitignore
 ├─ csv_parser.py            # Script para convertir CSV crudos de Dukascopy al formato estándar
 ├─ README.md                # Instrucciones de instalación y uso
