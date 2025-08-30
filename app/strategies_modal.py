@@ -61,7 +61,8 @@ class EstrategiasModal(tk.Toplevel):
             # Estrategias Forex con parámetros
             for idx, nombre in enumerate(estrategias_fx, start=2):
                 var_check = tk.IntVar()
-                chk = tk.Checkbutton(scrollable_frame, text=nombre, variable=var_check, 
+                display_name = nombre.replace('_', ' ').capitalize()
+                chk = tk.Checkbutton(scrollable_frame, text=display_name, variable=var_check, 
                                     anchor="w", width=20)
                 chk.grid(row=idx, column=0, sticky="w", padx=5, pady=2)
 
@@ -95,7 +96,8 @@ class EstrategiasModal(tk.Toplevel):
             # Estrategias Candle (sin parámetros de riesgo)
             for idx, nombre in enumerate(estrategias_candle, start=start_row+2):
                 var_check = tk.IntVar()
-                chk = tk.Checkbutton(scrollable_frame, text=nombre, variable=var_check, 
+                display_name = nombre.replace('_', ' ').capitalize()
+                chk = tk.Checkbutton(scrollable_frame, text=display_name, variable=var_check, 
                                     anchor="w", width=20)
                 chk.grid(row=idx, column=0, sticky="w", padx=5, pady=2)
 
