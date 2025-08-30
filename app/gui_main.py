@@ -426,7 +426,6 @@ class GUIPrincipal:
                     
                     color = 'green' if op.resultado == 'GANANCIA' else 'red'
                     self.log(f"CIERRE AUTOMÁTICO: {op} -> {op.resultado} | Profit: ${profit:+.2f}", color=color)
-                    self._insert_clickable_send_link(f"CIERRE AUTOMÁTICO: {op} -> {op.resultado} | Profit: ${profit:+.2f}")
 
                 # Procesar nuevas señales de todas las estrategias
                 señales_del_dia = []
@@ -463,7 +462,6 @@ class GUIPrincipal:
                             })
                             
                             self.log(f"APERTURA: {operacion} | Estrategia: {señal_info['estrategia']}", color='green')
-                            self._insert_clickable_send_link(f"APERTURA: {operacion} | Estrategia: {señal_info['estrategia']}")
                             operaciones_abiertas += 1
 
                 # Actualizar contador de operaciones activas en cada iteración
@@ -505,7 +503,6 @@ class GUIPrincipal:
                         
                         color = 'green' if profit >= 0 else 'red'
                         self.log(f"CIERRE FINAL: {op} | Profit: ${profit:+.2f}", color=color)
-                        self._insert_clickable_send_link(f"CIERRE FINAL: {op} | Profit: ${profit:+.2f}")
                         
                         # Mover a cerradas
                         self.risk_manager.operaciones_cerradas.append(op)
@@ -738,18 +735,6 @@ class GUIPrincipal:
         self.text_log.configure(state="normal")
         self.text_log.insert("end", mensaje + "\n", color)
         self.text_log.tag_configure(color, foreground=color)
-        self.text_log.see("end")
-        self.text_log.configure(state="disabled")
-
-    def _insert_clickable_send_link(self, mensaje):
-        """Inserta un enlace clicable en el logger para enviar a Telegram y reflejar en el panel."""
-        def on_click(event, text=mensaje):
-            self._enviar_telegram_y_reflejar(text)
-        self.text_log.configure(state="normal")
-        start = self.text_log.index("end-1c")
-        self.text_log.insert("end", " [Enviar a Telegram]\n", ("link_tag",))
-        self.text_log.tag_configure("link_tag", foreground="#4EA1FF", underline=True)
-        self.text_log.tag_bind("link_tag", "<Button-1>", on_click)
         self.text_log.see("end")
         self.text_log.configure(state="disabled")
 
