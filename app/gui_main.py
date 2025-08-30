@@ -72,6 +72,14 @@ class GUIPrincipal:
 
         # Cabecera panel telegram
         tk.Label(self.frame_telegram_panel, text="Telegram", bg="#F8F8F8", font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=10, pady=(10,5))
+        
+        # Estado de conexión
+        self.telegram_status_frame = tk.Frame(self.frame_telegram_panel, bg="#F8F8F8")
+        self.telegram_status_frame.pack(fill="x", padx=10, pady=(0, 5))
+        tk.Label(self.telegram_status_frame, text="Estado:", bg="#F8F8F8").pack(side="left")
+        self.lbl_telegram_status = tk.Label(self.telegram_status_frame, text="Desconectado", fg="red", bg="#F8F8F8")
+        self.lbl_telegram_status.pack(side="left", padx=5)
+        
         self.btn_telegram_connect = ttk.Button(self.frame_telegram_panel, text="Conectar y crear canal", command=self.conectar_telegram, state="disabled")
         self.btn_telegram_connect.pack(fill="x", padx=10)
 
@@ -757,7 +765,7 @@ class GUIPrincipal:
                 messagebox.showerror("Telegram", f"No se pudo copiar: {e}")
 
     def conectar_telegram(self):
-        # Verificar datos
+        """Inicia la conexión con Telegram"""
         title = getattr(self, "telegram_title", None)
         description = getattr(self, "telegram_description", None)
         if not title:
@@ -781,6 +789,7 @@ class GUIPrincipal:
         # Iniciar conexión en hilo y manejar callback
         self.btn_telegram_connect.config(state="disabled")
         self.var_invite.set("Conectando y creando canal...")
+        self._actualizar_estado_telegram(conectando=True)
 
         def cb(invite_link, error):
             # Asegurar ejecución en hilo de Tk
@@ -789,9 +798,11 @@ class GUIPrincipal:
                     messagebox.showerror("Telegram", f"Error: {error}")
                     self.btn_telegram_connect.config(state="normal")
                     self.var_invite.set("(sin conectar)")
+                    self._actualizar_estado_telegram(conectado=False)
                 else:
                     self.var_invite.set(invite_link or "(sin enlace)")
                     self.btn_copy_link.config(state="normal")
+                    self._actualizar_estado_telegram(conectado=True)
                     messagebox.showinfo("Telegram", "Canal creado y enlace listo")
             self.root.after(0, _ui_update)
 
@@ -800,15 +811,25 @@ class GUIPrincipal:
         except Exception as e:
             messagebox.showerror("Telegram", f"Error iniciando Telegram: {e}")
             self.btn_telegram_connect.config(state="normal")
+            self._actualizar_estado_telegram(conectado=False)
 
-    def _enviar_telegram_y_reflejar(self, mensaje):
+    def _actualizar_estado_telegram(self, conectado=None, conectando=False):
+        """Actualiza el estado de conexión de Telegram en la UI"""
+        if conectando:
+            self.lbl_telegram_status.config(text="Conectando...", fg="orange")
+        elif conectado is True:
+            self.lbl_telegram_status.config(text="Conectado", fg="green")
+        else:
+            self.lbl_telegram_status.config(text="Desconectado", fg="red")
+
+    def _enviar_telegram_y_reflejar(self, mensaje, es_operacion=False, id_operacion=None):
         # Reflejar en panel
         self._append_telegram_panel(mensaje, color="white")
         # Enviar a Telegram si está conectado
         notifier = getattr(self, "telegram_notifier", None)
         try:
             if notifier and hasattr(notifier, "send_message"):
-                notifier.send_message(mensaje)
+                notifier.send_message(mensaje, is_trade_operation=es_operacion, trade_id=id_operacion)
             else:
                 self._append_telegram_panel("(No conectado a Telegram)", color="yellow")
         except Exception as e:

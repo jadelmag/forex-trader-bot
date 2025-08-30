@@ -1,6 +1,6 @@
 # telegram/telegram-notifier.py
 
-from telethon import TelegramClient, functions
+from telethon import TelegramClient, functions, Button
 import asyncio
 import threading
 from typing import Callable, Optional
@@ -111,8 +111,15 @@ class TelegramNotifier:
         """Verifica si está ejecutándose"""
         return self._thread and self._thread.is_alive()
 
-    def send_message(self, text: str):
-        """Envía un mensaje al canal creado (o al título guardado) en un hilo separado."""
+    def send_message(self, text: str, is_trade_operation: bool = False, trade_id: str = None):
+        """
+        Envía un mensaje al canal creado (o al título guardado) en un hilo separado.
+        
+        Args:
+            text: El texto del mensaje a enviar
+            is_trade_operation: Si es True, añade un botón "Enviar al chat"
+            trade_id: ID de la operación para el callback (opcional)
+        """
         def _worker():
             async def _async_send():
                 try:
@@ -123,7 +130,14 @@ class TelegramNotifier:
                         if not hasattr(self, 'title') or not self.title:
                             raise RuntimeError("No hay canal ni título configurado para enviar")
                         target = await self.client.get_entity(self.title)
-                    await self.client.send_message(target, text)
+                    
+                    if is_trade_operation:
+                        # Crear botón de "Enviar al chat"
+                        button = [[Button.inline("📤 Enviar al chat", data=f"forward_{trade_id or ''}")]]
+                        await self.client.send_message(target, text, buttons=button)
+                    else:
+                        await self.client.send_message(target, text)
+                        
                     print("✉️ Mensaje enviado al canal")
                 except Exception as e:
                     print(f"❌ Error enviando mensaje: {e}")
