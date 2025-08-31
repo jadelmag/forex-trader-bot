@@ -216,6 +216,11 @@ class GUIPrincipal:
         self.btn_telegram.pack(side="left", padx=5)
 
         # ---------------- Botones RL ----------------
+        self.btn_entrenar_ia = ttk.Button(
+            self.frame_right, text="Entrenar IA", command=self.entrenar_ia, state="disabled"
+        )
+        self.btn_entrenar_ia.pack(side="left", padx=5)
+
         self.btn_entrenar_rl = ttk.Button(
             self.frame_right, text="Entrenar RL", command=self.entrenar_rl, state="disabled"
         )
@@ -735,9 +740,9 @@ class GUIPrincipal:
         self.text_log.configure(state="disabled")
         self.compra_activa = None
 
-        for i, row in self.df_actual.iterrows():
+        for idx, (i, row) in enumerate(self.df_actual.iterrows()):
             mensaje = f"{i.strftime('%Y-%m-%d %H:%M')} | Close: {row['Close']:.5f}"
-            signal = self.rl_signals[i] if i < len(self.rl_signals) else 0
+            signal = self.rl_signals[idx] if idx < len(self.rl_signals) else 0
 
             if signal == 1:
                 self.compra_activa = (row["Close"], i)
@@ -905,6 +910,10 @@ class GUIPrincipal:
         self.btn_aplicar_patrones.config(state="normal" if habilitar else "disabled")
         self.btn_backtesting.config(state="normal" if habilitar else "disabled")
         self.btn_telegram.config(state="normal" if habilitar else "disabled")
+        self.btn_entrenar_rl.config(state="normal" if habilitar else "disabled")
+        self.btn_cargar_rl.config(state="normal" if habilitar else "disabled")
+        self.btn_aplicar_rl.config(state="normal" if habilitar else "disabled")
+        self.btn_entrenar_ia.config(state="normal" if habilitar else "disabled")
 
     def _update_btn_cargar_estrategias(self):
         """Habilita 'Mostrar Estrategias' solo si se han cargado procesados y se ha añadido dinero ficticio (> 0)."""
@@ -912,6 +921,10 @@ class GUIPrincipal:
         self.btn_cargar_estrategias.config(state="normal" if habilitar else "disabled")
         self.btn_backtesting.config(state="normal" if habilitar else "disabled")
         self.btn_telegram.config(state="normal" if habilitar else "disabled")
+        self.btn_entrenar_rl.config(state="normal" if habilitar else "disabled")
+        self.btn_cargar_rl.config(state="normal" if habilitar else "disabled")
+        self.btn_aplicar_rl.config(state="normal" if habilitar else "disabled")
+        self.btn_entrenar_ia.config(state="normal" if habilitar else "disabled")
 
     # ---------------- Telegram ----------------
     def abrir_modal_telegram(self):
@@ -1017,6 +1030,12 @@ class GUIPrincipal:
             top.geometry(f"+{x}+{y}")
         except Exception:
             pass
+
+    # ---------------- IA ----------------
+    def entrenar_ia(self):
+        """Entrena la IA"""
+        print("Entrenar IA")
+
 
     # ---------------- Run ----------------
     def run(self):
