@@ -603,9 +603,15 @@ class GUIPrincipal:
         """Lanza el backtesting con estrategias seleccionadas y detecta (log) los patrones marcados.
         - Detecta patrones y los escribe en el log (no altera señales de backtest).
         - Ejecuta cada estrategia con ForexBacktester.backtest_with_events y loguea BUY/SELL.
+        - Actualiza el dinero, beneficios y pérdidas en la interfaz.
         """
         if self.df_actual is None:
             return
+
+        # Inicializar contadores para el resumen
+        balance_inicial = self.dinero_ficticio if hasattr(self, 'dinero_ficticio') and self.dinero_ficticio > 0 else 10000
+        beneficios_totales = self.beneficios if hasattr(self, 'beneficios') else 0
+        perdidas_totales = self.perdidas if hasattr(self, 'perdidas') else 0
 
         # 1) Detectar patrones seleccionados y loguearlos
         try:
@@ -632,6 +638,7 @@ class GUIPrincipal:
         if not estrategias_sel:
             messagebox.showinfo("Backtesting", "No se seleccionaron estrategias")
             return
+            
         backtester = ForexBacktester(self.df_actual)
         for nombre in estrategias_sel:
             try:
@@ -639,21 +646,57 @@ class GUIPrincipal:
                 if not callable(metodo):
                     self.log(f"Estrategia no válida: {nombre}", color='red')
                     continue
+                    
                 df_sig = metodo()
                 if 'Signal' not in df_sig.columns:
                     self.log(f"Estrategia {nombre} no generó columna 'Signal'", color='red')
                     continue
+                    
+                # Realizar backtesting
                 balance_final, events = backtester.backtest_with_events(df_sig)
-                self.log(f"[Backtesting] Estrategia: {nombre}", color='cyan')
+                
+                # Calcular beneficios y pérdidas de esta estrategia
+                beneficio_estrategia = balance_final - balance_inicial
+                if beneficio_estrategia >= 0:
+                    beneficios_totales += beneficio_estrategia
+                else:
+                    perdidas_totales += abs(beneficio_estrategia)
+                
+                # Mostrar resultados en el log
+                self.log(f"\n[Backtesting] Estrategia: {nombre}", color='cyan')
+                self.log(f"Balance inicial: ${balance_inicial:,.2f}")
+                
                 for ev in events:
                     t = ev['time']
                     fecha_str = t.strftime('%d/%m/%Y %H:%M') if hasattr(t, 'strftime') else str(t)
                     tipo = 'COMPRA' if ev['type'] == 'BUY' else 'VENTA'
                     color = 'green' if tipo == 'COMPRA' else 'red'
                     self.log(f"{fecha_str} | {tipo} a {ev['price']:.5f}", color=color)
+                
                 self.log(f"Balance final (simulado): ${balance_final:,.2f}", color='white')
+                self.log(f"Beneficio/Perdida: ${(balance_final - balance_inicial):+,.2f}", 
+                        color='green' if (balance_final - balance_inicial) >= 0 else 'red')
+                
+                # Actualizar el balance para la próxima estrategia
+                balance_inicial = balance_final
+                
             except Exception as e:
                 self.log(f"Error en backtesting {nombre}: {e}", color='red')
+        
+        # Actualizar la interfaz con los totales
+        self.dinero_ficticio = balance_final
+        self.beneficios = beneficios_totales
+        self.perdidas = perdidas_totales
+        self.actualizar_labels()
+        
+        # Mostrar resumen final
+        self.log("\n" + "="*60, color='white')
+        self.log("RESUMEN FINAL DEL BACKTESTING", color='yellow')
+        self.log("="*60, color='white')
+        self.log(f"Dinero total: ${balance_final:,.2f}", color='white')
+        self.log(f"Beneficios totales: ${beneficios_totales:,.2f}", color='green')
+        self.log(f"Pérdidas totales: ${perdidas_totales:,.2f}", color='red')
+        self.log("="*60, color='white')
 
     # ---------------- Funciones Patrones ----------------
     def abrir_modal_patrones(self):
@@ -860,12 +903,14 @@ class GUIPrincipal:
         """Habilita 'Mostrar Patrones' solo si se han cargado procesados y se ha añadido dinero ficticio (> 0)."""
         habilitar = self.df_actual is not None and (self.dinero_ficticio > 0)
         self.btn_aplicar_patrones.config(state="normal" if habilitar else "disabled")
+        self.btn_backtesting.config(state="normal" if habilitar else "disabled")
         self.btn_telegram.config(state="normal" if habilitar else "disabled")
 
     def _update_btn_cargar_estrategias(self):
         """Habilita 'Mostrar Estrategias' solo si se han cargado procesados y se ha añadido dinero ficticio (> 0)."""
         habilitar = self.df_actual is not None and (self.dinero_ficticio > 0)
         self.btn_cargar_estrategias.config(state="normal" if habilitar else "disabled")
+        self.btn_backtesting.config(state="normal" if habilitar else "disabled")
         self.btn_telegram.config(state="normal" if habilitar else "disabled")
 
     # ---------------- Telegram ----------------
