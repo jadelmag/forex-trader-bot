@@ -287,11 +287,6 @@ class AITrainer:
                         if operacion:
                             self._emit_log(f"APERTURA: {operacion} | Fuente: {col.replace('_Signal','')}", 'cyan')
 
-                    # Condición de parada por iteraciones (procesadas)
-                    if self.use_iterations and processed >= self.iterations:
-                        self._emit_log("Parada por iteraciones alcanzadas.", 'yellow')
-                        break
-
                     # Condición por WinRate
                     total_closed = closed_gains + closed_losses
                     if self.use_winrate and total_closed > 0:

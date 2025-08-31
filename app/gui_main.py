@@ -1264,23 +1264,23 @@ class GUIPrincipal:
 
     # ---------------- IA ----------------
     def entrenar_ia(self):
-    """Muestra el modal de entrenamiento de IA"""
-    def on_accept(
-        seleccion_fx=None,
-        seleccion_patterns=None,
-        max_orders=5,
-        use_winrate=False,
-        winrate=0.0,
-        selected_model_path=None,
-        max_attempts=0,
-        seed_val=None,
-        save_best=True,
-    ):
-        """Recibe selecciones del modal e inicia el entrenador en hilo de fondo."""
-        seleccion_fx = seleccion_fx or {}
-        seleccion_patterns = seleccion_patterns or []
-        
-        # Eliminado: parsing de visualización por segundos
+        """Muestra el modal de entrenamiento de IA"""
+        def on_accept(
+            seleccion_fx=None,
+            seleccion_patterns=None,
+            max_orders=5,
+            use_winrate=False,
+            winrate=0.0,
+            selected_model_path=None,
+            max_attempts=0,
+            seed_val=None,
+            save_best=True,
+        ):
+            """Recibe selecciones del modal e inicia el entrenador en hilo de fondo."""
+            seleccion_fx = seleccion_fx or {}
+            seleccion_patterns = seleccion_patterns or []
+            
+            # Eliminado: parsing de visualización por segundos
 
             # Mostrar barra de progreso
             try:
@@ -1494,14 +1494,14 @@ class GUIPrincipal:
         modal.show()
 
     # ---- Utilidades barra de progreso ----
-      def _show_progress_bar(self):
+    def _show_progress_bar(self):
         try:
             self.frame_progress.pack(fill="x", padx=20, pady=(0, 10))
             self.progress_var.set(0)
         except Exception:
             pass
 
-      def _hide_progress_bar(self):
+    def _hide_progress_bar(self):
         try:
             self.frame_progress.pack_forget()
             # Deshabilitar botón Detener cuando no hay entrenamiento
@@ -1509,7 +1509,7 @@ class GUIPrincipal:
         except Exception:
             pass
 
-      def _stop_training(self):
+    def _stop_training(self):
         """Handler para botón Detener: solicita parada al entrenador en curso."""
         try:
             trainer = getattr(self, '_ai_trainer', None)

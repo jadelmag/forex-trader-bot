@@ -50,6 +50,7 @@ class RiskManager:
     """Gestiona la apertura y cierre de operaciones con límite máximo"""
     
     def __init__(self, capital_inicial=10000, max_operaciones_activas=5):
+        self.capital_inicial = capital_inicial
         self.capital = capital_inicial
         self.max_operaciones_activas = max_operaciones_activas
         self.operaciones_activas = []
@@ -202,6 +203,8 @@ class RiskManager:
     
     def reset(self):
         """Reinicia el risk manager"""
+        # Restaurar capital al valor inicial para comenzar desde cero en cada intento
+        self.capital = self.capital_inicial
         self.operaciones_activas = []
         self.operaciones_cerradas = []
         self.contador_operaciones = 0

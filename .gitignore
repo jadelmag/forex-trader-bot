@@ -4,5 +4,6 @@ __pycache__
 test.py
 /models_rl/*.zip
 /logs/*.txt
+/logs/*.json
 *.session
 *.session-journal

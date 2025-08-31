@@ -140,11 +140,14 @@ class AITrainingModal(tk.Toplevel):
         # Cargar y mostrar las estrategias
         self._load_strategies(scrollable_frame)
         
-        # Configurar el desplazamiento con la rueda del ratón
+        # Configurar el desplazamiento con la rueda del ratón (solo en este canvas)
         def _on_mousewheel(event):
-            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-        
-        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+            try:
+                canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            except Exception:
+                pass
+
+        canvas.bind("<MouseWheel>", _on_mousewheel)
         
         # Frame para el número máximo de órdenes
         orders_frame = ttk.Frame(content_frame)
@@ -669,8 +672,6 @@ class AITrainingModal(tk.Toplevel):
 
         max_orders = int(self.max_orders.get()) if hasattr(self, 'max_orders') else 5
         # Parám. de parada
-        use_iterations = bool(self.use_iterations_var.get()) if hasattr(self, 'use_iterations_var') else False
-        iterations = self._parse_positive_int(self.iterations_var.get()) if hasattr(self, 'iterations_var') else 0
         use_winrate = bool(self.use_winrate_var.get()) if hasattr(self, 'use_winrate_var') else False
         winrate = self._parse_positive_float(self.winrate_var.get()) if hasattr(self, 'winrate_var') else 0.0
         # Modelo seleccionado (si hay)
@@ -692,14 +693,12 @@ class AITrainingModal(tk.Toplevel):
         save_best = bool(getattr(self, 'save_best_var', tk.BooleanVar(value=True)).get())
 
         if self.on_accept_callback:
-            # Intentar con la firma más completa primero
+            # Intentar con la firma más completa primero (sin iteraciones)
             try:
                 self.on_accept_callback(
                     seleccion_fx,
                     seleccion_patterns,
                     max_orders,
-                    use_iterations,
-                    iterations,
                     use_winrate,
                     winrate,
                     selected_model_path,
@@ -709,15 +708,14 @@ class AITrainingModal(tk.Toplevel):
                 )
             except TypeError:
                 try:
-                    # Compatibilidad con 4 parámetros (previo)
-                    self.on_accept_callback(seleccion_fx, seleccion_patterns, max_orders, candle_seconds)
+                    # Compatibilidad con 3 parámetros (muy antiguo)
+                    self.on_accept_callback(seleccion_fx, seleccion_patterns, max_orders)
                 except TypeError:
                     try:
-                        # Compatibilidad con 3 parámetros
-                        self.on_accept_callback(seleccion_fx, seleccion_patterns, max_orders)
-                    except TypeError:
-                        # Sin parámetros
+                        # Compatibilidad con 0 parámetros (fallback extremo)
                         self.on_accept_callback()
+                    except TypeError:
+                        pass
 
         self.destroy()
 
