@@ -49,6 +49,7 @@ class GUIPrincipal:
         self.rl_agent = None
         self.rl_signals = []
         self.compra_activa = None
+        self.operaciones = []  # Para tracking de operaciones RL
 
         self.risk_manager = RiskManager(max_operaciones_activas=5)
         self.risk_integration = RiskManagerIntegration(self.risk_manager, None)
@@ -730,41 +731,149 @@ class GUIPrincipal:
             messagebox.showinfo("RL", "Modelo cargado correctamente")
 
     def aplicar_senales_rl(self):
-        if self.rl_agent is None or self.df_actual is None:
-            messagebox.showwarning("Atención", "Entrene o cargue primero el agente RL")
+        """Aplica señales de compra/venta generadas por el agente RL"""
+        # Validación más robusta
+        if self.rl_agent is None:
+            messagebox.showwarning("Atención", "No hay agente RL cargado. Entrene o cargue primero el agente.")
+            return
+        
+        if self.df_actual is None or self.df_actual.empty:
+            messagebox.showwarning("Atención", "No hay datos para procesar. Cargue primero los datos.")
             return
 
-        self.rl_signals = self.rl_agent.generar_senales()
+        try:
+            # Generar señales
+            self.rl_signals = self.rl_agent.generar_senales()
+            
+            # Validar que las señales coincidan con los datos
+            if len(self.rl_signals) != len(self.df_actual):
+                messagebox.showwarning("Advertencia", 
+                                     f"El número de señales ({len(self.rl_signals)}) no coincide con los datos ({len(self.df_actual)}). "
+                                     "Se truncará o completará con ceros.")
+                # Ajustar señales si es necesario
+                if len(self.rl_signals) > len(self.df_actual):
+                    self.rl_signals = self.rl_signals[:len(self.df_actual)]
+                else:
+                    self.rl_signals = np.pad(self.rl_signals, 
+                                           (0, len(self.df_actual) - len(self.rl_signals)), 
+                                           'constant')
+
+            # Limpiar interfaz
+            self._limpiar_log()
+            self.compra_activa = None
+            self.operaciones = []  # Para tracking de operaciones
+
+            # Procesar cada señal
+            for idx, (timestamp, row) in enumerate(self.df_actual.iterrows()):
+                self._procesar_senal_rl(idx, timestamp, row)
+
+            # Actualizar gráfico
+            if self.grafico_manager:
+                self.grafico_manager.dibujar_senales_rl(self.rl_signals)
+                
+            # Mostrar resumen
+            self._mostrar_resumen_operaciones_rl()
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al aplicar señales RL: {str(e)}")
+            self.log(f"Error: {str(e)}", color="red")
+
+    def _limpiar_log(self):
+        """Limpia el área de log"""
         self.text_log.configure(state="normal")
         self.text_log.delete("1.0", "end")
         self.text_log.configure(state="disabled")
+
+    def _procesar_senal_rl(self, idx, timestamp, row):
+        """Procesa una señal individual RL"""
+        signal = self.rl_signals[idx] if idx < len(self.rl_signals) else 0
+        mensaje = f"{timestamp.strftime('%Y-%m-%d %H:%M')} | Close: {row['Close']:.5f}"
+
+        if signal == 1:  # Señal de COMPRA
+            self._procesar_compra_rl(row, timestamp, mensaje)
+        elif signal == 2:  # Señal de VENTA
+            self._procesar_venta_rl(row, timestamp, mensaje)
+        else:  # Sin señal
+            self.log(mensaje, color="white")
+
+    def _procesar_compra_rl(self, row, timestamp, mensaje_base):
+        """Procesa una señal de compra RL"""
+        if self.compra_activa:
+            # Ya hay una compra activa, no comprar de nuevo
+            mensaje = mensaje_base + " | SEÑAL RL: COMPRA IGNORADA (ya hay compra activa)"
+            self.log(mensaje, color="orange")
+            return
+            
+        self.compra_activa = {
+            'precio': row["Close"],
+            'fecha': timestamp,
+            'indice': len(self.operaciones)
+        }
+        
+        mensaje = mensaje_base + f" | SEÑAL RL: COMPRA a {row['Close']:.5f}"
+        self.log(mensaje, color="green")
+        
+        # Registrar operación
+        self.operaciones.append({
+            'tipo': 'compra',
+            'precio': row["Close"],
+            'fecha': timestamp,
+            'signal_idx': len(self.rl_signals)
+        })
+
+    def _procesar_venta_rl(self, row, timestamp, mensaje_base):
+        """Procesa una señal de venta RL"""
+        if not self.compra_activa:
+            mensaje = mensaje_base + " | SEÑAL RL: VENTA IGNORADA (no hay compra activa)"
+            self.log(mensaje, color="orange")
+            return
+
+        precio_compra = self.compra_activa['precio']
+        ganancia = row["Close"] - precio_compra
+        porcentaje_ganancia = (ganancia / precio_compra) * 100
+
+        # Determinar color y mensaje
+        color, msg_gan = self._formatear_resultado_rl(ganancia, porcentaje_ganancia)
+        
+        mensaje = (f"{mensaje_base} | SEÑAL RL: VENTA a {row['Close']:.5f} | "
+                   f"Compra: {precio_compra:.5f} | {msg_gan}")
+        
+        self.log(mensaje, color=color)
+        
+        # Actualizar operación
+        if self.operaciones and self.compra_activa['indice'] < len(self.operaciones):
+            self.operaciones[self.compra_activa['indice']].update({
+                'venta_precio': row["Close"],
+                'venta_fecha': timestamp,
+                'ganancia': ganancia,
+                'porcentaje_ganancia': porcentaje_ganancia
+            })
+
         self.compra_activa = None
 
-        for idx, (i, row) in enumerate(self.df_actual.iterrows()):
-            mensaje = f"{i.strftime('%Y-%m-%d %H:%M')} | Close: {row['Close']:.5f}"
-            signal = self.rl_signals[idx] if idx < len(self.rl_signals) else 0
+    def _formatear_resultado_rl(self, ganancia, porcentaje):
+        """Formatea el resultado de la operación RL"""
+        if ganancia >= 0:
+            return "green", f"Ganancia: +{ganancia:.5f} (+{porcentaje:.2f}%)"
+        else:
+            return "red", f"Pérdida: {ganancia:.5f} ({porcentaje:.2f}%)"
 
-            if signal == 1:
-                self.compra_activa = (row["Close"], i)
-                mensaje += f" | SEÑAL RL: COMPRA a {row['Close']:.5f}"
-                self.log(mensaje, color="green")
-            elif signal == 2 and self.compra_activa:
-                precio_compra, fecha_compra = self.compra_activa
-                ganancia = row["Close"] - precio_compra
-                if ganancia >= 0:
-                    color = "green"
-                    msg_gan = f"Ganancia: +{ganancia:.5f}"
-                else:
-                    color = "red"
-                    msg_gan = f"Pérdida: {ganancia:.5f}"
-                mensaje += f" | SEÑAL RL: VENTA a {row['Close']:.5f} | {msg_gan}"
-                self.log(mensaje, color=color)
-                self.compra_activa = None
-            else:
-                self.log(mensaje, color="white")
-
-        if self.grafico_manager:
-            self.grafico_manager.dibujar_senales_rl(self.rl_signals)
+    def _mostrar_resumen_operaciones_rl(self):
+        """Muestra un resumen de las operaciones RL realizadas"""
+        if not hasattr(self, 'operaciones') or not self.operaciones:
+            return
+            
+        operaciones_completas = [op for op in self.operaciones if 'ganancia' in op]
+        
+        if operaciones_completas:
+            ganancias = [op['ganancia'] for op in operaciones_completas]
+            ganancia_total = sum(ganancias)
+            porcentaje_total = sum(op['porcentaje_ganancia'] for op in operaciones_completas)
+            
+            self.log(f"\nRESUMEN RL: {len(operaciones_completas)} operaciones | "
+                    f"Ganancia total: {ganancia_total:.5f} | "
+                    f"Rendimiento: {porcentaje_total:.2f}%", 
+                    color="blue" if ganancia_total >= 0 else "red")
 
     # ---------------- Funciones Gráficos ----------------
     def _dibujar_grafico(self, df):
