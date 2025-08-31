@@ -59,6 +59,9 @@ class RiskManager:
         self.beneficio_total = 0
         self.operaciones_ganadas = 0
         self.operaciones_perdidas = 0
+        # Tracking adicional: dinero ganado/perdido por categoría
+        self.ganancia_ganadoras_total = 0.0
+        self.perdida_perdedoras_total = 0.0
         
     def puede_abrir_operacion(self):
         """Verifica si se puede abrir una nueva operación"""
@@ -155,8 +158,10 @@ class RiskManager:
                 
                 if profit >= 0:
                     self.operaciones_ganadas += 1
+                    self.ganancia_ganadoras_total += profit
                 else:
                     self.operaciones_perdidas += 1
+                    self.perdida_perdedoras_total += profit  # valor negativo acumulado
                 
                 operaciones_cerradas.append(operacion)
                 self.operaciones_cerradas.append(operacion)
@@ -176,8 +181,10 @@ class RiskManager:
                 
                 if profit >= 0:
                     self.operaciones_ganadas += 1
+                    self.ganancia_ganadoras_total += profit
                 else:
                     self.operaciones_perdidas += 1
+                    self.perdida_perdedoras_total += profit  # valor negativo acumulado
                 
                 self.operaciones_cerradas.append(operacion)
                 self.operaciones_activas.remove(operacion)
@@ -198,7 +205,9 @@ class RiskManager:
             'operaciones_perdidas': self.operaciones_perdidas,
             'win_rate': win_rate,
             'slots_disponibles': self.get_slots_disponibles(),
-            'max_operaciones': self.max_operaciones_activas
+            'max_operaciones': self.max_operaciones_activas,
+            'ganancia_ganadoras_total': self.ganancia_ganadoras_total,
+            'perdida_perdedoras_total': self.perdida_perdedoras_total
         }
     
     def reset(self):
@@ -211,6 +220,8 @@ class RiskManager:
         self.beneficio_total = 0
         self.operaciones_ganadas = 0
         self.operaciones_perdidas = 0
+        self.ganancia_ganadoras_total = 0.0
+        self.perdida_perdedoras_total = 0.0
 
 # Ejemplo de uso integrado con las estrategias
 class RiskManagerIntegration:

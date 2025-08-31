@@ -1406,6 +1406,22 @@ class GUIPrincipal:
                     self.root.after(0, lambda: ui_log(f"Beneficio total: ${beneficio_total:,.2f}", 'cyan'))
                     self.root.after(0, lambda: ui_log(f"Operaciones ganadas: {ops_g}", 'green'))
                     self.root.after(0, lambda: ui_log(f"Operaciones perdidas: {ops_p}", 'red'))
+                    # Nuevas líneas: dinero ganado/perdido por categoría
+                    self.root.after(0, lambda: ui_log(f"Dinero ganado en operaciones ganadoras: ${float(stats.get('dinero_ganado', 0.0)):,.2f}", 'green'))
+                    self.root.after(0, lambda: ui_log(f"Dinero perdido en operaciones perdedoras: -${abs(float(stats.get('dinero_perdido', 0.0))):,.2f}", 'red'))
+                    # Configuración actual de estrategias Forex
+                    try:
+                        fx_cfg = stats.get('fx_config') or {}
+                        if fx_cfg:
+                            resumen_fx = ", ".join([
+                                f"{k}(riesgo={float(v.get('riesgo',0.01)):.3f}, rr={float(v.get('rr',2.0)):.2f})"
+                                for k, v in fx_cfg.items()
+                            ])
+                            self.root.after(0, lambda: ui_log(f"Config FX actual: {resumen_fx}", 'white'))
+                        else:
+                            self.root.after(0, lambda: ui_log("No se seleccionó ninguna estrategia forex", 'white'))
+                    except Exception:
+                        pass
                     self.root.after(0, lambda: ui_log(f"Win Rate: {winrate:.1f}%", 'white'))
                     self.root.after(0, lambda: ui_log(f"Slots usados: {ops_a}/{max_ops}", 'blue'))
                     self.root.after(0, lambda: ui_log("="*60, 'white'))

@@ -198,6 +198,9 @@ class AITrainer:
                         'operaciones_perdidas': int(self.risk_manager.operaciones_perdidas),
                         'operaciones_activas': int(self.risk_manager.get_operaciones_activas_count()),
                         'max_operaciones': int(self.risk_manager.max_operaciones_activas),
+                        'dinero_ganado': float(getattr(self.risk_manager, 'ganancia_ganadoras_total', 0.0)),
+                        'dinero_perdido': float(getattr(self.risk_manager, 'perdida_perdedoras_total', 0.0)),
+                        'fx_config': copy.deepcopy(self._current_fx),
                         'winrate': 0.0,
                         'attempt': attempt-1,
                     }
@@ -328,6 +331,9 @@ class AITrainer:
                     'operaciones_perdidas': int(self.risk_manager.operaciones_perdidas),
                     'operaciones_activas': int(self.risk_manager.get_operaciones_activas_count()),
                     'max_operaciones': int(self.risk_manager.max_operaciones_activas),
+                    'dinero_ganado': float(getattr(self.risk_manager, 'ganancia_ganadoras_total', 0.0)),
+                    'dinero_perdido': float(getattr(self.risk_manager, 'perdida_perdedoras_total', 0.0)),
+                    'fx_config': copy.deepcopy(self._current_fx),
                     'winrate': float(winrate),
                     'attempt': attempt,
                 }

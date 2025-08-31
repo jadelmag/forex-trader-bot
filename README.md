@@ -300,10 +300,10 @@ Ve a 👉 https://my.telegram.org
 
 ## Licencia
 
-MIT
+Commons Clause + Apache/MIT
 
 
 ## En proceso
 
 * Entrenamiento de RL
-* Backtesting de RL
+* Conectar con Metatrader
