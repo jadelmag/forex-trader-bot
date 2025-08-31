@@ -20,7 +20,7 @@ class AITrainingModal(tk.Toplevel):
         
         # Tamaño y posición inicial
         self.width = 500
-        self.height = 750
+        self.height = 850
         self.geometry(f"{self.width}x{self.height}")
         self.resizable(False, True)  # Permitir redimensionar en altura
         self.grab_set()  # Hace la ventana modal
@@ -162,6 +162,84 @@ class AITrainingModal(tk.Toplevel):
         )
         orders_spinbox.pack(side="left")
         
+        # Opciones avanzadas: intentos, semilla, guardar mejor config
+        advanced_frame = ttk.Frame(content_frame)
+        advanced_frame.pack(fill="x", pady=(10, 5))
+        ttk.Label(
+            advanced_frame,
+            text="Opciones avanzadas",
+            font=("Arial", 10, "bold")
+        ).pack(anchor="w")
+
+        # Máximo de intentos (0 = ilimitado)
+        attempts_frame = ttk.Frame(advanced_frame)
+        attempts_frame.pack(fill="x", pady=(6, 0))
+        ttk.Label(attempts_frame, text="Máximo de intentos (0 = ilimitado):").pack(side="left")
+        self.max_attempts_var = tk.StringVar(value="0")
+        attempts_spin = ttk.Spinbox(
+            attempts_frame,
+            from_=0,
+            to=100000,
+            textvariable=self.max_attempts_var,
+            width=7
+        )
+        attempts_spin.pack(side="left", padx=(10, 0))
+
+        # Semilla aleatoria (vacío = aleatorio) con tooltip
+        seed_frame = ttk.Frame(advanced_frame)
+        seed_frame.pack(fill="x", pady=(6, 0))
+        ttk.Label(seed_frame, text="Semilla aleatoria (opcional):").pack(side="left")
+        self.seed_var = tk.StringVar(value="")
+        seed_entry = ttk.Entry(seed_frame, textvariable=self.seed_var, width=10)
+        seed_entry.pack(side="left", padx=(10, 0))
+
+        # Tooltip explicativo para la semilla
+        self._seed_tooltip = None
+        def _show_seed_tooltip(event=None):
+            try:
+                if self._seed_tooltip is not None:
+                    return
+                tip = tk.Toplevel(self)
+                tip.wm_overrideredirect(True)
+                tip.configure(bg="#333333")
+                msg = (
+                    "La semilla fija la aleatoriedad para hacer los resultados reproducibles.\n"
+                    "• Vacío: cada ejecución será distinta (bueno para explorar).\n"
+                    "• Entero (p. ej. 0, 42, 20240831): resultados reproducibles con los mismos datos y opciones.\n"
+                    "En cada intento se usa semilla+intento-1 para variar de forma determinista.\n"
+                    "Recomendación: usa un entero >= 0; deja vacío si quieres máxima exploración."
+                )
+                lbl = tk.Label(tip, text=msg, justify="left", bg="#333333", fg="#FFFFFF", padx=8, pady=6, font=("Segoe UI", 9))
+                lbl.pack()
+                # Posicionar al lado del entry
+                x = seed_entry.winfo_rootx() + seed_entry.winfo_width() + 8
+                y = seed_entry.winfo_rooty()
+                tip.wm_geometry(f"+{x}+{y}")
+                self._seed_tooltip = tip
+            except Exception:
+                pass
+        def _hide_seed_tooltip(event=None):
+            try:
+                if self._seed_tooltip is not None:
+                    self._seed_tooltip.destroy()
+                    self._seed_tooltip = None
+            except Exception:
+                self._seed_tooltip = None
+        seed_entry.bind("<Enter>", _show_seed_tooltip)
+        seed_entry.bind("<Leave>", _hide_seed_tooltip)
+
+        # Guardar mejor configuración
+        save_frame = ttk.Frame(advanced_frame)
+        save_frame.pack(fill="x", pady=(6, 0))
+        self.save_best_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            save_frame,
+            text="Guardar mejor configuración",
+            variable=self.save_best_var,
+            onvalue=True,
+            offvalue=False
+        ).pack(side="left")
+
         # Label Paso 3: Orden de finalización
         ttk.Label(
             content_frame,
@@ -172,28 +250,6 @@ class AITrainingModal(tk.Toplevel):
         # Controles del Paso 3
         paso3_frame = ttk.Frame(content_frame)
         paso3_frame.pack(fill="x", pady=(8, 0))
-
-        # Opción 1: Número de iteraciones
-        iter_frame = ttk.Frame(paso3_frame)
-        iter_frame.pack(fill="x", pady=4)
-        self.use_iterations_var = tk.BooleanVar(value=False)
-        self.iterations_var = tk.StringVar(value="1")
-        iter_cb = ttk.Checkbutton(
-            iter_frame,
-            text="Número de iteraciones",
-            variable=self.use_iterations_var,
-            onvalue=True,
-            offvalue=False
-        )
-        iter_cb.pack(side="left")
-        iter_spin = ttk.Spinbox(
-            iter_frame,
-            from_=1,
-            to=1000000,
-            textvariable=self.iterations_var,
-            width=6
-        )
-        iter_spin.pack(side="left", padx=(10, 0))
 
         # Opción 2: Win Rate %
         winrate_frame = ttk.Frame(paso3_frame)
@@ -218,27 +274,6 @@ class AITrainingModal(tk.Toplevel):
             validatecommand=vcmd
         )
         win_entry.pack(side="left", padx=(10, 0))
-
-        # Label Paso 4: Visualización de velas por segundos
-        ttk.Label(
-            content_frame,
-            text="Paso 4: Visualización de velas por segundos",
-            font=("Arial", 10, "bold")
-        ).pack(anchor="w", pady=(12, 0))
-
-        paso4_frame = ttk.Frame(content_frame)
-        paso4_frame.pack(fill="x", pady=(6, 0))
-        ttk.Label(paso4_frame, text="Visualización:").pack(side="left")
-        self.candle_seconds_var = tk.StringVar(value="1s")
-        seconds_options = ("1s", "5s", "10s", "20s", "25s", "50s", "60s")
-        self.seconds_combo = ttk.Combobox(
-            paso4_frame,
-            textvariable=self.candle_seconds_var,
-            values=seconds_options,
-            state="readonly",
-            width=6
-        )
-        self.seconds_combo.pack(side="left", padx=(10, 0))
         
         # Frame para los botones inferiores
         button_frame = ttk.Frame(self)
@@ -285,8 +320,6 @@ class AITrainingModal(tk.Toplevel):
         # Enlazar cambios de controles globales a la lógica de habilitación
         try:
             self.max_orders.trace_add('write', lambda *_: self._recompute_accept_state())
-            self.use_iterations_var.trace_add('write', lambda *_: self._recompute_accept_state())
-            self.iterations_var.trace_add('write', lambda *_: self._recompute_accept_state())
             self.use_winrate_var.trace_add('write', lambda *_: self._recompute_accept_state())
             self.winrate_var.trace_add('write', lambda *_: self._recompute_accept_state())
         except Exception:
@@ -582,12 +615,10 @@ class AITrainingModal(tk.Toplevel):
         # 3) Máx. órdenes simultáneas > 0
         max_orders_val = self._parse_positive_int(getattr(self, 'max_orders', tk.StringVar(value='0')).get()) if hasattr(self, 'max_orders') else 0
         max_ok = max_orders_val > 0
-        # 4) Condición de finalización: (iteraciones>0 con checkbox activo) OR (winrate>0 con checkbox activo)
-        iter_ok = bool(self.use_iterations_var.get()) and self._parse_positive_int(self.iterations_var.get()) > 0 if hasattr(self, 'use_iterations_var') else False
+        # 4) Condición de finalización: sólo WinRate activo y > 0
         win_ok = bool(self.use_winrate_var.get()) and self._parse_positive_float(self.winrate_var.get()) > 0.0 if hasattr(self, 'use_winrate_var') else False
-        stop_ok = iter_ok or win_ok
 
-        enabled = has_model and has_selection and max_ok and stop_ok
+        enabled = has_model and has_selection and max_ok and win_ok
 
         desired_state = 'normal' if enabled else 'disabled'
         if hasattr(self, 'btn_accept'):
@@ -607,13 +638,11 @@ class AITrainingModal(tk.Toplevel):
                 msgs.append("• Seleccione al menos una estrategia o un patrón")
             if not max_ok:
                 msgs.append("• Máximo de órdenes simultáneas debe ser > 0")
-            if not stop_ok:
-                if hasattr(self, 'use_iterations_var') and self.use_iterations_var.get() and self._parse_positive_int(self.iterations_var.get()) <= 0:
-                    msgs.append("• Iteraciones debe ser > 0")
+            if not win_ok:
                 if hasattr(self, 'use_winrate_var') and self.use_winrate_var.get() and self._parse_positive_float(self.winrate_var.get()) <= 0.0:
                     msgs.append("• Win Rate debe ser > 0")
-                if (hasattr(self, 'use_iterations_var') and not self.use_iterations_var.get()) and (hasattr(self, 'use_winrate_var') and not self.use_winrate_var.get()):
-                    msgs.append("• Active 'Número de iteraciones' (>0) o 'Win Rate % igual a' (>0)")
+                elif hasattr(self, 'use_winrate_var') and not self.use_winrate_var.get():
+                    msgs.append("• Active 'Win Rate % igual a' (>0)")
 
             if enabled:
                 self.accept_hint.config(text="Listo para entrenar", foreground="green")
@@ -639,7 +668,6 @@ class AITrainingModal(tk.Toplevel):
                     seleccion_patterns.append(metodo)
 
         max_orders = int(self.max_orders.get()) if hasattr(self, 'max_orders') else 5
-        candle_seconds = self.candle_seconds_var.get() if hasattr(self, 'candle_seconds_var') else None
         # Parám. de parada
         use_iterations = bool(self.use_iterations_var.get()) if hasattr(self, 'use_iterations_var') else False
         iterations = self._parse_positive_int(self.iterations_var.get()) if hasattr(self, 'iterations_var') else 0
@@ -648,6 +676,21 @@ class AITrainingModal(tk.Toplevel):
         # Modelo seleccionado (si hay)
         selected_model_path = self.selected_model if hasattr(self, 'selected_model') else None
 
+        # Opciones avanzadas
+        try:
+            max_attempts = int(str(getattr(self, 'max_attempts_var', tk.StringVar(value='0')).get()).strip())
+            if max_attempts < 0:
+                max_attempts = 0
+        except Exception:
+            max_attempts = 0
+        seed_val = None
+        try:
+            seed_txt = str(getattr(self, 'seed_var', tk.StringVar(value='')).get()).strip()
+            seed_val = int(seed_txt) if seed_txt != "" else None
+        except Exception:
+            seed_val = None
+        save_best = bool(getattr(self, 'save_best_var', tk.BooleanVar(value=True)).get())
+
         if self.on_accept_callback:
             # Intentar con la firma más completa primero
             try:
@@ -655,12 +698,14 @@ class AITrainingModal(tk.Toplevel):
                     seleccion_fx,
                     seleccion_patterns,
                     max_orders,
-                    candle_seconds,
                     use_iterations,
                     iterations,
                     use_winrate,
                     winrate,
                     selected_model_path,
+                    max_attempts,
+                    seed_val,
+                    save_best,
                 )
             except TypeError:
                 try:

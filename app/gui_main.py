@@ -9,6 +9,7 @@ import pandas as pd
 import asyncio
 import importlib.util
 from datetime import datetime
+import sys
 
 from .csv_manager import CSVManager
 from .grafico_manager import GraficoManager
@@ -32,7 +33,7 @@ class GUIPrincipal:
     def __init__(self, root):
         self.root = root
         self.root.title("Trading Bot - Forex Market")
-        self.root.geometry("1900x950")
+        self.root.geometry("2000x950")
         self.root.configure(bg="#F0F0F0")
         self.root.attributes('-toolwindow', 1)
 
@@ -73,6 +74,12 @@ class GUIPrincipal:
         self.frame_grafico = tk.Frame(self.frame_middle, bg="#FFFFFF", relief="sunken", bd=1)
         self.frame_grafico.pack(side="left", fill="both", expand=True)
         self.grafico_manager.frame = self.frame_grafico
+
+        # Header del área de gráfico con botón Reset Zoom en la esquina superior derecha
+        self.frame_grafico_header = tk.Frame(self.frame_grafico, bg="#FFFFFF")
+        self.frame_grafico_header.pack(fill="x", padx=8, pady=(6, 0))
+        self.btn_reset_zoom = ttk.Button(self.frame_grafico_header, text="Reset Zoom", command=self.reset_zoom)
+        self.btn_reset_zoom.pack(side="right")
 
         # Panel lateral de Telegram
         self.frame_telegram_panel = tk.Frame(self.frame_middle, bg="#F8F8F8", relief="sunken", bd=1, width=360)
@@ -115,7 +122,13 @@ class GUIPrincipal:
 
         self.frame_log = tk.Frame(self.root, bg="#F8F8F8", relief="sunken", bd=1)
         self.frame_log.pack(fill="both", expand=False, padx=20, pady=(0, 20), ipady=120)
-        
+
+        # Header del área de logs con botón en la esquina superior derecha
+        self.frame_log_header = tk.Frame(self.frame_log, bg="#F8F8F8")
+        self.frame_log_header.pack(fill="x", padx=8, pady=(6, 0))
+        self.btn_clear_log = ttk.Button(self.frame_log_header, text="Limpiar Log", command=self._limpiar_log)
+        self.btn_clear_log.pack(side="right")
+
         # Estilo exclusivo para el scrollbar de logs (no afecta botones)
         self._logs_style = ttk.Style()
         self._logs_style.configure(
@@ -169,6 +182,9 @@ class GUIPrincipal:
             self.frame_progress.pack_forget()
         except Exception:
             pass
+        # Botón para detener entrenamiento IA
+        self.btn_stop_training = ttk.Button(self.frame_progress, text="Detener", command=lambda: self._stop_training(), state="disabled")
+        self.btn_stop_training.pack(side="right", padx=(10,0))
 
         # Contenedores de botones
         self.frame_left = tk.Frame(self.frame_controls, bg="#F0F0F0")
@@ -193,9 +209,6 @@ class GUIPrincipal:
             self.frame_left, text="Guardar datos procesados", command=self.guardar_procesados
         )
         self.btn_guardar_procesados.pack(side="left", padx=5)
-
-        self.btn_reset_zoom = ttk.Button(self.frame_left, text="Reset Zoom", command=self.reset_zoom)
-        self.btn_reset_zoom.pack(side="left", padx=5)
 
         # ---------------- Dinero/beneficios/pérdidas (centro) ----------------
         self.label_dinero = tk.Label(
@@ -262,6 +275,12 @@ class GUIPrincipal:
             self.frame_right, text="Telegram", command=self.abrir_modal_telegram, state="disabled"
         )
         self.btn_telegram.pack(side="left", padx=5)
+
+        # Botón Reiniciar (reinicia completamente la app como si se relanzara `python -m app.main`)
+        self.btn_reiniciar = ttk.Button(
+            self.frame_right, text="Reiniciar", command=self.reiniciar_app
+        )
+        self.btn_reiniciar.pack(side="left", padx=5)
 
     # ---------------- Funciones CSV ----------------
     def cargar_csv(self):
@@ -975,6 +994,18 @@ class GUIPrincipal:
         if self.tooltip_zoom_pan:
             self.tooltip_zoom_pan.reset_zoom()
 
+    def reiniciar_app(self):
+        """Reinicia la aplicación reemplazando el proceso actual por `python -m app.main`."""
+        confirmar = messagebox.askyesno(
+            "Reiniciar",
+            "¿Seguro que quieres reiniciar la aplicación? Se perderá el estado actual.",
+        )
+        if not confirmar:
+            return
+        python = sys.executable
+        # Reemplaza el proceso: no regresa
+        os.execl(python, python, "-m", "app.main")
+
     def limpiar_grafico(self):
         self.df_actual = None
         if self.tooltip_zoom_pan:
@@ -1070,14 +1101,14 @@ class GUIPrincipal:
         else:
             self.lbl_telegram_status.config(text="Desconectado", fg="red")
 
-    def _enviar_telegram_y_reflejar(self, mensaje, es_operacion=False, id_operacion=None):
+    def _enviar_telegram_y_reflejar(self, mensaje, color="white"):
         # Reflejar en panel
         self._append_telegram_panel(mensaje, color="white")
         # Enviar a Telegram si está conectado
         notifier = getattr(self, "telegram_notifier", None)
         try:
             if notifier and hasattr(notifier, "send_message"):
-                notifier.send_message(mensaje, is_trade_operation=es_operacion, trade_id=id_operacion)
+                notifier.send_message(mensaje, is_trade_operation=False, trade_id=None)
             else:
                 self._append_telegram_panel("(No conectado a Telegram)", color="yellow")
         except Exception as e:
@@ -1233,40 +1264,23 @@ class GUIPrincipal:
 
     # ---------------- IA ----------------
     def entrenar_ia(self):
-        """Muestra el modal de entrenamiento de IA"""
-        def on_accept(
-            seleccion_fx=None,
-            seleccion_patterns=None,
-            max_orders=5,
-            candle_seconds=None,
-            use_iterations=False,
-            iterations=0,
-            use_winrate=False,
-            winrate=0.0,
-            selected_model_path=None,
-        ):
-            """Recibe selecciones del modal e inicia el entrenador en hilo de fondo."""
-            seleccion_fx = seleccion_fx or {}
-            seleccion_patterns = seleccion_patterns or []
-
-            # Parse seconds like "5s" -> 5
-            try:
-                secs = int(str(candle_seconds).lower().replace('s','').strip())
-            except Exception:
-                secs = 1
-
-            # UI: opacidad 0.5 al inicio
-            try:
-                if hasattr(self, 'grafico_manager'):
-                    self.grafico_manager.set_candles_opacity(0.5)
-            except Exception:
-                pass
-
-            # Programar restauración de opacidad después de N segundos
-            try:
-                self.root.after(max(0, secs) * 1000, lambda: self.grafico_manager.set_candles_opacity(1.0))
-            except Exception:
-                pass
+    """Muestra el modal de entrenamiento de IA"""
+    def on_accept(
+        seleccion_fx=None,
+        seleccion_patterns=None,
+        max_orders=5,
+        use_winrate=False,
+        winrate=0.0,
+        selected_model_path=None,
+        max_attempts=0,
+        seed_val=None,
+        save_best=True,
+    ):
+        """Recibe selecciones del modal e inicia el entrenador en hilo de fondo."""
+        seleccion_fx = seleccion_fx or {}
+        seleccion_patterns = seleccion_patterns or []
+        
+        # Eliminado: parsing de visualización por segundos
 
             # Mostrar barra de progreso
             try:
@@ -1275,6 +1289,8 @@ class GUIPrincipal:
                 self.progress_info_var.set("0/0 (0%) ETA --:--")
                 self._train_start_ts = time.time()
                 self._train_total = 0
+                # Habilitar botón Detener
+                self.btn_stop_training.config(state="normal")
             except Exception:
                 pass
 
@@ -1434,14 +1450,17 @@ class GUIPrincipal:
                 seleccion_patterns=seleccion_patterns,
                 max_orders=max_orders,
                 capital_inicial=capital_inicial,
-                use_iterations=use_iterations,
-                iterations=iterations,
                 use_winrate=use_winrate,
                 winrate_target=winrate,
+                max_attempts=max_attempts,
+                seed=seed_val,
+                save_best=save_best,
                 on_log=ui_log,
                 on_progress=ui_progress,
                 on_finish=ui_finish,
             )
+            # Guardar referencia para poder detener
+            self._ai_trainer = trainer
 
             # Escribir cabecera de sesión en archivo de log
             try:
@@ -1450,12 +1469,10 @@ class GUIPrincipal:
                 ui_log(f"Fecha/Hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", 'white')
                 ui_log(f"Max órdenes: {max_orders}", 'white')
                 stop_desc = (
-                    f"Iteraciones: {iterations}" if use_iterations else (
                     f"WinRate objetivo: {winrate:.1f}%" if use_winrate else "Sin condición explícita"
-                ))
+                )
                 ui_log(f"Parada: {stop_desc}", 'white')
-                if candle_seconds:
-                    ui_log(f"Visualización velas: {candle_seconds}", 'white')
+                # Eliminado: log de visualización por segundos
                 if selected_model_path:
                     ui_log(f"Modelo RL: {selected_model_path}", 'white')
                 if seleccion_fx:
@@ -1467,21 +1484,7 @@ class GUIPrincipal:
                 pass
             trainer.start()
 
-    # ---- Utilidades barra de progreso ----
-    def _show_progress_bar(self):
-        try:
-            self.frame_progress.pack(fill="x", padx=20, pady=(0, 10))
-            self.progress_var.set(0)
-        except Exception:
-            pass
-
-    def _hide_progress_bar(self):
-        try:
-            self.frame_progress.pack_forget()
-        except Exception:
-            pass
-
-        # Verificar si hay datos cargados
+        # Verificar si hay datos cargados antes de abrir el modal
         if self.df_actual is None:
             messagebox.showwarning("Datos requeridos", "Por favor, carga los datos primero.")
             return
@@ -1489,6 +1492,33 @@ class GUIPrincipal:
         # Mostrar el modal de entrenamiento
         modal = AITrainingModal(self.root, on_accept_callback=on_accept)
         modal.show()
+
+    # ---- Utilidades barra de progreso ----
+      def _show_progress_bar(self):
+        try:
+            self.frame_progress.pack(fill="x", padx=20, pady=(0, 10))
+            self.progress_var.set(0)
+        except Exception:
+            pass
+
+      def _hide_progress_bar(self):
+        try:
+            self.frame_progress.pack_forget()
+            # Deshabilitar botón Detener cuando no hay entrenamiento
+            self.btn_stop_training.config(state="disabled")
+        except Exception:
+            pass
+
+      def _stop_training(self):
+        """Handler para botón Detener: solicita parada al entrenador en curso."""
+        try:
+            trainer = getattr(self, '_ai_trainer', None)
+            if trainer is not None:
+                trainer.stop()
+                # Evitar múltiples clics
+                self.btn_stop_training.config(state="disabled")
+        except Exception:
+            pass
 
     # ---------------- Run ----------------
     def run(self):
