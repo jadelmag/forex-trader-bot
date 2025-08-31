@@ -28,6 +28,7 @@ forex-trader-bot/
 ├─ app/                     # Paquete principal
 │ ├─ __init__.py            # Inicializa el paquete, importa Window
 │ ├─ candlestick_chart.py   # Clase CandlestickChart, dibuja velas de CSV o yfinance
+│ ├─ ai_training_modal.py   # Clase AITrainingModal, permite entrenar IA
 │ ├─ csv_loader_modal.py    # Clase CSVLoaderModal, permite cargar CSVs
 │ ├─ csv_manager.py         # Clase CSVManager para manejar archivos CSV
 │ ├─ grafico_manager.py     # Clase GraficoManager para manejar gráficos
@@ -35,6 +36,7 @@ forex-trader-bot/
 │ ├─ main.py                # Función main() para ejecutar la app
 | ├─ patterns_modal.py      # Clase PatternsModal, permite cargar patrones de velas
 │ ├─ progress_modal.py      # Clase ProgressModal, muestra progreso de operaciones
+│ ├─ rl_training_modal.py   # Clase RLTrainingModal, permite entrenar RL
 │ ├─ strategies_modal.py    # Clase StrategiesModal, permite cargar estrategias de RL
 │ ├─ tooltip_zoom_pan.py    # Funciones para tooltip, zoom y pan
 │ └─ window.py              # Clase Window principal, coordina la GUI

@@ -5,6 +5,7 @@ from tkinter import ttk, filedialog, messagebox
 from tkinter.font import Font
 import os
 import shutil
+import re
 
 from .progress_modal import centrar_ventana
 
@@ -161,6 +162,63 @@ class AITrainingModal(tk.Toplevel):
         )
         orders_spinbox.pack(side="left")
         
+        # Label Paso 3: Orden de finalización
+        ttk.Label(
+            content_frame,
+            text="Paso 3: Orden de finalización",
+            font=("Arial", 10, "bold")
+        ).pack(anchor="w", pady=(10, 0))
+        
+        # Controles del Paso 3
+        paso3_frame = ttk.Frame(content_frame)
+        paso3_frame.pack(fill="x", pady=(8, 0))
+
+        # Opción 1: Número de iteraciones
+        iter_frame = ttk.Frame(paso3_frame)
+        iter_frame.pack(fill="x", pady=4)
+        self.use_iterations_var = tk.BooleanVar(value=False)
+        self.iterations_var = tk.StringVar(value="1")
+        iter_cb = ttk.Checkbutton(
+            iter_frame,
+            text="Número de iteraciones",
+            variable=self.use_iterations_var,
+            onvalue=True,
+            offvalue=False
+        )
+        iter_cb.pack(side="left")
+        iter_spin = ttk.Spinbox(
+            iter_frame,
+            from_=1,
+            to=1000000,
+            textvariable=self.iterations_var,
+            width=6
+        )
+        iter_spin.pack(side="left", padx=(10, 0))
+
+        # Opción 2: Win Rate %
+        winrate_frame = ttk.Frame(paso3_frame)
+        winrate_frame.pack(fill="x", pady=4)
+        self.use_winrate_var = tk.BooleanVar(value=False)
+        self.winrate_var = tk.StringVar(value="")
+        win_cb = ttk.Checkbutton(
+            winrate_frame,
+            text="Win Rate % igual a",
+            variable=self.use_winrate_var,
+            onvalue=True,
+            offvalue=False
+        )
+        win_cb.pack(side="left")
+        # Validación para permitir sólo números con punto
+        vcmd = (self.register(self._validate_float), '%P')
+        win_entry = ttk.Entry(
+            winrate_frame,
+            textvariable=self.winrate_var,
+            width=8,
+            validate='key',
+            validatecommand=vcmd
+        )
+        win_entry.pack(side="left", padx=(10, 0))
+        
         # Frame para los botones inferiores
         button_frame = ttk.Frame(self)
         button_frame.pack(pady=20, padx=20, fill="x", side="bottom")
@@ -205,6 +263,12 @@ class AITrainingModal(tk.Toplevel):
         
         # Fuente para los iconos
         self.icon_font = Font(family="Arial", size=12, weight="bold")
+
+    def _validate_float(self, P: str) -> bool:
+        """Permite sólo números con punto (float) o vacío durante la escritura."""
+        if P == "":
+            return True
+        return re.fullmatch(r"\d*\.?\d*", P) is not None
 
     def _check_rl_models(self):
         """Verifica si hay modelos en la carpeta models_rl"""

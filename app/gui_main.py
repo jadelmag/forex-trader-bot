@@ -15,6 +15,8 @@ from .csv_loader_modal import CSVLoaderModal
 from .patterns_modal import PatternsModal
 from .strategies_modal import EstrategiasModal
 from .ai_training_modal import AITrainingModal
+from .rl_training_modal import RLTrainingModal
+
 from patterns.candlestickpatterns import CandlestickPatterns
 
 # Imports externos
@@ -219,12 +221,12 @@ class GUIPrincipal:
         self.btn_entrenar_ia.pack(side="left", padx=5)
 
         self.btn_entrenar_rl = ttk.Button(
-            self.frame_right, text="Entrenar RL", command=self.entrenar_rl, state="disabled"
+            self.frame_right, text="Crear Modelo RL", command=self.entrenar_rl, state="disabled"
         )
         self.btn_entrenar_rl.pack(side="left", padx=5)
 
         self.btn_cargar_rl = ttk.Button(
-            self.frame_right, text="Cargar RL", command=self.cargar_rl, state="disabled"
+            self.frame_right, text="Cargar Modelo RL", command=self.cargar_rl, state="disabled"
         )
         self.btn_cargar_rl.pack(side="left", padx=5)
 
@@ -719,9 +721,22 @@ class GUIPrincipal:
         if self.df_actual is None:
             messagebox.showwarning("Atención", "Debe cargar un CSV primero")
             return
-        self.rl_agent = RLTradingAgent(self.df_actual)
-        self.rl_agent.entrenar(timesteps=50_000)
-        messagebox.showinfo("RL", "Entrenamiento completado y modelo guardado")
+        # Mostrar modal de entrenamiento
+        def _start_training(iterations: int, on_complete, on_progress=None):
+            try:
+                # Logger thread-safe hacia el log inferior
+                def _log_ts(msg: str, color='white'):
+                    try:
+                        self.root.after(0, lambda: self.log(str(msg), color=color))
+                    except Exception:
+                        pass
+                self.rl_agent = RLTradingAgent(self.df_actual, log_fn=lambda m: _log_ts(m, 'cyan'))
+                self.rl_agent.entrenar(timesteps=iterations, progress_cb=on_progress)
+                on_complete(success=True)
+            except Exception as e:
+                on_complete(success=False, error_msg=str(e))
+
+        RLTrainingModal(self.root, start_training_callback=_start_training)
 
     def cargar_rl(self):
         if self.df_actual is None:
