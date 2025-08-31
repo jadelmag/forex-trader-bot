@@ -15,6 +15,8 @@ class CandlestickChart:
         self.interval = interval
         self.data = None
         self.ax = None
+        self.fig = None
+        self.alpha = 0.8
 
     @classmethod
     def from_dataframe(cls, df):
@@ -46,7 +48,7 @@ class CandlestickChart:
             fig = ax.figure
             ax.clear()
 
-        candlestick_ohlc(ax, df_ohlc.values, width=0.0008, colorup='green', colordown='red', alpha=0.8)
+        candlestick_ohlc(ax, df_ohlc.values, width=0.0008, colorup='green', colordown='red', alpha=self.alpha)
 
         ax.xaxis_date()
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M'))
@@ -62,6 +64,7 @@ class CandlestickChart:
         
         # Guardar referencia al axes
         self.ax = ax
+        self.fig = fig
         return fig, ax
 
     # --- Dibujar senales RL: ENTRENAMIENTO ---
@@ -83,3 +86,30 @@ class CandlestickChart:
                 self.ax.annotate('↓', xy=(mdates.date2num(df_plot['DateTime'].iloc[i]),
                                            df_plot['High'].iloc[i]*1.005),
                                  color='red', fontsize=12, ha='center')
+
+    def set_candles_alpha(self, alpha: float):
+        """Actualiza la opacidad (alpha) de las velas y redibuja en el mismo Axes."""
+        if self.ax is None or self.data is None or self.data.empty:
+            return
+        try:
+            self.alpha = max(0.0, min(1.0, float(alpha)))
+        except Exception:
+            self.alpha = 1.0
+
+        # Replot en el mismo axes
+        df = self.data.copy()
+        df_ohlc = df[['Open','High','Low','Close']].copy()
+        df_ohlc.reset_index(inplace=True)
+        df_ohlc['DateTime'] = df_ohlc['DateTime'].map(mdates.date2num)
+
+        self.ax.clear()
+        candlestick_ohlc(self.ax, df_ohlc.values, width=0.0008, colorup='green', colordown='red', alpha=self.alpha)
+        self.ax.xaxis_date()
+        self.ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M'))
+        if self.base and self.cotizada:
+            self.ax.set_ylabel(f"{self.base}/{self.cotizada}")
+        else:
+            self.ax.set_ylabel("Precio")
+        self.ax.grid(True)
+        if self.fig:
+            self.fig.autofmt_xdate()

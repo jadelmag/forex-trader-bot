@@ -20,7 +20,7 @@ class AITrainingModal(tk.Toplevel):
         
         # Tamaño y posición inicial
         self.width = 500
-        self.height = 700
+        self.height = 750
         self.geometry(f"{self.width}x{self.height}")
         self.resizable(False, True)  # Permitir redimensionar en altura
         self.grab_set()  # Hace la ventana modal
@@ -218,6 +218,27 @@ class AITrainingModal(tk.Toplevel):
             validatecommand=vcmd
         )
         win_entry.pack(side="left", padx=(10, 0))
+
+        # Label Paso 4: Visualización de velas por segundos
+        ttk.Label(
+            content_frame,
+            text="Paso 4: Visualización de velas por segundos",
+            font=("Arial", 10, "bold")
+        ).pack(anchor="w", pady=(12, 0))
+
+        paso4_frame = ttk.Frame(content_frame)
+        paso4_frame.pack(fill="x", pady=(6, 0))
+        ttk.Label(paso4_frame, text="Visualización:").pack(side="left")
+        self.candle_seconds_var = tk.StringVar(value="1s")
+        seconds_options = ("1s", "5s", "10s", "20s", "25s", "50s", "60s")
+        self.seconds_combo = ttk.Combobox(
+            paso4_frame,
+            textvariable=self.candle_seconds_var,
+            values=seconds_options,
+            state="readonly",
+            width=6
+        )
+        self.seconds_combo.pack(side="left", padx=(10, 0))
         
         # Frame para los botones inferiores
         button_frame = ttk.Frame(self)
@@ -239,6 +260,15 @@ class AITrainingModal(tk.Toplevel):
             state="disabled"
         )
         self.btn_accept.pack(side="right", padx=5)
+        # Aviso de condiciones para habilitar Aceptar
+        self.accept_hint = ttk.Label(
+            button_frame,
+            text="",
+            foreground="red",
+            wraplength=380,
+            justify="left"
+        )
+        self.accept_hint.pack(side="left", fill="x", expand=True)
         # Aplicar estado pendiente si fue calculado antes de crear el botón
         if hasattr(self, "_pending_accept_state"):
             try:
@@ -252,6 +282,15 @@ class AITrainingModal(tk.Toplevel):
         
         # Verificar si hay modelos en la carpeta models_rl
         self._check_rl_models()
+        # Enlazar cambios de controles globales a la lógica de habilitación
+        try:
+            self.max_orders.trace_add('write', lambda *_: self._recompute_accept_state())
+            self.use_iterations_var.trace_add('write', lambda *_: self._recompute_accept_state())
+            self.iterations_var.trace_add('write', lambda *_: self._recompute_accept_state())
+            self.use_winrate_var.trace_add('write', lambda *_: self._recompute_accept_state())
+            self.winrate_var.trace_add('write', lambda *_: self._recompute_accept_state())
+        except Exception:
+            pass
 
     def _setup_styles(self):
         """Configura los estilos para los widgets"""
@@ -323,7 +362,8 @@ class AITrainingModal(tk.Toplevel):
         # Si todo está bien, actualizar la interfaz
         self.selected_model = file_path
         self._update_status(True, "Modelo cargado correctamente")
-        # self.btn_accept.config(state="normal")
+        # Recalcular condiciones de habilitación
+        self._recompute_accept_state()
         
     def _create_risk_controls(self, parent, show_labels=False):
         """Crea los controles de riesgo y RR para una estrategia"""
@@ -477,24 +517,14 @@ class AITrainingModal(tk.Toplevel):
             )
             cb.pack(anchor="w", padx=(20, 0), pady=2)
 
-        # Habilitar/deshabilitar botón Aceptar según selección
-        def _update_accept_state(*_):
-            any_fx = any(v.get() for v in self.strategy_vars.values())
-            any_pt = any(v.get() for v in self.pattern_vars.values())
-            desired_state = "normal" if (any_fx or any_pt) else "disabled"
-            if hasattr(self, 'btn_accept'):
-                try:
-                    self.btn_accept.config(state=desired_state)
-                except Exception:
-                    pass
-            else:
-                # Guardar para aplicar tras crear el botón
-                self._pending_accept_state = desired_state
+        # Habilitar/deshabilitar botón Aceptar según condiciones completas
+        def _vars_changed(*_):
+            self._recompute_accept_state()
 
         for v in list(self.strategy_vars.values()) + list(self.pattern_vars.values()):
-            v.trace_add('write', _update_accept_state)
+            v.trace_add('write', _vars_changed)
 
-        _update_accept_state()
+        self._recompute_accept_state()
     
     def _update_status(self, is_valid, message):
         """Actualiza el estado de la interfaz según la validación"""
@@ -527,6 +557,69 @@ class AITrainingModal(tk.Toplevel):
             else:
                 self._pending_accept_state = "disabled"
 
+    # ----------------- Lógica de habilitación de Aceptar -----------------
+    def _parse_positive_int(self, s: str) -> int:
+        try:
+            v = int(str(s).strip())
+            return v if v > 0 else 0
+        except Exception:
+            return 0
+
+    def _parse_positive_float(self, s: str) -> float:
+        try:
+            v = float(str(s).strip())
+            return v if v > 0 else 0.0
+        except Exception:
+            return 0.0
+
+    def _recompute_accept_state(self):
+        # 1) Modelo cargado
+        has_model = bool(self.selected_model)
+        # 2) Alguna estrategia o patrón seleccionado
+        any_fx = any(v.get() for v in getattr(self, 'strategy_vars', {}).values()) if hasattr(self, 'strategy_vars') else False
+        any_pt = any(v.get() for v in getattr(self, 'pattern_vars', {}).values()) if hasattr(self, 'pattern_vars') else False
+        has_selection = any_fx or any_pt
+        # 3) Máx. órdenes simultáneas > 0
+        max_orders_val = self._parse_positive_int(getattr(self, 'max_orders', tk.StringVar(value='0')).get()) if hasattr(self, 'max_orders') else 0
+        max_ok = max_orders_val > 0
+        # 4) Condición de finalización: (iteraciones>0 con checkbox activo) OR (winrate>0 con checkbox activo)
+        iter_ok = bool(self.use_iterations_var.get()) and self._parse_positive_int(self.iterations_var.get()) > 0 if hasattr(self, 'use_iterations_var') else False
+        win_ok = bool(self.use_winrate_var.get()) and self._parse_positive_float(self.winrate_var.get()) > 0.0 if hasattr(self, 'use_winrate_var') else False
+        stop_ok = iter_ok or win_ok
+
+        enabled = has_model and has_selection and max_ok and stop_ok
+
+        desired_state = 'normal' if enabled else 'disabled'
+        if hasattr(self, 'btn_accept'):
+            try:
+                self.btn_accept.config(state=desired_state)
+            except Exception:
+                pass
+        else:
+            self._pending_accept_state = desired_state
+
+        # Actualizar aviso
+        if hasattr(self, 'accept_hint'):
+            msgs = []
+            if not has_model:
+                msgs.append("• Cargue un modelo")
+            if not has_selection:
+                msgs.append("• Seleccione al menos una estrategia o un patrón")
+            if not max_ok:
+                msgs.append("• Máximo de órdenes simultáneas debe ser > 0")
+            if not stop_ok:
+                if hasattr(self, 'use_iterations_var') and self.use_iterations_var.get() and self._parse_positive_int(self.iterations_var.get()) <= 0:
+                    msgs.append("• Iteraciones debe ser > 0")
+                if hasattr(self, 'use_winrate_var') and self.use_winrate_var.get() and self._parse_positive_float(self.winrate_var.get()) <= 0.0:
+                    msgs.append("• Win Rate debe ser > 0")
+                if (hasattr(self, 'use_iterations_var') and not self.use_iterations_var.get()) and (hasattr(self, 'use_winrate_var') and not self.use_winrate_var.get()):
+                    msgs.append("• Active 'Número de iteraciones' (>0) o 'Win Rate % igual a' (>0)")
+
+            if enabled:
+                self.accept_hint.config(text="Listo para entrenar", foreground="green")
+            else:
+                self.accept_hint.config(text="\n".join(msgs), foreground="red")
+
     def _on_accept(self):
         """Maneja el evento de aceptar: recopila selecciones y las devuelve."""
         seleccion_fx = {}
@@ -546,13 +639,40 @@ class AITrainingModal(tk.Toplevel):
                     seleccion_patterns.append(metodo)
 
         max_orders = int(self.max_orders.get()) if hasattr(self, 'max_orders') else 5
+        candle_seconds = self.candle_seconds_var.get() if hasattr(self, 'candle_seconds_var') else None
+        # Parám. de parada
+        use_iterations = bool(self.use_iterations_var.get()) if hasattr(self, 'use_iterations_var') else False
+        iterations = self._parse_positive_int(self.iterations_var.get()) if hasattr(self, 'iterations_var') else 0
+        use_winrate = bool(self.use_winrate_var.get()) if hasattr(self, 'use_winrate_var') else False
+        winrate = self._parse_positive_float(self.winrate_var.get()) if hasattr(self, 'winrate_var') else 0.0
+        # Modelo seleccionado (si hay)
+        selected_model_path = self.selected_model if hasattr(self, 'selected_model') else None
 
         if self.on_accept_callback:
+            # Intentar con la firma más completa primero
             try:
-                self.on_accept_callback(seleccion_fx, seleccion_patterns, max_orders)
+                self.on_accept_callback(
+                    seleccion_fx,
+                    seleccion_patterns,
+                    max_orders,
+                    candle_seconds,
+                    use_iterations,
+                    iterations,
+                    use_winrate,
+                    winrate,
+                    selected_model_path,
+                )
             except TypeError:
-                # Compatibilidad con callbacks antiguos sin parámetros
-                self.on_accept_callback()
+                try:
+                    # Compatibilidad con 4 parámetros (previo)
+                    self.on_accept_callback(seleccion_fx, seleccion_patterns, max_orders, candle_seconds)
+                except TypeError:
+                    try:
+                        # Compatibilidad con 3 parámetros
+                        self.on_accept_callback(seleccion_fx, seleccion_patterns, max_orders)
+                    except TypeError:
+                        # Sin parámetros
+                        self.on_accept_callback()
 
         self.destroy()
 

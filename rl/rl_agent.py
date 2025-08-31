@@ -85,18 +85,49 @@ class RLTradingAgent:
             self._log("Debe entrenar o cargar un modelo primero.")
             return []
 
+        # Reset del vectorized env (DummyVecEnv). Suele devolver obs con shape (1, obs_dim)
         obs = self.env.reset()
-        done = False
-        señales = []
-        i = 0
+        signals = []
 
-        while not done and i < len(self.df) - 1:
+        n = len(self.df)
+        for i in range(n):
+            # Predecir acción
             action, _ = self.model.predict(obs, deterministic=True)
-            señales.append(int(action))
-            obs, _, done, _ = self.env.step(action)
-            i += 1
+            # Extraer acción escalar para n_envs=1
+            try:
+                act_scalar = int(action if np.isscalar(action) else action[0])
+            except Exception:
+                act_scalar = 0
+            signals.append(act_scalar)
 
-        return señales
+            # Step en DummyVecEnv: requiere array-like con una acción por env
+            try:
+                step_action = [act_scalar]
+                obs, _, dones, _ = self.env.step(step_action)
+            except Exception:
+                # Fallback por si acepta escalar
+                obs, _, dones, _ = self.env.step(act_scalar)
+
+            # Determinar si terminó el episodio
+            try:
+                done_flag = bool(dones[0]) if hasattr(dones, '__len__') else bool(dones)
+            except Exception:
+                done_flag = bool(dones)
+
+            if done_flag and i < n - 1:
+                # Rellenar el resto con 0 (mantener) para que coincida 1:1 con el DF
+                remaining = n - (i + 1)
+                if remaining > 0:
+                    signals.extend([0] * remaining)
+                break
+
+        # Asegurar longitud exacta
+        if len(signals) < n:
+            signals.extend([0] * (n - len(signals)))
+        elif len(signals) > n:
+            signals = signals[:n]
+
+        return signals
 
     # ---------------- Utilidades ----------------
     def _log(self, msg: str):

@@ -12,6 +12,8 @@ class GraficoManager:
         self.grafico = None
         self.fig = None
         self.ax = None
+        # Artistas (anotaciones/flechas) añadidos por señales RL para poder limpiarlos
+        self._rl_artists = []
 
     def dibujar_csv(self, df):
         self.grafico = CandlestickChart.from_dataframe(df)
@@ -44,13 +46,22 @@ class GraficoManager:
         if self.grafico is None or self.ax is None:
             return
         df = self.grafico.data.reset_index()
-        # Limpiar flechas anteriores
-        self.ax.collections = [c for c in self.ax.collections if not hasattr(c, 'es_flecha_rl')]
-        self.ax.lines = [l for l in self.ax.lines if not hasattr(l, 'es_flecha_rl')]
+        # Limpiar flechas anteriores de forma segura
+        try:
+            if hasattr(self, '_rl_artists') and self._rl_artists:
+                # eliminar cada artista previo (Text/Line2D/Collection, etc.)
+                for art in list(self._rl_artists):
+                    try:
+                        art.remove()
+                    except Exception:
+                        pass
+                self._rl_artists.clear()
+        except Exception:
+            pass
 
         for i, signal in enumerate(signals):
             if signal == 1:  # Compra
-                self.ax.annotate(
+                txt = self.ax.annotate(
                     "▲",
                     xy=(i, df['Low'].iloc[i] * 0.9995),
                     xytext=(0, 0),
@@ -60,8 +71,13 @@ class GraficoManager:
                     ha="center",
                     va="bottom"
                 )
+                try:
+                    setattr(txt, 'es_flecha_rl', True)
+                    self._rl_artists.append(txt)
+                except Exception:
+                    pass
             elif signal == 2:  # Venta
-                self.ax.annotate(
+                txt = self.ax.annotate(
                     "▼",
                     xy=(i, df['High'].iloc[i] * 1.0005),
                     xytext=(0, 0),
@@ -71,5 +87,21 @@ class GraficoManager:
                     ha="center",
                     va="top"
                 )
+                try:
+                    setattr(txt, 'es_flecha_rl', True)
+                    self._rl_artists.append(txt)
+                except Exception:
+                    pass
 
         self.canvas.draw_idle()
+
+    def set_candles_opacity(self, alpha: float):
+        """Actualiza la opacidad de las velas y redibuja el canvas."""
+        if not self.grafico:
+            return
+        try:
+            self.grafico.set_candles_alpha(alpha)
+            if self.canvas:
+                self.canvas.draw_idle()
+        except Exception:
+            pass

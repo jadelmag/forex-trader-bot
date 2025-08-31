@@ -1,12 +1,14 @@
 # app/gui_main.py
 
 import os
+import time
 import tkinter as tk
 from tkinter import ttk, messagebox
 import numpy as np  
 import pandas as pd  
 import asyncio
 import importlib.util
+from datetime import datetime
 
 from .csv_manager import CSVManager
 from .grafico_manager import GraficoManager
@@ -16,6 +18,7 @@ from .patterns_modal import PatternsModal
 from .strategies_modal import EstrategiasModal
 from .ai_training_modal import AITrainingModal
 from .rl_training_modal import RLTrainingModal
+from .ai_trainer import AITrainer
 
 from patterns.candlestickpatterns import CandlestickPatterns
 
@@ -51,8 +54,10 @@ class GUIPrincipal:
         self.perdidas = 0
         self.rl_agent = None
         self.rl_signals = []
-        self.compra_activa = None
-        self.operaciones = []  # Para tracking de operaciones RL
+        # Soporte multi-posición para RL
+        self.posiciones_activas = []  # lista de dicts {'precio','fecha','indice'}
+        self.operaciones = []  # tracking de operaciones RL (aperturas y cierres)
+        self._pattern_signals = None  # Serie con confirmación de patrones (+1/-1/0)
 
         self.risk_manager = RiskManager(max_operaciones_activas=5)
         self.risk_integration = RiskManagerIntegration(self.risk_manager, None)
@@ -147,6 +152,23 @@ class GUIPrincipal:
         # Layout
         self.text_log.pack(side="left", fill="both", expand=True)
         self.scrollbar_log_y.pack(side="right", fill="y")
+
+        # Barra de progreso inferior (en un frame separado bajo los logs)
+        self.frame_progress = tk.Frame(self.root, bg="#F0F0F0")
+        self.frame_progress.pack(fill="x", padx=20, pady=(0, 10))
+        ttk.Label(self.frame_progress, text="Progreso entrenamiento IA:", background="#F0F0F0").pack(side="left")
+        self.progress_var = tk.IntVar(value=0)
+        self.progress_bar = ttk.Progressbar(self.frame_progress, orient='horizontal', mode='determinate', maximum=100, variable=self.progress_var, length=400)
+        self.progress_bar.pack(side="left", padx=10, fill="x", expand=False)
+        # Información de iteraciones y ETA
+        self.progress_info_var = tk.StringVar(value="0/0 (0%) ETA --:--")
+        self.progress_info_label = ttk.Label(self.frame_progress, textvariable=self.progress_info_var, background="#F0F0F0")
+        self.progress_info_label.pack(side="left", padx=(10,0))
+        # Inicialmente oculto
+        try:
+            self.frame_progress.pack_forget()
+        except Exception:
+            pass
 
         # Contenedores de botones
         self.frame_left = tk.Frame(self.frame_controls, bg="#F0F0F0")
@@ -775,9 +797,18 @@ class GUIPrincipal:
                                            (0, len(self.df_actual) - len(self.rl_signals)), 
                                            'constant')
 
-            # Limpiar interfaz
+            # Precalcular confirmación por patrones de velas
+            try:
+                patterns = CandlestickPatterns(self.df_actual)
+                df_patterns = patterns.combined_signal_optimized()
+                # Alinear por índice
+                self._pattern_signals = df_patterns['Final_Signal'].reindex(self.df_actual.index).fillna(0)
+            except Exception:
+                self._pattern_signals = None
+
+            # Limpiar interfaz/estado
             self._limpiar_log()
-            self.compra_activa = None
+            self.posiciones_activas = []
             self.operaciones = []  # Para tracking de operaciones
 
             # Procesar cada señal
@@ -807,66 +838,83 @@ class GUIPrincipal:
         mensaje = f"{timestamp.strftime('%Y-%m-%d %H:%M')} | Close: {row['Close']:.5f}"
 
         if signal == 1:  # Señal de COMPRA
-            self._procesar_compra_rl(row, timestamp, mensaje)
+            self._procesar_compra_rl(idx, row, timestamp, mensaje)
         elif signal == 2:  # Señal de VENTA
-            self._procesar_venta_rl(row, timestamp, mensaje)
+            self._procesar_venta_rl(idx, row, timestamp, mensaje)
         else:  # Sin señal
             self.log(mensaje, color="white")
 
-    def _procesar_compra_rl(self, row, timestamp, mensaje_base):
+    def _procesar_compra_rl(self, idx, row, timestamp, mensaje_base):
         """Procesa una señal de compra RL"""
-        if self.compra_activa:
-            # Ya hay una compra activa, no comprar de nuevo
-            mensaje = mensaje_base + " | SEÑAL RL: COMPRA IGNORADA (ya hay compra activa)"
-            self.log(mensaje, color="orange")
-            return
-            
-        self.compra_activa = {
-            'precio': row["Close"],
+        # Confirmación por patrones (si disponible): solo comprar si Final_Signal == 1
+        if self._pattern_signals is not None:
+            patt = int(self._pattern_signals.iloc[idx])
+            if patt != 1:
+                mensaje = mensaje_base + " | SEÑAL RL: COMPRA NO CONFIRMADA POR PATRONES"
+                self.log(mensaje, color="gray")
+                return
+
+        # Abrir nueva posición (multi-posición permitida)
+        pos = {
+            'precio': float(row["Close"]),
             'fecha': timestamp,
             'indice': len(self.operaciones)
         }
-        
-        mensaje = mensaje_base + f" | SEÑAL RL: COMPRA a {row['Close']:.5f}"
+        self.posiciones_activas.append(pos)
+
+        mensaje = mensaje_base + f" | SEÑAL RL: COMPRA a {row['Close']:.5f} (posiciones activas: {len(self.posiciones_activas)})"
         self.log(mensaje, color="green")
-        
-        # Registrar operación
+
+        # Registrar operación (apertura)
         self.operaciones.append({
             'tipo': 'compra',
-            'precio': row["Close"],
+            'precio': float(row["Close"]),
             'fecha': timestamp,
-            'signal_idx': len(self.rl_signals)
+            'signal_idx': idx
         })
 
-    def _procesar_venta_rl(self, row, timestamp, mensaje_base):
+    def _procesar_venta_rl(self, idx, row, timestamp, mensaje_base):
         """Procesa una señal de venta RL"""
-        if not self.compra_activa:
-            mensaje = mensaje_base + " | SEÑAL RL: VENTA IGNORADA (no hay compra activa)"
+        if not self.posiciones_activas:
+            mensaje = mensaje_base + " | SEÑAL RL: VENTA IGNORADA (no hay posiciones activas)"
             self.log(mensaje, color="orange")
             return
 
-        precio_compra = self.compra_activa['precio']
-        ganancia = row["Close"] - precio_compra
-        porcentaje_ganancia = (ganancia / precio_compra) * 100
+        # Confirmación por patrones (si disponible): solo vender si Final_Signal == -1
+        if self._pattern_signals is not None:
+            patt = int(self._pattern_signals.iloc[idx])
+            if patt != -1:
+                mensaje = mensaje_base + " | SEÑAL RL: VENTA NO CONFIRMADA POR PATRONES"
+                self.log(mensaje, color="gray")
+                return
 
-        # Determinar color y mensaje
-        color, msg_gan = self._formatear_resultado_rl(ganancia, porcentaje_ganancia)
-        
-        mensaje = (f"{mensaje_base} | SEÑAL RL: VENTA a {row['Close']:.5f} | "
+        precio_venta = float(row["Close"])
+        # Cerrar todas las posiciones activas al precio actual
+        cerradas = 0
+        for pos in list(self.posiciones_activas):
+            precio_compra = float(pos['precio'])
+            ganancia = precio_venta - precio_compra
+            porcentaje_ganancia = (ganancia / precio_compra) * 100 if precio_compra != 0 else 0.0
+
+            color, msg_gan = self._formatear_resultado_rl(ganancia, porcentaje_ganancia)
+            msg = (f"{mensaje_base} | SEÑAL RL: VENTA a {precio_venta:.5f} | "
                    f"Compra: {precio_compra:.5f} | {msg_gan}")
-        
-        self.log(mensaje, color=color)
-        
-        # Actualizar operación
-        if self.operaciones and self.compra_activa['indice'] < len(self.operaciones):
-            self.operaciones[self.compra_activa['indice']].update({
-                'venta_precio': row["Close"],
-                'venta_fecha': timestamp,
-                'ganancia': ganancia,
-                'porcentaje_ganancia': porcentaje_ganancia
-            })
+            self.log(msg, color=color)
 
-        self.compra_activa = None
+            # Actualizar operación correspondiente a esta compra (por indice)
+            if pos['indice'] < len(self.operaciones):
+                self.operaciones[pos['indice']].update({
+                    'venta_precio': precio_venta,
+                    'venta_fecha': timestamp,
+                    'ganancia': ganancia,
+                    'porcentaje_ganancia': porcentaje_ganancia
+                })
+
+            self.posiciones_activas.remove(pos)
+            cerradas += 1
+
+        if cerradas > 0:
+            self.log(f"Cerradas {cerradas} posiciones", color="blue")
 
     def _formatear_resultado_rl(self, ganancia, porcentaje):
         """Formatea el resultado de la operación RL"""
@@ -891,6 +939,32 @@ class GUIPrincipal:
                     f"Ganancia total: {ganancia_total:.5f} | "
                     f"Rendimiento: {porcentaje_total:.2f}%", 
                     color="blue" if ganancia_total >= 0 else "red")
+
+            # Resumen monetario con el dinero base introducido
+            try:
+                capital_inicial = float(self.entry_dinero.get()) if self.entry_dinero.get() else float(self.dinero_ficticio)
+            except Exception:
+                capital_inicial = float(self.dinero_ficticio)
+
+            beneficios_totales = sum(g for g in ganancias if g >= 0)
+            perdidas_totales = sum(-g for g in ganancias if g < 0)
+            ganancia_neta = beneficios_totales - perdidas_totales
+            capital_final = capital_inicial + ganancia_neta
+
+            self.log("="*60, color='white')
+            self.log("RESUMEN MONETARIO RL", color='yellow')
+            self.log(f"Capital inicial: ${capital_inicial:,.2f}", color='white')
+            self.log(f"Beneficios: ${beneficios_totales:,.2f}", color='green')
+            self.log(f"Pérdidas: ${perdidas_totales:,.2f}", color='red')
+            self.log(f"Resultado neto: ${ganancia_neta:+,.2f}", color='cyan' if ganancia_neta >= 0 else 'orange')
+            self.log(f"Capital final: ${capital_final:,.2f}", color='cyan')
+            self.log("="*60, color='white')
+
+            # Actualizar etiquetas de la interfaz
+            self.dinero_ficticio = capital_final
+            self.beneficios = beneficios_totales
+            self.perdidas = perdidas_totales
+            self.actualizar_labels()
 
     # ---------------- Funciones Gráficos ----------------
     def _dibujar_grafico(self, df):
@@ -1160,60 +1234,252 @@ class GUIPrincipal:
     # ---------------- IA ----------------
     def entrenar_ia(self):
         """Muestra el modal de entrenamiento de IA"""
-        def on_accept(seleccion_fx=None, seleccion_patterns=None, max_orders=5):
-            """Recibe selecciones del modal y llama a las funciones reales."""
+        def on_accept(
+            seleccion_fx=None,
+            seleccion_patterns=None,
+            max_orders=5,
+            candle_seconds=None,
+            use_iterations=False,
+            iterations=0,
+            use_winrate=False,
+            winrate=0.0,
+            selected_model_path=None,
+        ):
+            """Recibe selecciones del modal e inicia el entrenador en hilo de fondo."""
             seleccion_fx = seleccion_fx or {}
             seleccion_patterns = seleccion_patterns or []
 
-            self.log("Iniciando entrenamiento de IA...", "green")
+            # Parse seconds like "5s" -> 5
             try:
-                # Instanciar helpers con el DataFrame actual
-                fx = ForexStrategies(self.df_actual)
-                patterns = CandlestickPatterns(self.df_actual)
+                secs = int(str(candle_seconds).lower().replace('s','').strip())
+            except Exception:
+                secs = 1
 
-                # 1) Ejecutar estrategias Forex seleccionadas
-                for metodo, params in seleccion_fx.items():
-                    try:
-                        fn = getattr(fx, metodo, None)
-                        if not callable(fn):
-                            self.log(f"Método Forex no encontrado: {metodo}", color='red')
-                            continue
-                        risk_kwargs = {
-                            'risk_per_trade': params.get('riesgo', 0.01),
-                            'rr_ratio': params.get('rr', 2.0),
-                        }
-                        df_res = fn(**risk_kwargs)
-                        # Log básico de resultados
-                        if isinstance(df_res, type(self.df_actual)) and 'Signal' in df_res.columns:
-                            n_signals = int((df_res['Signal'] != 0).sum())
-                            self.log(f"Estrategia Forex '{metodo}' ejecutada | Señales: {n_signals}", color='cyan')
-                        else:
-                            self.log(f"Estrategia Forex '{metodo}' ejecutada", color='cyan')
-                    except Exception as e:
-                        self.log(f"Error en estrategia Forex {metodo}: {e}", color='red')
+            # UI: opacidad 0.5 al inicio
+            try:
+                if hasattr(self, 'grafico_manager'):
+                    self.grafico_manager.set_candles_opacity(0.5)
+            except Exception:
+                pass
 
-                # 2) Ejecutar patrones de velas seleccionados
-                for metodo in seleccion_patterns:
-                    try:
-                        fnp = getattr(patterns, metodo, None)
-                        if not callable(fnp):
-                            self.log(f"Patrón no encontrado: {metodo}", color='red')
-                            continue
-                        df_pat = fnp()
-                        n_pat = 0
+            # Programar restauración de opacidad después de N segundos
+            try:
+                self.root.after(max(0, secs) * 1000, lambda: self.grafico_manager.set_candles_opacity(1.0))
+            except Exception:
+                pass
+
+            # Mostrar barra de progreso
+            try:
+                self._show_progress_bar()
+                self.progress_var.set(0)
+                self.progress_info_var.set("0/0 (0%) ETA --:--")
+                self._train_start_ts = time.time()
+                self._train_total = 0
+            except Exception:
+                pass
+
+            # Preparar archivo de log por sesión
+            try:
+                project_root = os.path.dirname(os.path.dirname(__file__))
+                logs_dir = os.path.join(project_root, 'logs')
+                os.makedirs(logs_dir, exist_ok=True)
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                self._training_log_path = os.path.join(logs_dir, f'log_{timestamp}.txt')
+            except Exception:
+                self._training_log_path = None
+
+            def _file_log(line: str):
+                try:
+                    if not getattr(self, '_training_log_path', None):
+                        return
+                    ts = datetime.now().strftime('%H:%M:%S')
+                    with open(self._training_log_path, 'a', encoding='utf-8') as f:
+                        f.write(f"[{ts}] {line}\n")
+                except Exception:
+                    pass
+
+            # Obtener capital del entry
+            try:
+                capital_inicial = float(self.entry_dinero.get())
+                if capital_inicial <= 0:
+                    raise ValueError
+            except Exception:
+                messagebox.showerror("Entrenamiento IA", "Ingrese un capital válido en 'Dinero ficticio'")
+                return
+
+            # Callbacks seguros para UI
+            def ui_log(msg: str, color: str = 'white'):
+                try:
+                    text = str(msg)
+                    self.root.after(0, lambda: self.log(text, color))
+                    _file_log(text)
+                except Exception:
+                    pass
+
+            def ui_progress(cur: int, total: int):
+                try:
+                    # Actualizar porcentaje barra
+                    pct = int((cur / max(1, total)) * 100)
+                    self.root.after(0, lambda: self.progress_var.set(min(max(pct, 0), 100)))
+                    # Guardar total si cambia
+                    if getattr(self, '_train_total', 0) != total:
+                        self._train_total = total
+                    # Calcular ETA
+                    def _fmt_eta():
                         try:
-                            if isinstance(df_pat, pd.DataFrame) and 'Signal' in df_pat.columns:
-                                n_pat = int((df_pat['Signal'] != 0).sum())
+                            start = getattr(self, '_train_start_ts', None)
+                            if not start:
+                                return "--:--"
+                            elapsed = max(0.0, time.time() - start)
+                            rate = (cur / elapsed) if elapsed > 0 else 0.0
+                            remaining = ((total - cur) / rate) if rate > 0 else 0.0
+                            m = int(remaining // 60)
+                            s = int(remaining % 60)
+                            return f"{m:02d}:{s:02d}"
                         except Exception:
-                            n_pat = 0
-                        self.log(f"Patrón '{metodo}' ejecutado | Detecciones: {n_pat}", color='yellow')
-                    except Exception as e:
-                        self.log(f"Error ejecutando patrón {metodo}: {e}", color='red')
+                            return "--:--"
+                    info_text = f"{cur}/{total} ({pct}%) ETA {_fmt_eta()}"
+                    self.root.after(0, lambda t=info_text: self.progress_info_var.set(t))
+                except Exception:
+                    pass
 
-                # 3) Resumen final
-                self.log(f"Finalizado. Estrategias FX: {len(seleccion_fx)} | Patrones: {len(seleccion_patterns)}", color='white')
+            def ui_finish(stats: dict):
+                # Si hubo error, loguear y ocultar barra inmediatamente
+                try:
+                    err = stats.get('error') if isinstance(stats, dict) else None
+                    if err:
+                        self.root.after(0, lambda: ui_log("="*60, 'white'))
+                        self.root.after(0, lambda: ui_log("ERROR ENTRENAMIENTO IA", 'red'))
+                        self.root.after(0, lambda: ui_log(str(err), 'red'))
+                        self.root.after(0, lambda: ui_log("="*60, 'white'))
+                        self.root.after(0, lambda: self.progress_var.set(0))
+                        self.root.after(0, self._hide_progress_bar)
+                        return
+                except Exception:
+                    pass
+
+                # Actualizar labels de dinero y resumen
+                try:
+                    capital_final = stats.get('capital_final', self.dinero_ficticio)
+                    beneficio_total = stats.get('beneficio_total', 0.0)
+                    self.dinero_ficticio = capital_final
+                    # Nota: los beneficios/perdidas acumulados pueden calcularse mejor desde RiskManager si se requiere
+                    self.actualizar_labels()
+                except Exception:
+                    pass
+
+                # Guardar modelo RL si está disponible
+                try:
+                    # Cargar/guardar usando RLTradingAgent existente si ya está instanciado
+                    if hasattr(self, 'rl_agent') and self.rl_agent is not None:
+                        self.rl_agent.guardar_modelo()
+                    # En otro caso, no bloqueamos: opcionalmente podría diferirse
+                except Exception:
+                    ui_log("No fue posible guardar el modelo RL.", 'red')
+
+                # Mostrar resumen en el log inferior (y archivo)
+                try:
+                    ops_g = int(stats.get('operaciones_ganadas', 0))
+                    ops_p = int(stats.get('operaciones_perdidas', 0))
+                    ops_a = int(stats.get('operaciones_activas', 0))
+                    max_ops = int(stats.get('max_operaciones', 0))
+                    winrate = float(stats.get('winrate', 0.0))
+                    self.root.after(0, lambda: ui_log("="*60, 'white'))
+                    self.root.after(0, lambda: ui_log("RESUMEN ENTRENAMIENTO IA", 'yellow'))
+                    self.root.after(0, lambda: ui_log(f"Capital final: ${capital_final:,.2f}", 'cyan'))
+                    self.root.after(0, lambda: ui_log(f"Beneficio total: ${beneficio_total:,.2f}", 'cyan'))
+                    self.root.after(0, lambda: ui_log(f"Operaciones ganadas: {ops_g}", 'green'))
+                    self.root.after(0, lambda: ui_log(f"Operaciones perdidas: {ops_p}", 'red'))
+                    self.root.after(0, lambda: ui_log(f"Win Rate: {winrate:.1f}%", 'white'))
+                    self.root.after(0, lambda: ui_log(f"Slots usados: {ops_a}/{max_ops}", 'blue'))
+                    self.root.after(0, lambda: ui_log("="*60, 'white'))
+                except Exception:
+                    pass
+
+                # Completar y ocultar barra de progreso tras breve pausa
+                try:
+                    self.root.after(0, lambda: self.progress_var.set(100))
+                    self.root.after(1200, self._hide_progress_bar)
+                except Exception:
+                    pass
+
+            # Preparar/cargar agente RL si se proporcionó ruta
+            try:
+                if selected_model_path:
+                    # Acepta rutas con o sin .zip
+                    model_dir, fname = os.path.split(selected_model_path)
+                    base, ext = os.path.splitext(fname)
+                    model_name = base
+                    if not model_dir:
+                        model_dir = 'models_rl'
+                    # Crear agente y cargar si existe
+                    self.rl_agent = RLTradingAgent(
+                        self.df_actual,
+                        model_dir=model_dir,
+                        model_name=model_name,
+                        log_fn=lambda m: ui_log(m, 'cyan'),
+                    )
+                    self.rl_agent.cargar_modelo()
+                else:
+                    # Asegurar agente por defecto para guardar al final
+                    if not hasattr(self, 'rl_agent') or self.rl_agent is None:
+                        self.rl_agent = RLTradingAgent(self.df_actual, log_fn=lambda m: ui_log(m, 'cyan'))
             except Exception as e:
-                self.log(f"Error en entrenamiento IA: {e}", color='red')
+                ui_log(f"No se pudo preparar el agente RL: {e}", 'red')
+
+            # Iniciar entrenador
+            trainer = AITrainer(
+                df=self.df_actual,
+                seleccion_fx=seleccion_fx,
+                seleccion_patterns=seleccion_patterns,
+                max_orders=max_orders,
+                capital_inicial=capital_inicial,
+                use_iterations=use_iterations,
+                iterations=iterations,
+                use_winrate=use_winrate,
+                winrate_target=winrate,
+                on_log=ui_log,
+                on_progress=ui_progress,
+                on_finish=ui_finish,
+            )
+
+            # Escribir cabecera de sesión en archivo de log
+            try:
+                ui_log("="*60, 'white')
+                ui_log("INICIO SESIÓN ENTRENAMIENTO IA", 'yellow')
+                ui_log(f"Fecha/Hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", 'white')
+                ui_log(f"Max órdenes: {max_orders}", 'white')
+                stop_desc = (
+                    f"Iteraciones: {iterations}" if use_iterations else (
+                    f"WinRate objetivo: {winrate:.1f}%" if use_winrate else "Sin condición explícita"
+                ))
+                ui_log(f"Parada: {stop_desc}", 'white')
+                if candle_seconds:
+                    ui_log(f"Visualización velas: {candle_seconds}", 'white')
+                if selected_model_path:
+                    ui_log(f"Modelo RL: {selected_model_path}", 'white')
+                if seleccion_fx:
+                    ui_log(f"Estrategias FX: {', '.join(seleccion_fx.keys())}", 'white')
+                if seleccion_patterns:
+                    ui_log(f"Patrones: {', '.join(seleccion_patterns)}", 'white')
+                ui_log("="*60, 'white')
+            except Exception:
+                pass
+            trainer.start()
+
+    # ---- Utilidades barra de progreso ----
+    def _show_progress_bar(self):
+        try:
+            self.frame_progress.pack(fill="x", padx=20, pady=(0, 10))
+            self.progress_var.set(0)
+        except Exception:
+            pass
+
+    def _hide_progress_bar(self):
+        try:
+            self.frame_progress.pack_forget()
+        except Exception:
+            pass
 
         # Verificar si hay datos cargados
         if self.df_actual is None:
