@@ -1145,10 +1145,60 @@ class GUIPrincipal:
     # ---------------- IA ----------------
     def entrenar_ia(self):
         """Muestra el modal de entrenamiento de IA"""
-        def on_accept():
-            # Aquí irá la lógica para iniciar el entrenamiento
+        def on_accept(seleccion_fx=None, seleccion_patterns=None, max_orders=5):
+            """Recibe selecciones del modal y llama a las funciones reales."""
+            seleccion_fx = seleccion_fx or {}
+            seleccion_patterns = seleccion_patterns or []
+
             self.log("Iniciando entrenamiento de IA...", "green")
-            # TODO: Implementar la lógica de entrenamiento
+            try:
+                # Instanciar helpers con el DataFrame actual
+                fx = ForexStrategies(self.df_actual)
+                patterns = CandlestickPatterns(self.df_actual)
+
+                # 1) Ejecutar estrategias Forex seleccionadas
+                for metodo, params in seleccion_fx.items():
+                    try:
+                        fn = getattr(fx, metodo, None)
+                        if not callable(fn):
+                            self.log(f"Método Forex no encontrado: {metodo}", color='red')
+                            continue
+                        risk_kwargs = {
+                            'risk_per_trade': params.get('riesgo', 0.01),
+                            'rr_ratio': params.get('rr', 2.0),
+                        }
+                        df_res = fn(**risk_kwargs)
+                        # Log básico de resultados
+                        if isinstance(df_res, type(self.df_actual)) and 'Signal' in df_res.columns:
+                            n_signals = int((df_res['Signal'] != 0).sum())
+                            self.log(f"Estrategia Forex '{metodo}' ejecutada | Señales: {n_signals}", color='cyan')
+                        else:
+                            self.log(f"Estrategia Forex '{metodo}' ejecutada", color='cyan')
+                    except Exception as e:
+                        self.log(f"Error en estrategia Forex {metodo}: {e}", color='red')
+
+                # 2) Ejecutar patrones de velas seleccionados
+                for metodo in seleccion_patterns:
+                    try:
+                        fnp = getattr(patterns, metodo, None)
+                        if not callable(fnp):
+                            self.log(f"Patrón no encontrado: {metodo}", color='red')
+                            continue
+                        df_pat = fnp()
+                        n_pat = 0
+                        try:
+                            if isinstance(df_pat, pd.DataFrame) and 'Signal' in df_pat.columns:
+                                n_pat = int((df_pat['Signal'] != 0).sum())
+                        except Exception:
+                            n_pat = 0
+                        self.log(f"Patrón '{metodo}' ejecutado | Detecciones: {n_pat}", color='yellow')
+                    except Exception as e:
+                        self.log(f"Error ejecutando patrón {metodo}: {e}", color='red')
+
+                # 3) Resumen final
+                self.log(f"Finalizado. Estrategias FX: {len(seleccion_fx)} | Patrones: {len(seleccion_patterns)}", color='white')
+            except Exception as e:
+                self.log(f"Error en entrenamiento IA: {e}", color='red')
 
         # Verificar si hay datos cargados
         if self.df_actual is None:

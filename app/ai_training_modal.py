@@ -181,6 +181,13 @@ class AITrainingModal(tk.Toplevel):
             state="disabled"
         )
         self.btn_accept.pack(side="right", padx=5)
+        # Aplicar estado pendiente si fue calculado antes de crear el botón
+        if hasattr(self, "_pending_accept_state"):
+            try:
+                self.btn_accept.config(state=self._pending_accept_state)
+            except Exception:
+                pass
+            delattr(self, "_pending_accept_state")
 
         # Configurar estilos
         self._setup_styles()
@@ -293,6 +300,36 @@ class AITrainingModal(tk.Toplevel):
     
     def _load_strategies(self, parent_frame):
         """Carga las estrategias disponibles en el frame especificado"""
+        # Mapear etiquetas visibles -> métodos reales de ForexStrategies
+        self._fx_label_to_method = {
+            "ADX (Tendencia fuerte)": "adx_strategy",
+            "Seguimiento de Tendencia (EMA)": "trend_following",
+            "Ruptura de Rangos (Breakout)": "breakout",
+            "RSI (Sobrecompra/Sobreventa)": "rsi_strategy",
+        }
+        # Mapear etiquetas visibles -> métodos reales de CandlestickPatterns
+        self._pattern_label_to_method = {
+            "Doji": "doji",
+            "Martillo (Hammer)": "hammer",
+            "Hombre Colgado (Hanging Man)": "hanging_man",
+            "Estrella Fugaz (Shooting Star)": "shooting_star",
+            "Peonza (Spinning Top)": "spinning_top",
+            "Martillo Invertido (Inverted Hammer)": "inverted_hammer",
+            "Envolvente Alcista (Bullish Engulfing)": "bullish_engulfing",
+            "Envolvente Bajista (Bearish Engulfing)": "bearish_engulfing",
+            "Línea Perforante (Piercing Line)": "piercing_line",
+            "Nube Oscura (Dark Cloud Cover)": "dark_cloud_cover",
+            "Pinzas Superior (Tweezer Top)": "tweezer_top",
+            "Pinzas Inferior (Tweezer Bottom)": "tweezer_bottom",
+            "Estrella de la Mañana (Morning Star)": "morning_star",
+            "Estrella de la Tarde (Evening Star)": "evening_star",
+            "Tres Soldados Blancos (Three White Soldiers)": "three_white_soldiers",
+            "Tres Cuervos Negros (Three Black Crows)": "three_black_crows",
+            "Three Inside Up": "three_inside_up",
+            "Three Inside Down": "three_inside_down",
+            "Rising Three Methods": "rising_three_methods",
+            "Falling Three Methods": "falling_three_methods",
+        }
         # Sección de estrategias Forex con cabecera alineada
         header_frame = ttk.Frame(parent_frame)
         header_frame.pack(fill="x", pady=(0, 5))
@@ -311,25 +348,14 @@ class AITrainingModal(tk.Toplevel):
         ttk.Label(controls_header, text="% Riesgo:", font=("Arial", 8)).pack(side="left", padx=(0, 10))
         ttk.Label(controls_header, text="RR Ratio:", font=("Arial", 8)).pack(side="left")
         
-        # Inicializar diccionarios para almacenar las variables de control
-        self.strategies = [
-            'Estrategia 1', 'Estrategia 2', 'Estrategia 3', 'Estrategia 4', 'Estrategia 5',
-            'Estrategia 6', 'Estrategia 7', 'Estrategia 8', 'Estrategia 9', 'Estrategia 10'
-        ]
+        # Inicializar estructuras
         self.strategy_vars = {}
         self.risk_vars = {}
         self.rr_vars = {}
+        self.pattern_vars = {}
         
-        # Estrategias Forex (ejemplo)
-        forex_strategies = [
-            "Media Móvil Simple (SMA)",
-            "Media Móvil Exponencial (EMA)",
-            "Bandas de Bollinger",
-            "RSI (Índice de Fuerza Relativa)",
-            "MACD (Media Móvil de Convergencia/Divergencia)",
-            "Estocástico",
-            "Ichimoku Cloud"
-        ]
+        # Estrategias Forex (usando etiquetas mapeadas)
+        forex_strategies = list(self._fx_label_to_method.keys())
         
         for strategy in forex_strategies:
             # Frame para cada estrategia
@@ -357,6 +383,7 @@ class AITrainingModal(tk.Toplevel):
             risk_frame.pack(side="right", padx=(10, 0))
             
             # Almacenar las variables de control
+            self.strategy_vars[strategy] = self.strategy_vars.get(strategy, tk.BooleanVar(value=False))
             self.risk_vars[strategy] = risk_var
             self.rr_vars[strategy] = rr_var
         
@@ -371,24 +398,12 @@ class AITrainingModal(tk.Toplevel):
         )
         candle_label.pack(anchor="w", pady=(0, 5))
         
-        # Patrones de velas (ejemplo)
-        candle_patterns = [
-            "Martillo (Hammer)",
-            "Hombre Colgado (Hanging Man)",
-            "Estrella Fugaz (Shooting Star)",
-            "Envolvente Alcista (Bullish Engulfing)",
-            "Envolvente Bajista (Bearish Engulfing)",
-            "Harami Alcista (Bullish Harami)",
-            "Harami Bajista (Bearish Harami)",
-            "Estrella de la Mañana (Morning Star)",
-            "Estrella de la Tarde (Evening Star)",
-            "Tres Soldados Blancos (Three White Soldiers)",
-            "Tres Cuervos Negros (Three Black Crows)"
-        ]
+        # Patrones de velas (usando etiquetas mapeadas)
+        candle_patterns = list(self._pattern_label_to_method.keys())
         
         for pattern in candle_patterns:
             var = tk.BooleanVar()
-            self.strategy_vars[pattern] = var
+            self.pattern_vars[pattern] = var
             cb = ttk.Checkbutton(
                 parent_frame,
                 text=pattern,
@@ -397,6 +412,25 @@ class AITrainingModal(tk.Toplevel):
                 offvalue=False
             )
             cb.pack(anchor="w", padx=(20, 0), pady=2)
+
+        # Habilitar/deshabilitar botón Aceptar según selección
+        def _update_accept_state(*_):
+            any_fx = any(v.get() for v in self.strategy_vars.values())
+            any_pt = any(v.get() for v in self.pattern_vars.values())
+            desired_state = "normal" if (any_fx or any_pt) else "disabled"
+            if hasattr(self, 'btn_accept'):
+                try:
+                    self.btn_accept.config(state=desired_state)
+                except Exception:
+                    pass
+            else:
+                # Guardar para aplicar tras crear el botón
+                self._pending_accept_state = desired_state
+
+        for v in list(self.strategy_vars.values()) + list(self.pattern_vars.values()):
+            v.trace_add('write', _update_accept_state)
+
+        _update_accept_state()
     
     def _update_status(self, is_valid, message):
         """Actualiza el estado de la interfaz según la validación"""
@@ -424,12 +458,38 @@ class AITrainingModal(tk.Toplevel):
                 text=message,
                 foreground="red"
             )
-            self.btn_accept.config(state="disabled")
+            if hasattr(self, 'btn_accept'):
+                self.btn_accept.config(state="disabled")
+            else:
+                self._pending_accept_state = "disabled"
 
     def _on_accept(self):
-        """Maneja el evento de aceptar"""
-        if self.on_accept_callback and self.selected_model:
-            self.on_accept_callback(self.selected_model)
+        """Maneja el evento de aceptar: recopila selecciones y las devuelve."""
+        seleccion_fx = {}
+        for label, var in self.strategy_vars.items():
+            if var.get():
+                riesgo = float(self.risk_vars[label].get() or 0.0) / (100 if float(self.risk_vars[label].get() or 0.0) > 1.0 else 1.0)
+                rr = float(self.rr_vars[label].get() or 0.0)
+                metodo = self._fx_label_to_method.get(label)
+                if metodo:
+                    seleccion_fx[metodo] = {"tipo": "forex", "riesgo": riesgo, "rr": rr}
+
+        seleccion_patterns = []
+        for label, var in self.pattern_vars.items():
+            if var.get():
+                metodo = self._pattern_label_to_method.get(label)
+                if metodo:
+                    seleccion_patterns.append(metodo)
+
+        max_orders = int(self.max_orders.get()) if hasattr(self, 'max_orders') else 5
+
+        if self.on_accept_callback:
+            try:
+                self.on_accept_callback(seleccion_fx, seleccion_patterns, max_orders)
+            except TypeError:
+                # Compatibilidad con callbacks antiguos sin parámetros
+                self.on_accept_callback()
+
         self.destroy()
 
     def show(self):
