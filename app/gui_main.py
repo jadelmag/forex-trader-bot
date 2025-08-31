@@ -14,6 +14,7 @@ from .tooltip_zoom_pan import TooltipZoomPan
 from .csv_loader_modal import CSVLoaderModal
 from .patterns_modal import PatternsModal
 from .strategies_modal import EstrategiasModal
+from .ai_training_modal import AITrainingModal
 from patterns.candlestickpatterns import CandlestickPatterns
 
 # Imports externos
@@ -211,11 +212,6 @@ class GUIPrincipal:
         )
         self.btn_backtesting.pack(side="left", padx=5)
 
-        self.btn_telegram = ttk.Button(
-            self.frame_right, text="Telegram", command=self.abrir_modal_telegram, state="disabled"
-        )
-        self.btn_telegram.pack(side="left", padx=5)
-
         # ---------------- Botones RL ----------------
         self.btn_entrenar_ia = ttk.Button(
             self.frame_right, text="Entrenar IA", command=self.entrenar_ia, state="disabled"
@@ -236,6 +232,12 @@ class GUIPrincipal:
             self.frame_right, text="Aplicar Señales RL", command=self.aplicar_senales_rl, state="disabled"
         )
         self.btn_aplicar_rl.pack(side="left", padx=5)
+
+        # ---------------- Botones TELEGRAM ----------------
+        self.btn_telegram = ttk.Button(
+            self.frame_right, text="Telegram", command=self.abrir_modal_telegram, state="disabled"
+        )
+        self.btn_telegram.pack(side="left", padx=5)
 
     # ---------------- Funciones CSV ----------------
     def cargar_csv(self):
@@ -1142,9 +1144,20 @@ class GUIPrincipal:
 
     # ---------------- IA ----------------
     def entrenar_ia(self):
-        """Entrena la IA"""
-        print("Entrenar IA")
+        """Muestra el modal de entrenamiento de IA"""
+        def on_accept():
+            # Aquí irá la lógica para iniciar el entrenamiento
+            self.log("Iniciando entrenamiento de IA...", "green")
+            # TODO: Implementar la lógica de entrenamiento
 
+        # Verificar si hay datos cargados
+        if self.df_actual is None:
+            messagebox.showwarning("Datos requeridos", "Por favor, carga los datos primero.")
+            return
+
+        # Mostrar el modal de entrenamiento
+        modal = AITrainingModal(self.root, on_accept_callback=on_accept)
+        modal.show()
 
     # ---------------- Run ----------------
     def run(self):
