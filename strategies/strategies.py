@@ -34,7 +34,7 @@ class ForexStrategies:
     def _attach_execution(self, df: pd.DataFrame, exec_lag: int = 1) -> pd.DataFrame:
         """Agrega ExecSignal y Position (posición mantenida)."""
         out = df.copy()
-        out['ExecSignal'] = out['Signal'].shift(exec_lag).fillna(0)
+        out['ExecSignal'] = out['Signal'].shift(exec_lag, fill_value=0)
         out['Position'] = self._position_from_signal(out['ExecSignal'])
         return out
 
@@ -46,8 +46,8 @@ class ForexStrategies:
         """
         df = df.copy()
         tr1 = df['High'] - df['Low']
-        tr2 = (df['High'] - df['Close'].shift(1)).abs()
-        tr3 = (df['Low'] - df['Close'].shift(1)).abs()
+        tr2 = (df['High'] - df['Close'].shift(1, fill_value=df['Close'].iloc[0])).abs()
+        tr3 = (df['Low'] - df['Close'].shift(1, fill_value=df['Close'].iloc[0])).abs()
         df['TR'] = np.maximum(tr1, np.maximum(tr2, tr3))
         df['ATR'] = df['TR'].rolling(atr_period).mean()
 
@@ -117,7 +117,7 @@ class ForexStrategies:
 
         df['TR'] = np.maximum(
             df['High'] - df['Low'],
-            np.maximum((df['High'] - df['Close'].shift(1)).abs(), (df['Low'] - df['Close'].shift(1)).abs())
+            np.maximum((df['High'] - df['Close'].shift(1, fill_value=df['Close'].iloc[0])).abs(), (df['Low'] - df['Close'].shift(1, fill_value=df['Close'].iloc[0])).abs())
         )
 
         up_move = df['High'] - df['High'].shift(1)
@@ -164,7 +164,7 @@ class ForexStrategies:
         df['EMA_long'] = self._ema(df['Close'], long_window)
 
         cond = df['EMA_short'] > df['EMA_long']
-        cond_shifted = cond.shift(1).fillna(False)
+        cond_shifted = cond.shift(1, fill_value=False)
         cross_up = cond & (~cond_shifted)
         cross_dn = (~cond) & cond_shifted
 
@@ -209,7 +209,7 @@ class ForexStrategies:
         df['SMA_short'] = self._sma(df['Close'], short)
         df['SMA_long'] = self._sma(df['Close'], long)
         cond = df['SMA_short'] > df['SMA_long']
-        cond_shifted = cond.shift(1).fillna(False)
+        cond_shifted = cond.shift(1, fill_value=False)
         cross_up = cond & (~cond_shifted)
         cross_dn = (~cond) & cond_shifted
         df['Signal'] = 0
