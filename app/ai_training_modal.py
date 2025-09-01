@@ -22,7 +22,7 @@ class AITrainingModal(tk.Toplevel):
         
         # Tamaño y posición inicial
         self.width = 500
-        self.height = 750
+        self.height = 780
         self.geometry(f"{self.width}x{self.height}")
         self.resizable(False, True)  # Permitir redimensionar en altura
         self.grab_set()  # Hace la ventana modal
@@ -701,28 +701,47 @@ class AITrainingModal(tk.Toplevel):
         if self.on_accept_callback:
             # Intentar con la firma más completa primero (sin iteraciones)
             try:
-                self.on_accept_callback(
-                    seleccion_fx,
-                    seleccion_patterns,
-                    max_orders,
-                    use_winrate,
-                    winrate,
-                    selected_model_path,
-                    max_attempts,
-                    seed_val,
-                    save_best,
-                    seleccion_candle,
-                )
-            except TypeError:
+                # Intento 1: pasar con argumentos con nombre, incluyendo seleccion_candle si la firma lo permite
                 try:
-                    # Compatibilidad con 3 parámetros (muy antiguo)
-                    self.on_accept_callback(seleccion_fx, seleccion_patterns, max_orders)
+                    self.on_accept_callback(
+                        seleccion_fx=seleccion_fx,
+                        seleccion_patterns=seleccion_patterns,
+                        max_orders=max_orders,
+                        use_winrate=use_winrate,
+                        winrate=winrate,
+                        selected_model_path=selected_model_path,
+                        max_attempts=max_attempts,
+                        seed_val=seed_val,
+                        save_best=save_best,
+                        seleccion_candle=seleccion_candle,
+                    )
                 except TypeError:
+                    # Intento 2: sin seleccion_candle
                     try:
-                        # Compatibilidad con 0 parámetros (fallback extremo)
-                        self.on_accept_callback()
+                        self.on_accept_callback(
+                            seleccion_fx=seleccion_fx,
+                            seleccion_patterns=seleccion_patterns,
+                            max_orders=max_orders,
+                            use_winrate=use_winrate,
+                            winrate=winrate,
+                            selected_model_path=selected_model_path,
+                            max_attempts=max_attempts,
+                            seed_val=seed_val,
+                            save_best=save_best,
+                        )
                     except TypeError:
-                        pass
+                        # Intento 3: última compatibilidad con 3 parámetros
+                        try:
+                            self.on_accept_callback(seleccion_fx, seleccion_patterns, max_orders)
+                        except TypeError:
+                            try:
+                                # Intento 4: sin parámetros
+                                self.on_accept_callback()
+                            except TypeError:
+                                pass
+            except Exception:
+                # Seguridad: no romper el modal si algo falla en los callbacks
+                pass
 
         self.destroy()
 
