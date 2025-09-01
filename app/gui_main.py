@@ -341,12 +341,19 @@ class GUIPrincipal:
             if callable(getattr(CandleStrategies, nombre)) and not nombre.startswith("_")
         ]
 
-        # Abrir modal con las estrategias separadas
+        # Obtener métodos públicos de patrones de velas
+        pattern_methods = [
+            nombre for nombre in dir(CandlestickPatterns)
+            if callable(getattr(CandlestickPatterns, nombre)) and not nombre.startswith("_")
+        ]
+
+        # Abrir modal con las estrategias y patrones
         EstrategiasModal(
-            self.root, 
+            self.root,
             estrategias_fx=sorted(fx_methods),
             estrategias_candle=sorted(candle_methods),
-            callback=self._on_estrategias_seleccionadas
+            callback=self._on_estrategias_seleccionadas,
+            patrones_list=sorted(pattern_methods),
         )
 
     def _on_estrategias_seleccionadas(self, seleccion, max_orders=5, opciones=None):
@@ -381,10 +388,14 @@ class GUIPrincipal:
 
         df_new = self.df_actual.copy()
 
+        # Instancia para patrones de velas (si se usa)
+        patterns_instance = None
+
         # Primera pasada: aplicar estrategias y generar señales
         for nombre, params in seleccion.items():
             try:
-                if params.get("tipo") == "forex":
+                tipo_sel = params.get("tipo")
+                if tipo_sel == "forex":
                     # Estrategia Forex con gestión de riesgo
                     metodo = getattr(self.strategies_fx, nombre, None)
                     if not callable(metodo):
@@ -396,14 +407,25 @@ class GUIPrincipal:
                         'rr_ratio': params.get('rr', 2.0),
                     }
                     df_res = metodo(**risk_kwargs)
-                    
-                else:
+                elif tipo_sel == "candle":
                     # Estrategia Candle sin gestión de riesgo
                     metodo = getattr(self.strategies_candle, nombre, None)
                     if not callable(metodo):
                         self.log(f"Estrategia Candle no encontrada: {nombre}", color='red')
                         continue
                     df_res = metodo()
+                elif tipo_sel == "pattern":
+                    # Detección de patrón (no abre operaciones directamente)
+                    if patterns_instance is None:
+                        patterns_instance = CandlestickPatterns(self.df_actual)
+                    metodo = getattr(patterns_instance, nombre, None)
+                    if not callable(metodo):
+                        self.log(f"Patrón no encontrado: {nombre}", color='red')
+                        continue
+                    df_res = metodo()
+                else:
+                    self.log(f"Tipo de selección desconocido: {tipo_sel}", color='red')
+                    continue
 
                 if 'Signal' in df_res.columns:
                     col_name = f"{nombre}_Signal"
@@ -419,11 +441,19 @@ class GUIPrincipal:
                             val = sig_series.loc[idx]
                             close_val = df_new.loc[idx, 'Close'] if 'Close' in df_new.columns else None
                             fecha_str = idx.strftime('%d/%m/%Y %H:%M') if hasattr(idx, 'strftime') else str(idx)
-                            tipo = "Forex" if params.get("tipo") == "forex" else "Candle"
+                            if tipo_sel == "forex":
+                                tipo = "Forex"
+                                color = 'cyan'
+                            elif tipo_sel == "candle":
+                                tipo = "Candle"
+                                color = 'yellow'
+                            else:
+                                tipo = "Pattern"
+                                color = 'magenta'
                             msg = f"DETECCIÓN: {nombre} ({tipo}) | Fecha: {fecha_str} | Señal: {val}"
                             if close_val is not None:
                                 msg += f" | Precio: {close_val:.5f}"
-                            self.log(msg, color='cyan' if tipo == "Forex" else 'yellow')
+                            self.log(msg, color=color)
                         
             except Exception as e:
                 self.log(f"Error aplicando estrategia {nombre}: {e}", color='red')

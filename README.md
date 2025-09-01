@@ -219,6 +219,15 @@ pip install --upgrade git+https://github.com/AI4Finance-Foundation/FinRL.git
 
 ---
 
+## Estrategias
+
+
+## Patrones
+
+
+
+---
+
 ## Ficheros CSV - FX-1-Minute-Data
 
 Los ficheros se han obtenido de `https://github.com/philipperemy/FX-1-Minute-Data`.
