@@ -8,6 +8,8 @@ import shutil
 import re
 
 from .progress_modal import centrar_ventana
+from strategies import ForexStrategies, CandleStrategies
+from patterns.candlestickpatterns import CandlestickPatterns
 
 
 class AITrainingModal(tk.Toplevel):
@@ -440,36 +442,19 @@ class AITrainingModal(tk.Toplevel):
     
     def _load_strategies(self, parent_frame):
         """Carga las estrategias disponibles en el frame especificado"""
-        # Mapear etiquetas visibles -> métodos reales de ForexStrategies
-        self._fx_label_to_method = {
-            "ADX (Tendencia fuerte)": "adx_strategy",
-            "Seguimiento de Tendencia (EMA)": "trend_following",
-            "Ruptura de Rangos (Breakout)": "breakout",
-            "RSI (Sobrecompra/Sobreventa)": "rsi_strategy",
-        }
-        # Mapear etiquetas visibles -> métodos reales de CandlestickPatterns
-        self._pattern_label_to_method = {
-            "Doji": "doji",
-            "Martillo (Hammer)": "hammer",
-            "Hombre Colgado (Hanging Man)": "hanging_man",
-            "Estrella Fugaz (Shooting Star)": "shooting_star",
-            "Peonza (Spinning Top)": "spinning_top",
-            "Martillo Invertido (Inverted Hammer)": "inverted_hammer",
-            "Envolvente Alcista (Bullish Engulfing)": "bullish_engulfing",
-            "Envolvente Bajista (Bearish Engulfing)": "bearish_engulfing",
-            "Línea Perforante (Piercing Line)": "piercing_line",
-            "Nube Oscura (Dark Cloud Cover)": "dark_cloud_cover",
-            "Pinzas Superior (Tweezer Top)": "tweezer_top",
-            "Pinzas Inferior (Tweezer Bottom)": "tweezer_bottom",
-            "Estrella de la Mañana (Morning Star)": "morning_star",
-            "Estrella de la Tarde (Evening Star)": "evening_star",
-            "Tres Soldados Blancos (Three White Soldiers)": "three_white_soldiers",
-            "Tres Cuervos Negros (Three Black Crows)": "three_black_crows",
-            "Three Inside Up": "three_inside_up",
-            "Three Inside Down": "three_inside_down",
-            "Rising Three Methods": "rising_three_methods",
-            "Falling Three Methods": "falling_three_methods",
-        }
+        # Obtener métodos públicos por introspección (coincidir con modal de mostrar estrategias)
+        fx_methods = [
+            nombre for nombre in dir(ForexStrategies)
+            if callable(getattr(ForexStrategies, nombre)) and not nombre.startswith("_")
+        ]
+        candle_methods = [
+            nombre for nombre in dir(CandleStrategies)
+            if callable(getattr(CandleStrategies, nombre)) and not nombre.startswith("_")
+        ]
+        pattern_methods = [
+            nombre for nombre in dir(CandlestickPatterns)
+            if callable(getattr(CandlestickPatterns, nombre)) and not nombre.startswith("_")
+        ]
         # Sección de estrategias Forex con cabecera alineada
         header_frame = ttk.Frame(parent_frame)
         header_frame.pack(fill="x", pady=(0, 5))
@@ -489,15 +474,14 @@ class AITrainingModal(tk.Toplevel):
         ttk.Label(controls_header, text="RR Ratio:", font=("Arial", 8)).pack(side="left")
         
         # Inicializar estructuras
-        self.strategy_vars = {}
+        self.strategy_vars = {}  # Forex
         self.risk_vars = {}
         self.rr_vars = {}
-        self.pattern_vars = {}
+        self.candle_vars = {}    # Candle strategies
+        self.pattern_vars = {}   # Candlestick patterns
         
-        # Estrategias Forex (usando etiquetas mapeadas)
-        forex_strategies = list(self._fx_label_to_method.keys())
-        
-        for strategy in forex_strategies:
+        # Estrategias Forex (todas las públicas)
+        for strategy in sorted(fx_methods):
             # Frame para cada estrategia
             strategy_frame = ttk.Frame(parent_frame)
             strategy_frame.pack(fill="x", pady=2)
@@ -507,7 +491,7 @@ class AITrainingModal(tk.Toplevel):
             self.strategy_vars[strategy] = var
             cb = ttk.Checkbutton(
                 strategy_frame,
-                text=strategy,
+                text=strategy.replace('_', ' ').capitalize(),
                 variable=var,
                 onvalue=True,
                 offvalue=False
@@ -523,13 +507,35 @@ class AITrainingModal(tk.Toplevel):
             risk_frame.pack(side="right", padx=(10, 0))
             
             # Almacenar las variables de control
-            self.strategy_vars[strategy] = self.strategy_vars.get(strategy, tk.BooleanVar(value=False))
             self.risk_vars[strategy] = risk_var
             self.rr_vars[strategy] = rr_var
         
         # Separador
         ttk.Separator(parent_frame, orient='horizontal').pack(fill='x', pady=10)
         
+        # Sección de Candle Strategies
+        candle_label = ttk.Label(
+            parent_frame,
+            text="Candle Strategies:",
+            font=("Arial", 9, "bold")
+        )
+        candle_label.pack(anchor="w", pady=(0, 5))
+
+        for cstrat in sorted(candle_methods):
+            var = tk.BooleanVar()
+            self.candle_vars[cstrat] = var
+            cb = ttk.Checkbutton(
+                parent_frame,
+                text=cstrat.replace('_', ' ').capitalize(),
+                variable=var,
+                onvalue=True,
+                offvalue=False
+            )
+            cb.pack(anchor="w", padx=(20, 0), pady=2)
+
+        # Separador
+        ttk.Separator(parent_frame, orient='horizontal').pack(fill='x', pady=10)
+
         # Sección de patrones de velas
         candle_label = ttk.Label(
             parent_frame,
@@ -538,15 +544,13 @@ class AITrainingModal(tk.Toplevel):
         )
         candle_label.pack(anchor="w", pady=(0, 5))
         
-        # Patrones de velas (usando etiquetas mapeadas)
-        candle_patterns = list(self._pattern_label_to_method.keys())
-        
-        for pattern in candle_patterns:
+        # Patrones de velas (todos los públicos)
+        for pattern in sorted(pattern_methods):
             var = tk.BooleanVar()
             self.pattern_vars[pattern] = var
             cb = ttk.Checkbutton(
                 parent_frame,
-                text=pattern,
+                text=pattern.replace('_', ' ').capitalize(),
                 variable=var,
                 onvalue=True,
                 offvalue=False
@@ -557,7 +561,7 @@ class AITrainingModal(tk.Toplevel):
         def _vars_changed(*_):
             self._recompute_accept_state()
 
-        for v in list(self.strategy_vars.values()) + list(self.pattern_vars.values()):
+        for v in list(self.strategy_vars.values()) + list(self.candle_vars.values()) + list(self.pattern_vars.values()):
             v.trace_add('write', _vars_changed)
 
         self._recompute_accept_state()
@@ -613,8 +617,9 @@ class AITrainingModal(tk.Toplevel):
         has_model = bool(self.selected_model)
         # 2) Alguna estrategia o patrón seleccionado
         any_fx = any(v.get() for v in getattr(self, 'strategy_vars', {}).values()) if hasattr(self, 'strategy_vars') else False
+        any_cd = any(v.get() for v in getattr(self, 'candle_vars', {}).values()) if hasattr(self, 'candle_vars') else False
         any_pt = any(v.get() for v in getattr(self, 'pattern_vars', {}).values()) if hasattr(self, 'pattern_vars') else False
-        has_selection = any_fx or any_pt
+        has_selection = any_fx or any_cd or any_pt
         # 3) Máx. órdenes simultáneas > 0
         max_orders_val = self._parse_positive_int(getattr(self, 'max_orders', tk.StringVar(value='0')).get()) if hasattr(self, 'max_orders') else 0
         max_ok = max_orders_val > 0
@@ -655,20 +660,21 @@ class AITrainingModal(tk.Toplevel):
     def _on_accept(self):
         """Maneja el evento de aceptar: recopila selecciones y las devuelve."""
         seleccion_fx = {}
-        for label, var in self.strategy_vars.items():
+        for metodo, var in self.strategy_vars.items():
             if var.get():
-                riesgo = float(self.risk_vars[label].get() or 0.0) / (100 if float(self.risk_vars[label].get() or 0.0) > 1.0 else 1.0)
-                rr = float(self.rr_vars[label].get() or 0.0)
-                metodo = self._fx_label_to_method.get(label)
-                if metodo:
-                    seleccion_fx[metodo] = {"tipo": "forex", "riesgo": riesgo, "rr": rr}
+                riesgo = float(self.risk_vars[metodo].get() or 0.0) / (100 if float(self.risk_vars[metodo].get() or 0.0) > 1.0 else 1.0)
+                rr = float(self.rr_vars[metodo].get() or 0.0)
+                seleccion_fx[metodo] = {"tipo": "forex", "riesgo": riesgo, "rr": rr}
+
+        seleccion_candle = []
+        for metodo, var in getattr(self, 'candle_vars', {}).items():
+            if var.get():
+                seleccion_candle.append(metodo)
 
         seleccion_patterns = []
-        for label, var in self.pattern_vars.items():
+        for metodo, var in self.pattern_vars.items():
             if var.get():
-                metodo = self._pattern_label_to_method.get(label)
-                if metodo:
-                    seleccion_patterns.append(metodo)
+                seleccion_patterns.append(metodo)
 
         max_orders = int(self.max_orders.get()) if hasattr(self, 'max_orders') else 5
         # Parám. de parada
@@ -705,6 +711,7 @@ class AITrainingModal(tk.Toplevel):
                     max_attempts,
                     seed_val,
                     save_best,
+                    seleccion_candle,
                 )
             except TypeError:
                 try:
