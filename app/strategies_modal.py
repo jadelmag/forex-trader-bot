@@ -63,12 +63,13 @@ class EstrategiasModal(tk.Toplevel):
         if estrategias_fx:
             lbl_fx = tk.Label(self.scrollable_frame, text="Forex Strategies", 
                              font=("Arial", 10, "bold"), anchor="w")
-            lbl_fx.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 10))
+            lbl_fx.grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 10))
 
             # Encabezado para Forex Strategies
             tk.Label(self.scrollable_frame, text="Estrategia", width=20, anchor="w").grid(row=1, column=0, padx=5)
             tk.Label(self.scrollable_frame, text="% Riesgo", width=10).grid(row=1, column=1, padx=5)
             tk.Label(self.scrollable_frame, text="RR Ratio", width=10).grid(row=1, column=2, padx=5)
+            tk.Label(self.scrollable_frame, text="", width=10).grid(row=1, column=3, padx=5)
 
             # Estrategias Forex con parámetros
             for idx, nombre in enumerate(estrategias_fx, start=2):
@@ -85,6 +86,13 @@ class EstrategiasModal(tk.Toplevel):
                 var_rr = tk.StringVar(value="2")  # ratio por defecto
                 entry_rr = tk.Entry(self.scrollable_frame, textvariable=var_rr, width=8)
                 entry_rr.grid(row=idx, column=2, padx=5)
+
+                # Añadir etiqueta de versión al lado del último textbox (solo Forex)
+                if nombre in {"adx_strategy", "trend_following", "breakout", "rsi_strategy"}:
+                    version_text = "(versión 1.0)"
+                else:
+                    version_text = "(versión 2.0)"
+                tk.Label(self.scrollable_frame, text=version_text, anchor="w").grid(row=idx, column=3, padx=5, sticky="w")
 
                 self.controls[nombre] = {
                     "selected": var_check,
