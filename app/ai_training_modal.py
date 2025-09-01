@@ -22,7 +22,7 @@ class AITrainingModal(tk.Toplevel):
         
         # Tamaño y posición inicial
         self.width = 500
-        self.height = 850
+        self.height = 750
         self.geometry(f"{self.width}x{self.height}")
         self.resizable(False, True)  # Permitir redimensionar en altura
         self.grab_set()  # Hace la ventana modal

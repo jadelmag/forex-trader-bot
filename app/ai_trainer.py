@@ -375,7 +375,8 @@ class AITrainer:
 
                 # Si no se usa winrate como objetivo, finaliza normal
                 if not self.use_winrate:
-                    self._emit_log("ENTRENAMIENTO IA FINALIZADO", 'green')
+                    max_text = f" | Máx intentos: {self.max_attempts}" if self.max_attempts > 0 else ""
+                    self._emit_log(f"ENTRENAMIENTO IA FINALIZADO{max_text}", 'green')
                     if self._best_stats:
                         stats['best'] = {
                             'stats': self._best_stats,
@@ -387,7 +388,8 @@ class AITrainer:
 
                 # Si se alcanzó el objetivo de winrate, finaliza
                 if reached_winrate_target:
-                    self._emit_log("ENTRENAMIENTO IA FINALIZADO (objetivo winrate alcanzado)", 'green')
+                    max_text = f" | Máx intentos: {self.max_attempts}" if self.max_attempts > 0 else ""
+                    self._emit_log(f"ENTRENAMIENTO IA FINALIZADO (objetivo winrate alcanzado){max_text}", 'green')
                     if self._best_stats:
                         stats['best'] = {
                             'stats': self._best_stats,
