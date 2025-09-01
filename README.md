@@ -221,8 +221,168 @@ pip install --upgrade git+https://github.com/AI4Finance-Foundation/FinRL.git
 
 ## Estrategias
 
+#### 1. ADX Strategy
+Estrategia de tendencia que usa el Índice de Movimiento Direccional Promedio (ADX) para identificar la fuerza de la tendencia y su dirección.
 
-## Patrones
+#### 2. Trend Following (EMA Crossover)
+Estrategia de seguimiento de tendencia que utiliza el cruce de medias móviles exponenciales (EMA) para generar señales de compra/venta.
+
+#### 3. Breakout (HH/LL)
+Estrategia de ruptura que identifica nuevos máximos y mínimos para entrar en posiciones en la dirección de la ruptura.
+
+#### 4. RSI Strategy
+Estrategia de sobrecompra/sobreventa basada en el Índice de Fuerza Relativa (RSI).
+
+#### 5. Moving Average Crossover (SMA)
+Estrategia que utiliza el cruce de medias móviles simples para generar señales de trading.
+
+#### 6. MACD Strategy
+Estrategia basada en la convergencia/divergencia de medias móviles (MACD).
+
+#### 7. Bollinger Bands Strategy
+Estrategia que utiliza las bandas de Bollinger para identificar condiciones de sobrecompra/sobreventa.
+
+#### 8. Stochastic Oscillator Strategy
+Estrategia basada en el oscilador estocástico para identificar puntos de reversión.
+
+#### 9. Ichimoku Cloud Strategy
+Sistema de trading completo que utiliza la nube de Ichimoku para identificar tendencias, soportes y resistencias.
+
+#### 10. Support & Resistance Strategy
+Estrategia que identifica y opera en niveles de soporte y resistencia.
+
+#### 11. Supply & Demand Zones
+Estrategia que identifica zonas de oferta y demanda basadas en fractales para operaciones de reversión.
+
+#### 12. Trendline Strategy
+Utiliza regresión lineal móvil para identificar líneas de tendencia y operar en rupturas o rebotes.
+
+#### 13. Scalping 1M Strategy
+Estrategia de scalping en gráficos de 1 minuto que combina EMA y RSI para entradas rápidas.
+
+#### 14. News Trading Strategy
+Estrategia que opera en eventos de noticias, identificando picos de volatilidad para entradas estratégicas.
+
+#### 15. Range Trading Strategy
+Estrategia de reversión a la media que opera en mercados laterales identificados por el ancho de banda de las Bandas de Bollinger.
+
+#### 16. Carry Trade Strategy
+Estrategia que aprovecha los diferenciales de tasas de interés entre divisas.
+
+#### 17. Hedging Overlay
+Estrategia de cobertura que reduce la exposición en períodos de alta volatilidad.
+
+#### 18. Grid Trading Strategy
+Estrategia que coloca órdenes por encima y por debajo del precio actual en una cuadrícula predefinida.
+
+## Estrategias de Velas
+
+#### 1. Hammer Reversal
+Identifica patrones de martillo en tendencias bajistas como señales de reversión alcista. Se confirma con el cierre por encima de la EMA20.
+
+#### 2. Bullish Engulfing Reversal
+Detecta patrones envolventes alcistas que indican una posible reversión de tendencia bajista. Incluye filtros de volumen y tamaño de vela.
+
+#### 3. Morning Star Swing
+Patrón de 3 velas que indica una reversión alcista, especialmente efectivo en tendencias bajistas. Se confirma con el cierre por encima de la EMA50.
+
+#### 4. Hanging Man Reversal
+Patrón de vela que señala una posible reversión bajista después de una tendencia alcista. Se confirma con el cierre por debajo de la EMA20.
+
+#### 5. Bearish Engulfing Reversal
+Patrón de envolvente bajista que indica una posible reversión de tendencia alcista. Incluye validación de volumen y contexto de mercado.
+
+#### 6. Evening Star Swing
+Patrón de 3 velas que señala una reversión bajista, especialmente efectivo en tendencias alcistas. Se confirma con el cierre por debajo de la EMA50.
+
+#### 7. Doji Indecision
+Patrón de vela que muestra indecisión en el mercado, con apertura y cierre prácticamente iguales. Útil para identificar posibles cambios de tendencia cuando aparece en niveles clave.
+
+#### 8. Marubozu Trend
+Vela con cuerpo largo y sombras pequeñas que indica fuerte presión compradora (verde) o vendedora (roja). Se utiliza para confirmar la continuación de la tendencia.
+
+#### 9. Three White Soldiers
+Patrón de continuación alcista formado por tres velas alcistas consecutivas con cierres progresivamente más altos, indicando fuerte impulso comprador.
+
+#### 10. Three Black Crows
+Patrón de continuación bajista formado por tres velas bajistas consecutivas con cierres progresivamente más bajos, indicando fuerte presión vendedora.
+
+#### 11. Piercing Line
+Patrón de dos velas que sugiere una reversión alcista. La segunda vela se abre por debajo del mínimo de la primera pero cierra por encima de su punto medio.
+
+#### 12. Dark Cloud Cover
+Patrón de dos velas que sugiere una reversión bajista. La segunda vela se abre por encima del máximo de la primera pero cierra por debajo de su punto medio.
+
+#### 13. Tweezer Tops/Bottoms
+Patrón de dos velas que marca un cambio de tendencia, donde los máximos (tops) o mínimos (bottoms) de las velas son casi idénticos.
+
+#### 14. Harami Cross
+Patrón de dos velas donde una vela Doji está contenida dentro del rango de la vela anterior, indicando indecisión después de una tendencia fuerte.
+
+#### 15. Abandoned Baby
+Raro patrón de tres velas que incluye un gap de precios y una vela Doji, que señala una posible reversión de tendencia.
+
+## Patrones de Velas
+
+#### 1. Doji
+Indica indecisión en el mercado, con apertura y cierre prácticamente iguales. Aparece en techos, suelos o como confirmación de continuación.
+
+#### 2. Hammer
+Patrón de reversión alcista con un cuerpo pequeño en la parte superior y una sombra inferior larga (al menos el doble del cuerpo). Aparece en tendencias bajistas.
+
+#### 3. Hanging Man
+Similar al martillo pero aparece en una tendencia alcista, indicando posible reversión bajista. Tiene un pequeño cuerpo superior y una larga sombra inferior.
+
+#### 4. Shooting Star
+Patrón de reversión bajista con una sombra superior larga y un cuerpo pequeño cerca del mínimo. Aparece en tendencias alcistas.
+
+#### 5. Spinning Top
+Indica indecisión en el mercado, con un cuerpo pequeño y sombras de longitud similar. Sugiere un posible cambio de tendencia.
+
+#### 6. Inverted Hammer
+Patrón de reversión alcista con una sombra superior larga y un cuerpo pequeño cerca del mínimo. Aparece en tendencias bajistas.
+
+#### 7. Morning Star
+Patrón de reversión alcista de tres velas: una vela bajista grande, seguida por una pequeña vela con un gap a la baja, y luego una vela alcista grande.
+
+#### 8. Evening Star
+Patrón de reversión bajista de tres velas: una vela alcista grande, seguida por una pequeña vela con un gap al alza, y luego una vela bajista grande.
+
+#### 9. Bullish Engulfing
+Patrón de dos velas donde la segunda vela alcista "envuelve" completamente a la vela bajista anterior, indicando un cambio en el control del mercado.
+
+#### 10. Bearish Engulfing
+Patrón de dos velas donde la segunda vela bajista "envuelve" completamente a la vela alcista anterior, indicando un cambio en el control del mercado.
+
+#### 11. Piercing Line
+Patrón de dos velas alcistas donde la segunda vela cierra por encima del punto medio de la vela anterior, indicando un posible cambio de tendencia.
+
+#### 12. Dark Cloud Cover
+Patrón de dos velas bajistas donde la segunda vela cierra por debajo del punto medio de la vela anterior, indicando un posible cambio de tendencia.
+
+#### 13. Tweezer Tops/Bottoms
+Patrón de dos velas donde los máximos (tops) o mínimos (bottoms) son casi idénticos, indicando un posible cambio de dirección.
+
+#### 14. Harami Cross
+Patrón de dos velas donde una vela Doji está completamente contenida dentro del rango de la vela anterior, indicando indecisión.
+
+#### 15. Abandoned Baby
+Raro patrón de tres velas que incluye un gap de precios y una vela Doji, que señala una posible reversión de tendencia.
+
+#### 16. Three Inside Up/Down
+Patrón de tres velas que confirma un cambio de tendencia, con la tercera vela cerrando por encima/abajo del cierre de la primera vela.
+
+#### 17. Three Outside Up/Down
+Fuerte patrón de reversión de tres velas donde la segunda vela envuelve a la primera, y la tercera confirma la dirección.
+
+#### 18. Breakaway
+Patrón de cinco velas que comienza con una fuerte tendencia seguida por una consolidación y luego una continuación en la dirección original.
+
+#### 19. Three-Line Strike
+Patrón de continuación de cuatro velas donde tres velas muestran una fuerte tendencia, seguidas por una cuarta vela que retrocede pero no rompe la tendencia.
+
+#### 20. Two Black Gapping
+Patrón de continuación bajista que ocurre después de una ruptura de soporte, con dos velas negras separadas por un gap a la baja.
 
 
 
