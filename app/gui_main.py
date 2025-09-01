@@ -1445,15 +1445,20 @@ class GUIPrincipal:
                     # Nuevas líneas: dinero ganado/perdido por categoría
                     self.root.after(0, lambda: ui_log(f"Dinero ganado en operaciones ganadoras: ${float(stats.get('dinero_ganado', 0.0)):,.2f}", 'green'))
                     self.root.after(0, lambda: ui_log(f"Dinero perdido en operaciones perdedoras: -${abs(float(stats.get('dinero_perdido', 0.0))):,.2f}", 'red'))
-                    # Configuración actual de estrategias Forex
+                    # Configuración actual de estrategias Forex (como lista con viñetas)
                     try:
                         fx_cfg = stats.get('fx_config') or {}
                         if fx_cfg:
-                            resumen_fx = ", ".join([
-                                f"{k}(riesgo={float(v.get('riesgo',0.01)):.3f}, rr={float(v.get('rr',2.0)):.2f})"
-                                for k, v in fx_cfg.items()
-                            ])
-                            self.root.after(0, lambda: ui_log(f"Config FX actual: {resumen_fx}", 'white'))
+                            self.root.after(0, lambda: ui_log("Configuración FX utilizada:", 'white'))
+                            # Listar cada ítem como viñeta
+                            for k, v in fx_cfg.items():
+                                try:
+                                    riesgo = float(v.get('riesgo', 0.01))
+                                    rr = float(v.get('rr', 2.0))
+                                except Exception:
+                                    riesgo, rr = 0.01, 2.0
+                                line = f" - {k}: riesgo={riesgo:.3f}, rr={rr:.2f}"
+                                self.root.after(0, lambda l=line: ui_log(l, 'white'))
                         else:
                             self.root.after(0, lambda: ui_log("No se seleccionó ninguna estrategia forex", 'white'))
                     except Exception:
