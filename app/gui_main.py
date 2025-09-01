@@ -773,7 +773,17 @@ class GUIPrincipal:
                         pass
                 self.rl_agent = RLTradingAgent(self.df_actual, log_fn=lambda m: _log_ts(m, 'cyan'))
                 self.rl_agent.entrenar(timesteps=iterations, progress_cb=on_progress)
+                # Avisar al modal que el entrenamiento terminó OK
                 on_complete(success=True)
+                # Tras finalizar el entrenamiento, aplicar automáticamente las señales RL
+                # para calcular y reflejar Beneficios/Pérdidas en la barra superior.
+                try:
+                    self.root.after(0, lambda: (
+                        self.log("Aplicando señales RL post-entrenamiento...", color='yellow'),
+                        self.aplicar_senales_rl()
+                    ))
+                except Exception:
+                    pass
             except Exception as e:
                 on_complete(success=False, error_msg=str(e))
 
@@ -1354,21 +1364,16 @@ class GUIPrincipal:
                             return f"{m:02d}:{s:02d}"
                         except Exception:
                             return "--:--"
-                    info_text = f"{cur}/{total} ({pct}%) ETA {_fmt_eta()}"
-                    self.root.after(0, lambda t=info_text: self.progress_info_var.set(t))
+                    # En otro caso, no bloqueamos: opcionalmente podría diferirse
                 except Exception:
-                    pass
+                    ui_log("No fue posible guardar el modelo RL.", 'red')
 
             def ui_finish(stats: dict):
                 # Si hubo error, loguear y ocultar barra inmediatamente
                 try:
                     err = stats.get('error') if isinstance(stats, dict) else None
                     if err:
-                        self.root.after(0, lambda: ui_log("="*60, 'white'))
-                        self.root.after(0, lambda: ui_log("ERROR ENTRENAMIENTO IA", 'red'))
-                        self.root.after(0, lambda: ui_log(str(err), 'red'))
-                        self.root.after(0, lambda: ui_log("="*60, 'white'))
-                        self.root.after(0, lambda: self.progress_var.set(0))
+                        self.root.after(0, lambda: ui_log(f"Entrenamiento detenido: {err}", 'red'))
                         self.root.after(0, self._hide_progress_bar)
                         return
                 except Exception:
@@ -1376,22 +1381,19 @@ class GUIPrincipal:
 
                 # Actualizar labels de dinero y resumen
                 try:
-                    capital_final = stats.get('capital_final', self.dinero_ficticio)
-                    beneficio_total = stats.get('beneficio_total', 0.0)
+                    capital_final = float(stats.get('capital_final', self.dinero_ficticio))
+                    beneficio_total = float(stats.get('beneficio_total', 0.0))
+                    dinero_ganado = float(stats.get('dinero_ganado', 0.0))
+                    dinero_perdido = float(stats.get('dinero_perdido', 0.0))
+                    # Actualizar estado interno
                     self.dinero_ficticio = capital_final
-                    # Nota: los beneficios/perdidas acumulados pueden calcularse mejor desde RiskManager si se requiere
+                    self.beneficios = max(0.0, dinero_ganado)
+                    # Mostrar pérdidas como valor positivo en la etiqueta
+                    self.perdidas = abs(dinero_perdido)
+                    # Refrescar etiquetas
                     self.actualizar_labels()
                 except Exception:
                     pass
-
-                # Guardar modelo RL si está disponible
-                try:
-                    # Cargar/guardar usando RLTradingAgent existente si ya está instanciado
-                    if hasattr(self, 'rl_agent') and self.rl_agent is not None:
-                        self.rl_agent.guardar_modelo()
-                    # En otro caso, no bloqueamos: opcionalmente podría diferirse
-                except Exception:
-                    ui_log("No fue posible guardar el modelo RL.", 'red')
 
                 # Mostrar resumen en el log inferior (y archivo)
                 try:
