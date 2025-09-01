@@ -528,7 +528,15 @@ class AITrainingModal(tk.Toplevel):
             
             # Controles de riesgo y RR (sin etiquetas aquí; cabecera ya creada)
             risk_frame, risk_var, rr_var = self._create_risk_controls(controls_frame, show_labels=False)
+            # Primero empaquetar los controles, luego la etiqueta para que quede a la derecha del RR
             risk_frame.pack(side="right", padx=(10, 0))
+            # Etiqueta de versión junto al RR según el nombre de la estrategia
+            try:
+                v1_names = {"adx_strategy", "trend_following", "breakout", "rsi_strategy"}
+                version_text = "(versión 1.0)" if strategy in v1_names else "(versión 2.0)"
+                ttk.Label(controls_frame, text=version_text, font=("Arial", 8, "italic")).pack(side="right", padx=(8, 0))
+            except Exception:
+                pass
             
             # Almacenar las variables de control
             self.risk_vars[strategy] = risk_var
