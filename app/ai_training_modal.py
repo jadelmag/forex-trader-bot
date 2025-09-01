@@ -142,26 +142,50 @@ class AITrainingModal(tk.Toplevel):
         # Cargar y mostrar las estrategias
         self._load_strategies(scrollable_frame)
         
-        # Configurar el desplazamiento con la rueda del ratón (solo en este canvas)
+        # Configurar desplazamiento con la rueda del ratón (funciona al pasar por encima del contenido)
         def _on_mousewheel(event):
             try:
-                canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+                # Windows / macOS
+                if hasattr(event, 'delta') and event.delta:
+                    delta = int(event.delta)
+                    canvas.yview_scroll(-1 * int(delta / 120), 'units')
+                # Linux (rueda arriba/abajo)
+                elif hasattr(event, 'num') and event.num in (4, 5):
+                    canvas.yview_scroll(-1 if event.num == 4 else 1, 'units')
             except Exception:
                 pass
 
-        canvas.bind("<MouseWheel>", _on_mousewheel)
+        def _bind_to_mousewheel(event):
+            try:
+                canvas.bind_all('<MouseWheel>', _on_mousewheel)
+                canvas.bind_all('<Button-4>', _on_mousewheel)
+                canvas.bind_all('<Button-5>', _on_mousewheel)
+            except Exception:
+                pass
+
+        def _unbind_from_mousewheel(event):
+            try:
+                canvas.unbind_all('<MouseWheel>')
+                canvas.unbind_all('<Button-4>')
+                canvas.unbind_all('<Button-5>')
+            except Exception:
+                pass
+
+        # Activar el scroll con la rueda al entrar/salir del área desplazable
+        scrollable_frame.bind('<Enter>', _bind_to_mousewheel)
+        scrollable_frame.bind('<Leave>', _unbind_from_mousewheel)
         
         # Frame para el número máximo de órdenes
         orders_frame = ttk.Frame(content_frame)
         orders_frame.pack(fill="x", pady=(15, 5))
         
-        ttk.Label(orders_frame, text="Máximo de órdenes simultáneas:").pack(side="left", padx=(0, 10))
+        ttk.Label(orders_frame, text="Máximo de órdenes simultáneas (0 = ilimitado):").pack(side="left", padx=(0, 10))
         
         self.max_orders = tk.StringVar(value="5")
         orders_spinbox = ttk.Spinbox(
             orders_frame,
-            from_=1,
-            to=20,
+            from_=0,
+            to=1000000,
             textvariable=self.max_orders,
             width=5
         )
@@ -620,9 +644,12 @@ class AITrainingModal(tk.Toplevel):
         any_cd = any(v.get() for v in getattr(self, 'candle_vars', {}).values()) if hasattr(self, 'candle_vars') else False
         any_pt = any(v.get() for v in getattr(self, 'pattern_vars', {}).values()) if hasattr(self, 'pattern_vars') else False
         has_selection = any_fx or any_cd or any_pt
-        # 3) Máx. órdenes simultáneas > 0
-        max_orders_val = self._parse_positive_int(getattr(self, 'max_orders', tk.StringVar(value='0')).get()) if hasattr(self, 'max_orders') else 0
-        max_ok = max_orders_val > 0
+        # 3) Máx. órdenes simultáneas >= 0 (0 = ilimitado)
+        try:
+            max_orders_val = int(str(getattr(self, 'max_orders', tk.StringVar(value='0')).get()).strip()) if hasattr(self, 'max_orders') else 0
+        except Exception:
+            max_orders_val = 0
+        max_ok = (max_orders_val >= 0)
         # 4) Condición de finalización: sólo WinRate activo y > 0
         win_ok = bool(self.use_winrate_var.get()) and self._parse_positive_float(self.winrate_var.get()) > 0.0 if hasattr(self, 'use_winrate_var') else False
 
@@ -645,7 +672,7 @@ class AITrainingModal(tk.Toplevel):
             if not has_selection:
                 msgs.append("• Seleccione al menos una estrategia o un patrón")
             if not max_ok:
-                msgs.append("• Máximo de órdenes simultáneas debe ser > 0")
+                msgs.append("• Máximo de órdenes simultáneas debe ser ≥ 0 (0 = ilimitado)")
             if not win_ok:
                 if hasattr(self, 'use_winrate_var') and self.use_winrate_var.get() and self._parse_positive_float(self.winrate_var.get()) <= 0.0:
                     msgs.append("• Win Rate debe ser > 0")

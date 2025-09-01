@@ -430,8 +430,9 @@ class GUIPrincipal:
                 if 'Signal' in df_res.columns:
                     col_name = f"{nombre}_Signal"
                     sig_series = df_res['Signal']
-                    # Limitar a max_orders señales por estrategia
-                    sig_indices = sig_series[sig_series != 0].index[:max_orders]
+                    # Limitar a max_orders señales por estrategia (0 = ilimitado -> no limitar)
+                    nonzero_idx = sig_series[sig_series != 0].index
+                    sig_indices = nonzero_idx if (isinstance(max_orders, int) and max_orders <= 0) else nonzero_idx[:max_orders]
                     df_new[col_name] = 0
                     df_new.loc[sig_indices, col_name] = sig_series.loc[sig_indices]
                     
@@ -558,7 +559,8 @@ class GUIPrincipal:
                 if ops_activas != operaciones_abiertas:
                     operaciones_abiertas = ops_activas
                     if operaciones_abiertas > 0:
-                        self.log(f"Operaciones activas: {operaciones_abiertas}/{max_orders}", color='blue')
+                        den = '∞' if (isinstance(max_orders, int) and max_orders <= 0) else str(max_orders)
+                        self.log(f"Operaciones activas: {operaciones_abiertas}/{den}", color='blue')
 
             # Cerrar cualquier operación pendiente al final del periodo
             precio_cierre_final = df_new['Close'].iloc[-1]
@@ -617,7 +619,9 @@ class GUIPrincipal:
             total_ops = stats['operaciones_ganadas'] + stats['operaciones_perdidas']
             win_rate = (stats['operaciones_ganadas'] / total_ops * 100) if total_ops > 0 else 0
             self.log(f"Win Rate: {win_rate:.1f}%", color='white')
-            self.log(f"Slots utilizados: {stats['operaciones_activas']}/{stats['max_operaciones']}", color='blue')
+            max_ops = stats.get('max_operaciones', None)
+            den_final = '∞' if (max_ops is None or (isinstance(max_ops, (int, float)) and max_ops <= 0)) else str(max_ops)
+            self.log(f"Slots utilizados: {stats['operaciones_activas']}/{den_final}", color='blue')
 
             # ACTUALIZAR LAS ETIQUETAS DE LA INTERFAZ
             self.dinero_ficticio = capital_final

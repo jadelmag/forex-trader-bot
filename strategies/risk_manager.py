@@ -65,6 +65,9 @@ class RiskManager:
         
     def puede_abrir_operacion(self):
         """Verifica si se puede abrir una nueva operación"""
+        # 0 o negativo = ilimitado (limitado sólo por señales y lógica de riesgo)
+        if self.max_operaciones_activas is None or self.max_operaciones_activas <= 0:
+            return True
         operaciones_activas = len([op for op in self.operaciones_activas if op.estado == 'ACTIVA'])
         return operaciones_activas < self.max_operaciones_activas
     
@@ -74,6 +77,9 @@ class RiskManager:
     
     def get_slots_disponibles(self):
         """Retorna el número de slots disponibles para nuevas operaciones"""
+        if self.max_operaciones_activas is None or self.max_operaciones_activas <= 0:
+            # Representar 'ilimitado' con un número muy grande para mantener tipo int
+            return 1_000_000_000
         return self.max_operaciones_activas - self.get_operaciones_activas_count()
     
     def abrir_operacion(self, tipo, precio, timestamp, stop_loss, take_profit, riesgo_por_operacion=0.01):
