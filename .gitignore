@@ -5,6 +5,7 @@ test.py
 /models_rl/*.zip
 /logs/*.txt
 /logs/*.json
+/logs/*.zip
 *.session
 *.session-journal
 /tensorboard_logs/PP_0/events.*

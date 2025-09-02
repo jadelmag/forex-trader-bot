@@ -1455,9 +1455,8 @@ class GUIPrincipal:
             use_winrate=False,
             winrate=0.0,
             selected_model_path=None,
-            max_attempts=0,
-            seed_val=None,
             save_best=True,
+            timesteps_per_attempt=3000,
         ):
             """Recibe selecciones del modal e inicia el entrenador en hilo de fondo."""
             seleccion_fx = seleccion_fx or {}
@@ -1518,8 +1517,13 @@ class GUIPrincipal:
                     pct = int((cur / max(1, total)) * 100)
                     self.root.after(0, lambda: self.progress_var.set(min(max(pct, 0), 100)))
                     self.root.after(0, lambda: self.header_progress_label.config(text=f"{min(max(pct, 0), 100)}%"))
+                    # Detectar cambio de fase (cambio de total): reiniciar cronómetro y barra
                     if getattr(self, '_train_total', 0) != total:
                         self._train_total = total
+                        # Reiniciar cronómetro para ETA y barra al 0%
+                        self._train_start_ts = time.time()
+                        self.root.after(0, lambda: self.progress_var.set(0))
+                        self.root.after(0, lambda: self.header_progress_label.config(text="0%"))
                     def _fmt_eta():
                         try:
                             start = getattr(self, '_train_start_ts', None)
@@ -1734,15 +1738,22 @@ class GUIPrincipal:
                 capital_inicial=capital_inicial,
                 use_winrate=use_winrate,
                 winrate_target=winrate,
-                max_attempts=max_attempts,
-                seed=seed_val,
                 save_best=save_best,
+                timesteps_per_attempt=timesteps_per_attempt,
                 on_log=ui_log,
                 on_progress=ui_progress,
                 on_finish=ui_finish,
             )
             
             self._ai_trainer = trainer
+
+            # Habilitar opción "Detener IA" y deshabilitar "Entrenar IA" durante el entrenamiento
+            try:
+                if hasattr(self, 'menu_opciones'):
+                    self.menu_opciones.entryconfig(self._menu_label_detener_ia, state="normal")
+                    self.menu_opciones.entryconfig(self._menu_label_entrenar_ia, state="disabled")
+            except Exception:
+                pass
 
             # Escribir cabecera de sesión
             try:
@@ -1752,7 +1763,6 @@ class GUIPrincipal:
                 ui_log(f"Max órdenes: {max_orders}", 'white')
                 stop_desc = f"WinRate objetivo: {winrate:.1f}%" if use_winrate else "Sin condición explícita"
                 ui_log(f"Parada: {stop_desc}", 'white')
-                ui_log(f"Máximo intentos: {max_attempts if max_attempts > 0 else 'Ilimitado'}", 'white')
                 
                 if selected_model_path:
                     ui_log(f"Modelo RL: {selected_model_path}", 'white')
@@ -1779,18 +1789,15 @@ class GUIPrincipal:
         """Detiene el entrenamiento de IA en curso si existe."""
         try:
             if hasattr(self, "_ai_trainer") and self._ai_trainer:
-                self._ai_trainer.stop()
-                self.log("Entrenamiento detenido manualmente ⏹️", "yellow")
-                self._enviar_telegram_y_reflejar("Entrenamiento detenido manualmente ⏹️", "yellow")
-
-                # Restaurar UI
+                trainer = self._ai_trainer
+                trainer.stop()
+                # Evitar múltiples solicitudes de parada
                 try:
-                    self._set_menu_opcion_state(self._menu_label_entrenar_ia, "normal")
-                    self._set_menu_opcion_state(self._menu_label_detener_ia, "disabled")
+                    if hasattr(self, 'menu_opciones'):
+                        self.menu_opciones.entryconfig(self._menu_label_detener_ia, state="disabled")
                 except Exception:
                     pass
-                if hasattr(self, "progress_bar_ai"):
-                    self.progress_bar_ai["value"] = 0
+                self.log("Solicitud de detener entrenamiento enviada.", "yellow")
                 if hasattr(self, "lbl_ai_status"):
                     self.lbl_ai_status.config(text="Listo para entrenar", fg="blue")
 

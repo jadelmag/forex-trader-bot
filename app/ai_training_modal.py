@@ -200,62 +200,21 @@ class AITrainingModal(tk.Toplevel):
             font=("Arial", 10, "bold")
         ).pack(anchor="w")
 
-        # Máximo de intentos (0 = ilimitado)
-        attempts_frame = ttk.Frame(advanced_frame)
-        attempts_frame.pack(fill="x", pady=(6, 0))
-        ttk.Label(attempts_frame, text="Máximo de intentos (0 = ilimitado):").pack(side="left")
-        self.max_attempts_var = tk.StringVar(value="0")
-        attempts_spin = ttk.Spinbox(
-            attempts_frame,
-            from_=0,
-            to=100000,
-            textvariable=self.max_attempts_var,
-            width=7
+        # (Eliminados: Máximo de intentos y Semilla aleatoria)
+
+        # Timesteps por intento
+        ts_frame = ttk.Frame(advanced_frame)
+        ts_frame.pack(fill="x", pady=(6, 0))
+        ttk.Label(ts_frame, text="Timesteps por intento:").pack(side="left")
+        self.timesteps_var = tk.StringVar(value="3000")
+        ts_spin = ttk.Spinbox(
+            ts_frame,
+            from_=1,
+            to=10000000,
+            textvariable=self.timesteps_var,
+            width=8
         )
-        attempts_spin.pack(side="left", padx=(10, 0))
-
-        # Semilla aleatoria (vacío = aleatorio) con tooltip
-        seed_frame = ttk.Frame(advanced_frame)
-        seed_frame.pack(fill="x", pady=(6, 0))
-        ttk.Label(seed_frame, text="Semilla aleatoria (opcional):").pack(side="left")
-        self.seed_var = tk.StringVar(value="")
-        seed_entry = ttk.Entry(seed_frame, textvariable=self.seed_var, width=10)
-        seed_entry.pack(side="left", padx=(10, 0))
-
-        # Tooltip explicativo para la semilla
-        self._seed_tooltip = None
-        def _show_seed_tooltip(event=None):
-            try:
-                if self._seed_tooltip is not None:
-                    return
-                tip = tk.Toplevel(self)
-                tip.wm_overrideredirect(True)
-                tip.configure(bg="#333333")
-                msg = (
-                    "La semilla fija la aleatoriedad para hacer los resultados reproducibles.\n"
-                    "• Vacío: cada ejecución será distinta (bueno para explorar).\n"
-                    "• Entero (p. ej. 0, 42, 20240831): resultados reproducibles con los mismos datos y opciones.\n"
-                    "En cada intento se usa semilla+intento-1 para variar de forma determinista.\n"
-                    "Recomendación: usa un entero >= 0; deja vacío si quieres máxima exploración."
-                )
-                lbl = tk.Label(tip, text=msg, justify="left", bg="#333333", fg="#FFFFFF", padx=8, pady=6, font=("Segoe UI", 9))
-                lbl.pack()
-                # Posicionar al lado del entry
-                x = seed_entry.winfo_rootx() + seed_entry.winfo_width() + 8
-                y = seed_entry.winfo_rooty()
-                tip.wm_geometry(f"+{x}+{y}")
-                self._seed_tooltip = tip
-            except Exception:
-                pass
-        def _hide_seed_tooltip(event=None):
-            try:
-                if self._seed_tooltip is not None:
-                    self._seed_tooltip.destroy()
-                    self._seed_tooltip = None
-            except Exception:
-                self._seed_tooltip = None
-        seed_entry.bind("<Enter>", _show_seed_tooltip)
-        seed_entry.bind("<Leave>", _hide_seed_tooltip)
+        ts_spin.pack(side="left", padx=(10, 0))
 
         # Guardar mejor configuración
         save_frame = ttk.Frame(advanced_frame)
@@ -782,19 +741,7 @@ class AITrainingModal(tk.Toplevel):
         # Modelo seleccionado (si hay)
         selected_model_path = self.selected_model if hasattr(self, 'selected_model') else None
 
-        # Opciones avanzadas
-        try:
-            max_attempts = int(str(getattr(self, 'max_attempts_var', tk.StringVar(value='0')).get()).strip())
-            if max_attempts < 0:
-                max_attempts = 0
-        except Exception:
-            max_attempts = 0
-        seed_val = None
-        try:
-            seed_txt = str(getattr(self, 'seed_var', tk.StringVar(value='')).get()).strip()
-            seed_val = int(seed_txt) if seed_txt != "" else None
-        except Exception:
-            seed_val = None
+        # Opciones avanzadas restantes
         save_best = bool(getattr(self, 'save_best_var', tk.BooleanVar(value=True)).get())
 
         if self.on_accept_callback:
@@ -809,10 +756,9 @@ class AITrainingModal(tk.Toplevel):
                         use_winrate=use_winrate,
                         winrate=winrate,
                         selected_model_path=selected_model_path,
-                        max_attempts=max_attempts,
-                        seed_val=seed_val,
                         save_best=save_best,
                         seleccion_candle=seleccion_candle,
+                        timesteps_per_attempt=int(self.timesteps_var.get() or 3000),
                     )
                 except TypeError:
                     # Intento 2: sin seleccion_candle
@@ -824,9 +770,8 @@ class AITrainingModal(tk.Toplevel):
                             use_winrate=use_winrate,
                             winrate=winrate,
                             selected_model_path=selected_model_path,
-                            max_attempts=max_attempts,
-                            seed_val=seed_val,
                             save_best=save_best,
+                            timesteps_per_attempt=int(self.timesteps_var.get() or 3000),
                         )
                     except TypeError:
                         # Intento 3: última compatibilidad con 3 parámetros

@@ -29,9 +29,8 @@ class AITrainer:
         capital_inicial: float,
         use_winrate: bool,
         winrate_target: float,
-        max_attempts: int = 0,
-        seed: Optional[int] = None,
         save_best: bool = True,
+        timesteps_per_attempt: int = 3000,
         on_log: Optional[Callable[[str, str], None]] = None,
         on_progress: Optional[Callable[[int, int], None]] = None,
         on_finish: Optional[Callable[[Dict], None]] = None,
@@ -47,9 +46,14 @@ class AITrainer:
         self.capital_inicial = capital_inicial
         self.use_winrate = use_winrate
         self.winrate_target = float(winrate_target or 0.0)
-        self.max_attempts = int(max_attempts or 0)
-        self.seed = seed
         self.save_best = bool(save_best)
+        # Timesteps por intento de entrenamiento del modelo RL
+        try:
+            self.timesteps_per_attempt = int(timesteps_per_attempt)
+            if self.timesteps_per_attempt <= 0:
+                self.timesteps_per_attempt = 3000
+        except Exception:
+            self.timesteps_per_attempt = 3000
         self.on_log = on_log
         self.on_progress = on_progress
         self.on_finish = on_finish
@@ -232,7 +236,6 @@ class AITrainer:
                 'candle_strategies': self._best_candle,
                 'patterns': self._best_patterns,
                 'winrate_target': self.winrate_target,
-                'max_attempts': self.max_attempts,
                 'capital_inicial': self.capital_inicial,
                 'max_orders': self.max_orders,
                 'use_winrate': self.use_winrate,
@@ -259,22 +262,10 @@ class AITrainer:
             reached_winrate_target = False
             
             while not self._stop:
-                # Respetar límite de intentos
-                if self.max_attempts > 0 and attempt > self.max_attempts:
-                    self._emit_log(f"⏹️ Máximo de intentos alcanzado: {self.max_attempts}. Finalizando.", 'yellow')
-                    break
-
-                # Semilla por intento
-                if self.seed is not None:
-                    try:
-                        random.seed(self.seed + attempt - 1)
-                        np.random.seed(self.seed + attempt - 1)
-                        self._emit_log(f"🌱 Semilla para intento {attempt}: {self.seed + attempt - 1}", 'white')
-                    except Exception:
-                        pass
+                # (semilla aleatoria eliminada)
 
                 # 1. ENTRENAR MODELO RL
-                if not self._entrenar_modelo_rl(timesteps=3000):
+                if not self._entrenar_modelo_rl(timesteps=self.timesteps_per_attempt):
                     self._emit_log("❌ Fallo en entrenamiento RL, saltando intento...", 'red')
                     attempt += 1
                     continue
@@ -282,6 +273,9 @@ class AITrainer:
                 # 2. GENERAR SEÑALES
                 df_work = self._generate_signals_from_rl()
                 total_rows = len(df_work)
+
+                # Reiniciar barra de progreso para la fase de backtesting
+                self._emit_progress(0, total_rows)
 
                 self._emit_log(f"🚀 INICIO BACKTESTING (intento {attempt})", 'green')
                 if self.use_winrate:
@@ -469,8 +463,6 @@ class AITrainer:
             # Mensaje final
             if reached_winrate_target:
                 self._emit_log(f"🎉 ENTRENAMIENTO FINALIZADO - OBJETIVO ALCANZADO", 'green')
-            elif self.max_attempts > 0 and attempt > self.max_attempts:
-                self._emit_log(f"⏹️ ENTRENAMIENTO FINALIZADO - MÁXIMO DE INTENTOS", 'yellow')
             else:
                 self._emit_log(f"🏁 ENTRENAMIENTO FINALIZADO", 'green')
 

@@ -23,7 +23,16 @@ class RLTradingAgent:
         self.estrategias_fx = estrategias_fx or {}
         self.estrategias_candle = estrategias_candle or []
         self.patrones = patrones or []
-        self.model_dir = model_dir
+        # Asegurar ruta absoluta para la carpeta de modelos
+        try:
+            if os.path.isabs(model_dir):
+                self.model_dir = model_dir
+            else:
+                project_root = os.path.dirname(os.path.dirname(__file__))
+                self.model_dir = os.path.join(project_root, model_dir)
+        except Exception:
+            self.model_dir = model_dir
+
         self.model_name = model_name
         self._log_fn = log_fn
         self.model = None
@@ -93,6 +102,12 @@ class RLTradingAgent:
             save_path = os.path.join(self.model_dir, self.model_name)
             self.model.save(save_path)
             self._log(f"💾 Modelo guardado en {save_path}.zip")
+            # Mensaje amigable solicitado
+            try:
+                folder_name = os.path.basename(self.model_dir.rstrip(os.sep))
+            except Exception:
+                folder_name = "models_rl"
+            self._log(f"Entrenamiento finalizado... Modelo guardado en la carpeta {folder_name}")
 
     def cargar_modelo(self):
         """Carga el modelo entrenado desde disco."""
