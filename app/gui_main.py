@@ -248,28 +248,33 @@ class GUIPrincipal:
         self._menu_label_backtesting = "Iniciar Backtesting"
         self._menu_label_entrenar_ia = "Entrenar IA"
 
-        # Entradas del menú (inicialmente deshabilitadas)
-        self.menu_opciones.add_command(label=self._menu_label_estrategias, command=self.cargar_estrategias, state="disabled")
-        self.menu_opciones.add_command(label=self._menu_label_patrones, command=self.abrir_modal_patrones, state="disabled")
-        self.menu_opciones.add_command(label=self._menu_label_backtesting, command=self.abrir_modal_backtesting, state="disabled")
+        # Entradas del menú Opciones (inicialmente deshabilitadas)
+        self.menu_opciones.add_command(
+            label=self._menu_label_estrategias, command=self.cargar_estrategias, state="disabled"
+        )
+        self.menu_opciones.add_command(
+            label=self._menu_label_patrones, command=self.abrir_modal_patrones, state="disabled"
+        )
+        self.menu_opciones.add_command(
+            label=self._menu_label_backtesting, command=self.abrir_modal_backtesting, state="disabled"
+        )
         self.menu_opciones.add_separator()
-        self.menu_opciones.add_command(label=self._menu_label_entrenar_ia, command=self.entrenar_ia, state="disabled")
-
-        # Botón para crear/entrenar modelo RL (restaurado)
-        self.btn_entrenar_rl = ttk.Button(
-            self.frame_right, text="Crear Modelo RL", command=self.entrenar_rl, state="disabled"
+        self.menu_opciones.add_command(
+            label=self._menu_label_entrenar_ia, command=self.entrenar_ia, state="disabled"
         )
-        self.btn_entrenar_rl.pack(side="left", padx=5)
 
-        self.btn_cargar_rl = ttk.Button(
-            self.frame_right, text="Cargar Modelo RL", command=self.cargar_rl, state="disabled"
-        )
-        self.btn_cargar_rl.pack(side="left", padx=5)
+        # ---------------- Menú desplegable Modelo IA (agrupa RL) ----------------
+        self._ia_label_crear_rl = "Crear Modelo RL"
+        self._ia_label_cargar_rl = "Cargar Modelo RL"
+        self._ia_label_aplicar_rl = "Aplicar Señales RL"
 
-        self.btn_aplicar_rl = ttk.Button(
-            self.frame_right, text="Aplicar Señales RL", command=self.aplicar_senales_rl, state="disabled"
-        )
-        self.btn_aplicar_rl.pack(side="left", padx=5)
+        self.btn_modelo_ia = ttk.Menubutton(self.frame_right, text="Modelo IA", state="disabled")
+        self.btn_modelo_ia.pack(side="left", padx=5)
+        self.menu_modelo_ia = tk.Menu(self.btn_modelo_ia, tearoff=0)
+        self.btn_modelo_ia.configure(menu=self.menu_modelo_ia)
+        self.menu_modelo_ia.add_command(label=self._ia_label_crear_rl, command=self.entrenar_rl, state="disabled")
+        self.menu_modelo_ia.add_command(label=self._ia_label_cargar_rl, command=self.cargar_rl, state="disabled")
+        self.menu_modelo_ia.add_command(label=self._ia_label_aplicar_rl, command=self.aplicar_senales_rl, state="disabled")
 
         # ---------------- Botones TELEGRAM ----------------
         self.btn_telegram = ttk.Button(
@@ -283,11 +288,7 @@ class GUIPrincipal:
         )
         self.btn_reiniciar.pack(side="left", padx=5)
 
-    # ---------------- Funciones CSV ----------------
-    def cargar_csv(self):
-        df = self.csv_manager.cargar_csv()
-        if df is not None:
-            CSVLoaderModal(self.root, df, callback=self._on_csv_cargado)
+    # Fin de __init__
 
     def _on_csv_cargado(self, df_seleccion):
         self.df_actual = df_seleccion
@@ -1185,24 +1186,44 @@ class GUIPrincipal:
                 self.grafico_manager.grafico,
             )
 
+    # ---------------- Funciones CSV ----------------
+    def cargar_csv(self):
+        """Carga un CSV usando CSVManager y abre un modal para seleccionar filas a cargar."""
+        df = self.csv_manager.cargar_csv()
+        if df is not None:
+            # Abre modal para seleccionar el subconjunto a cargar y luego llama a _on_csv_cargado
+            try:
+                CSVLoaderModal(self.root, df, callback=self._on_csv_cargado)
+            except Exception:
+                # Fallback directo si el modal falla
+                self._on_csv_cargado(df)
+
     # ---------------- Funciones de habilitación de botones ----------------
     def _update_btn_aplicar_patrones(self):
         """Habilita 'Mostrar Patrones' solo si se han cargado procesados y se ha añadido dinero ficticio (> 0)."""
         habilitar = self.df_actual is not None and (self.dinero_ficticio > 0)
-        if hasattr(self, "btn_aplicar_patrones"):
-            self.btn_aplicar_patrones.config(state="normal" if habilitar else "disabled")
         if hasattr(self, "btn_backtesting"):
             self.btn_backtesting.config(state="normal" if habilitar else "disabled")
         if hasattr(self, "btn_telegram"):
             self.btn_telegram.config(state="normal" if habilitar else "disabled")
-        if hasattr(self, "btn_entrenar_rl"):
-            self.btn_entrenar_rl.config(state="normal" if habilitar else "disabled")
-        if hasattr(self, "btn_cargar_rl"):
-            self.btn_cargar_rl.config(state="normal" if habilitar else "disabled")
-        if hasattr(self, "btn_aplicar_rl"):
-            self.btn_aplicar_rl.config(state="normal" if habilitar else "disabled")
-        if hasattr(self, "btn_entrenar_ia"):
-            self.btn_entrenar_ia.config(state="normal" if habilitar else "disabled")
+        # Sincronizar menú 'Modelo IA'
+        state = "normal" if habilitar else "disabled"
+        if hasattr(self, "btn_modelo_ia"):
+            self.btn_modelo_ia.config(state=state)
+            try:
+                if state == "normal":
+                    self.btn_modelo_ia.state(["!disabled"])
+                else:
+                    self.btn_modelo_ia.state(["disabled"])
+            except Exception:
+                pass
+        if hasattr(self, "menu_modelo_ia"):
+            try:
+                self.menu_modelo_ia.entryconfig(self._ia_label_crear_rl, state=state)
+                self.menu_modelo_ia.entryconfig(self._ia_label_cargar_rl, state=state)
+                self.menu_modelo_ia.entryconfig(self._ia_label_aplicar_rl, state=state)
+            except Exception:
+                pass
 
         # Sincronizar menú 'Opciones'
         state = "normal" if habilitar else "disabled"
@@ -1233,14 +1254,24 @@ class GUIPrincipal:
             self.btn_backtesting.config(state="normal" if habilitar else "disabled")
         if hasattr(self, "btn_telegram"):
             self.btn_telegram.config(state="normal" if habilitar else "disabled")
-        if hasattr(self, "btn_entrenar_rl"):
-            self.btn_entrenar_rl.config(state="normal" if habilitar else "disabled")
-        if hasattr(self, "btn_cargar_rl"):
-            self.btn_cargar_rl.config(state="normal" if habilitar else "disabled")
-        if hasattr(self, "btn_aplicar_rl"):
-            self.btn_aplicar_rl.config(state="normal" if habilitar else "disabled")
-        if hasattr(self, "btn_entrenar_ia"):
-            self.btn_entrenar_ia.config(state="normal" if habilitar else "disabled")
+        # Sincronizar menú 'Modelo IA'
+        state = "normal" if habilitar else "disabled"
+        if hasattr(self, "btn_modelo_ia"):
+            self.btn_modelo_ia.config(state=state)
+            try:
+                if state == "normal":
+                    self.btn_modelo_ia.state(["!disabled"])
+                else:
+                    self.btn_modelo_ia.state(["disabled"])
+            except Exception:
+                pass
+        if hasattr(self, "menu_modelo_ia"):
+            try:
+                self.menu_modelo_ia.entryconfig(self._ia_label_crear_rl, state=state)
+                self.menu_modelo_ia.entryconfig(self._ia_label_cargar_rl, state=state)
+                self.menu_modelo_ia.entryconfig(self._ia_label_aplicar_rl, state=state)
+            except Exception:
+                pass
 
         # Sincronizar menú 'Opciones'
         state = "normal" if habilitar else "disabled"
