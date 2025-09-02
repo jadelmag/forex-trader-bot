@@ -21,7 +21,7 @@ class AITrainingModal(tk.Toplevel):
         self.title("Entrenamiento de IA")
         
         # Tamaño y posición inicial
-        self.width = 500
+        self.width = 550
         self.height = 780
         self.geometry(f"{self.width}x{self.height}")
         self.resizable(False, True)  # Permitir redimensionar en altura
@@ -479,7 +479,7 @@ class AITrainingModal(tk.Toplevel):
             nombre for nombre in dir(CandlestickPatterns)
             if callable(getattr(CandlestickPatterns, nombre)) and not nombre.startswith("_")
         ]
-        # Sección de estrategias Forex con cabecera alineada
+        # Sección de estrategias Forex con cabecera alineada y botones de selección
         header_frame = ttk.Frame(parent_frame)
         header_frame.pack(fill="x", pady=(0, 5))
         
@@ -490,6 +490,30 @@ class AITrainingModal(tk.Toplevel):
             font=("Arial", 9, "bold")
         )
         forex_label.pack(side="left", anchor="w")
+        
+        # Función auxiliar para seleccionar/deseleccionar en bloque
+        def _set_all(vars_dict, value: bool):
+            try:
+                for v in vars_dict.values():
+                    v.set(value)
+            except Exception:
+                pass
+        
+        # Botones de seleccionar/deseleccionar a la derecha
+        buttons_frame_fx = ttk.Frame(header_frame)
+        buttons_frame_fx.pack(side="right")
+        ttk.Button(
+            buttons_frame_fx,
+            text="Seleccionar todos",
+            command=lambda: _set_all(self.strategy_vars, True),
+            width=16
+        ).pack(side="right", padx=(5, 10))
+        ttk.Button(
+            buttons_frame_fx,
+            text="Deseleccionar todos",
+            command=lambda: _set_all(self.strategy_vars, False),
+            width=18
+        ).pack(side="right", padx=(5, 10))
         
         # Cabecera de controles a la derecha (alineada con los inputs)
         controls_header = ttk.Frame(header_frame)
@@ -545,13 +569,29 @@ class AITrainingModal(tk.Toplevel):
         # Separador
         ttk.Separator(parent_frame, orient='horizontal').pack(fill='x', pady=10)
         
-        # Sección de Candle Strategies
+        # Sección de Candle Strategies con botones de selección
+        candle_header = ttk.Frame(parent_frame)
+        candle_header.pack(fill='x', pady=(0, 5))
         candle_label = ttk.Label(
-            parent_frame,
+            candle_header,
             text="Candle Strategies:",
             font=("Arial", 9, "bold")
         )
-        candle_label.pack(anchor="w", pady=(0, 5))
+        candle_label.pack(side='left', anchor='w')
+        buttons_frame_candle = ttk.Frame(candle_header)
+        buttons_frame_candle.pack(side='right')
+        ttk.Button(
+            buttons_frame_candle,
+            text="Seleccionar todos",
+            command=lambda: _set_all(self.candle_vars, True),
+            width=16
+        ).pack(side='right', padx=(5, 10))
+        ttk.Button(
+            buttons_frame_candle,
+            text="Deseleccionar todos",
+            command=lambda: _set_all(self.candle_vars, False),
+            width=18
+        ).pack(side='right', padx=(5, 10))
 
         for cstrat in sorted(candle_methods):
             var = tk.BooleanVar()
@@ -568,13 +608,29 @@ class AITrainingModal(tk.Toplevel):
         # Separador
         ttk.Separator(parent_frame, orient='horizontal').pack(fill='x', pady=10)
 
-        # Sección de patrones de velas
-        candle_label = ttk.Label(
-            parent_frame,
+        # Sección de patrones de velas con botones de selección
+        patterns_header = ttk.Frame(parent_frame)
+        patterns_header.pack(fill='x', pady=(0, 5))
+        patterns_label = ttk.Label(
+            patterns_header,
             text="Patrones de Velas:",
             font=("Arial", 9, "bold")
         )
-        candle_label.pack(anchor="w", pady=(0, 5))
+        patterns_label.pack(side='left', anchor='w')
+        buttons_frame_patterns = ttk.Frame(patterns_header)
+        buttons_frame_patterns.pack(side='right')
+        ttk.Button(
+            buttons_frame_patterns,
+            text="Seleccionar todos",
+            command=lambda: _set_all(self.pattern_vars, True),
+            width=16
+        ).pack(side='right', padx=(5, 10))
+        ttk.Button(
+            buttons_frame_patterns,
+            text="Deseleccionar todos",
+            command=lambda: _set_all(self.pattern_vars, False),
+            width=18
+        ).pack(side='right', padx=(5, 10))
         
         # Patrones de velas (todos los públicos)
         for pattern in sorted(pattern_methods):
