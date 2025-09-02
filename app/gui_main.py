@@ -229,32 +229,33 @@ class GUIPrincipal:
         # ---------------- Botones derecha ----------------
         self.label_entry_dinero = tk.Label(self.frame_right, text="Dinero ficticio:", bg="#F0F0F0")
         self.label_entry_dinero.pack(side="left", padx=5)
-        self.entry_dinero = ttk.Entry(self.frame_right, width=10)
+        # Entry y botón para cargar dinero ficticio (NO dentro de Opciones)
+        self.entry_dinero = ttk.Entry(self.frame_right, width=12)
         self.entry_dinero.pack(side="left", padx=5)
-        self.btn_add_dinero = ttk.Button(self.frame_right, text="Añadir dinero", command=self.add_dinero)
+        self.btn_add_dinero = ttk.Button(self.frame_right, text="Añadir", command=self.add_dinero)
         self.btn_add_dinero.pack(side="left", padx=5)
 
-        self.btn_cargar_estrategias = ttk.Button(
-            self.frame_right, text="Mostrar Estrategias", command=self.cargar_estrategias, state="disabled"
-        )
-        self.btn_cargar_estrategias.pack(side="left", padx=5)
+        # ---------------- Menú desplegable Opciones ----------------
+        # Usar ttk.Menubutton para que coincida el estilo con los demás botones
+        self.btn_opciones = ttk.Menubutton(self.frame_right, text="Opciones", state="disabled")
+        self.btn_opciones.pack(side="left", padx=5)
+        self.menu_opciones = tk.Menu(self.btn_opciones, tearoff=0)
+        self.btn_opciones.configure(menu=self.menu_opciones)
 
-        self.btn_aplicar_patrones = ttk.Button(
-            self.frame_right, text="Mostrar Patrones", command=self.abrir_modal_patrones, state="disabled"
-        )
-        self.btn_aplicar_patrones.pack(side="left", padx=5)
+        # Etiquetas para controlar el estado por nombre
+        self._menu_label_estrategias = "Mostrar Estrategias"
+        self._menu_label_patrones = "Aplicar Patrones"
+        self._menu_label_backtesting = "Iniciar Backtesting"
+        self._menu_label_entrenar_ia = "Entrenar IA"
 
-        self.btn_backtesting = ttk.Button(
-            self.frame_right, text="Iniciar Backtesting", command=self.abrir_modal_backtesting, state="disabled"
-        )
-        self.btn_backtesting.pack(side="left", padx=5)
+        # Entradas del menú (inicialmente deshabilitadas)
+        self.menu_opciones.add_command(label=self._menu_label_estrategias, command=self.cargar_estrategias, state="disabled")
+        self.menu_opciones.add_command(label=self._menu_label_patrones, command=self.abrir_modal_patrones, state="disabled")
+        self.menu_opciones.add_command(label=self._menu_label_backtesting, command=self.abrir_modal_backtesting, state="disabled")
+        self.menu_opciones.add_separator()
+        self.menu_opciones.add_command(label=self._menu_label_entrenar_ia, command=self.entrenar_ia, state="disabled")
 
-        # ---------------- Botones RL ----------------
-        self.btn_entrenar_ia = ttk.Button(
-            self.frame_right, text="Entrenar IA", command=self.entrenar_ia, state="disabled"
-        )
-        self.btn_entrenar_ia.pack(side="left", padx=5)
-
+        # Botón para crear/entrenar modelo RL (restaurado)
         self.btn_entrenar_rl = ttk.Button(
             self.frame_right, text="Crear Modelo RL", command=self.entrenar_rl, state="disabled"
         )
@@ -291,6 +292,12 @@ class GUIPrincipal:
     def _on_csv_cargado(self, df_seleccion):
         self.df_actual = df_seleccion
         self._dibujar_grafico(df_seleccion)
+        # Tras seleccionar CSV, actualizar estados por si ya hay dinero ficticio
+        try:
+            self._update_btn_aplicar_patrones()
+            self._update_btn_cargar_estrategias()
+        except Exception:
+            pass
 
     def cargar_procesados(self):
         df = self.csv_manager.cargar_procesados()
@@ -1182,24 +1189,80 @@ class GUIPrincipal:
     def _update_btn_aplicar_patrones(self):
         """Habilita 'Mostrar Patrones' solo si se han cargado procesados y se ha añadido dinero ficticio (> 0)."""
         habilitar = self.df_actual is not None and (self.dinero_ficticio > 0)
-        self.btn_aplicar_patrones.config(state="normal" if habilitar else "disabled")
-        self.btn_backtesting.config(state="normal" if habilitar else "disabled")
-        self.btn_telegram.config(state="normal" if habilitar else "disabled")
-        self.btn_entrenar_rl.config(state="normal" if habilitar else "disabled")
-        self.btn_cargar_rl.config(state="normal" if habilitar else "disabled")
-        self.btn_aplicar_rl.config(state="normal" if habilitar else "disabled")
-        self.btn_entrenar_ia.config(state="normal" if habilitar else "disabled")
+        if hasattr(self, "btn_aplicar_patrones"):
+            self.btn_aplicar_patrones.config(state="normal" if habilitar else "disabled")
+        if hasattr(self, "btn_backtesting"):
+            self.btn_backtesting.config(state="normal" if habilitar else "disabled")
+        if hasattr(self, "btn_telegram"):
+            self.btn_telegram.config(state="normal" if habilitar else "disabled")
+        if hasattr(self, "btn_entrenar_rl"):
+            self.btn_entrenar_rl.config(state="normal" if habilitar else "disabled")
+        if hasattr(self, "btn_cargar_rl"):
+            self.btn_cargar_rl.config(state="normal" if habilitar else "disabled")
+        if hasattr(self, "btn_aplicar_rl"):
+            self.btn_aplicar_rl.config(state="normal" if habilitar else "disabled")
+        if hasattr(self, "btn_entrenar_ia"):
+            self.btn_entrenar_ia.config(state="normal" if habilitar else "disabled")
+
+        # Sincronizar menú 'Opciones'
+        state = "normal" if habilitar else "disabled"
+        if hasattr(self, "btn_opciones"):
+            self.btn_opciones.config(state=state)
+            try:
+                if state == "normal":
+                    self.btn_opciones.state(["!disabled"])
+                else:
+                    self.btn_opciones.state(["disabled"])
+            except Exception:
+                pass
+        if hasattr(self, "menu_opciones"):
+            try:
+                self.menu_opciones.entryconfig(self._menu_label_estrategias, state=state)
+                self.menu_opciones.entryconfig(self._menu_label_patrones, state=state)
+                self.menu_opciones.entryconfig(self._menu_label_backtesting, state=state)
+                self.menu_opciones.entryconfig(self._menu_label_entrenar_ia, state=state)
+            except Exception:
+                pass
 
     def _update_btn_cargar_estrategias(self):
         """Habilita 'Mostrar Estrategias' solo si se han cargado procesados y se ha añadido dinero ficticio (> 0)."""
         habilitar = self.df_actual is not None and (self.dinero_ficticio > 0)
-        self.btn_cargar_estrategias.config(state="normal" if habilitar else "disabled")
-        self.btn_backtesting.config(state="normal" if habilitar else "disabled")
-        self.btn_telegram.config(state="normal" if habilitar else "disabled")
-        self.btn_entrenar_rl.config(state="normal" if habilitar else "disabled")
-        self.btn_cargar_rl.config(state="normal" if habilitar else "disabled")
-        self.btn_aplicar_rl.config(state="normal" if habilitar else "disabled")
-        self.btn_entrenar_ia.config(state="normal" if habilitar else "disabled")
+        if hasattr(self, "btn_cargar_estrategias"):
+            self.btn_cargar_estrategias.config(state="normal" if habilitar else "disabled")
+        if hasattr(self, "btn_backtesting"):
+            self.btn_backtesting.config(state="normal" if habilitar else "disabled")
+        if hasattr(self, "btn_telegram"):
+            self.btn_telegram.config(state="normal" if habilitar else "disabled")
+        if hasattr(self, "btn_entrenar_rl"):
+            self.btn_entrenar_rl.config(state="normal" if habilitar else "disabled")
+        if hasattr(self, "btn_cargar_rl"):
+            self.btn_cargar_rl.config(state="normal" if habilitar else "disabled")
+        if hasattr(self, "btn_aplicar_rl"):
+            self.btn_aplicar_rl.config(state="normal" if habilitar else "disabled")
+        if hasattr(self, "btn_entrenar_ia"):
+            self.btn_entrenar_ia.config(state="normal" if habilitar else "disabled")
+
+        # Sincronizar menú 'Opciones'
+        state = "normal" if habilitar else "disabled"
+        if hasattr(self, "btn_opciones"):
+            self.btn_opciones.config(state=state)
+            # Asegurar compatibilidad con ttk.Menubutton
+            try:
+                if state == "normal":
+                    self.btn_opciones.state(["!disabled"])
+                else:
+                    self.btn_opciones.state(["disabled"])
+            except Exception:
+                pass
+        if hasattr(self, "menu_opciones"):
+            # Asegura que las entradas del menú reflejen el mismo estado
+            try:
+                self.menu_opciones.entryconfig(self._menu_label_estrategias, state=state)
+                self.menu_opciones.entryconfig(self._menu_label_patrones, state=state)
+                self.menu_opciones.entryconfig(self._menu_label_backtesting, state=state)
+                self.menu_opciones.entryconfig(self._menu_label_entrenar_ia, state=state)
+            except Exception:
+                pass
 
     # ---------------- Telegram ----------------
     def abrir_modal_telegram(self):
