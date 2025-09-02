@@ -60,23 +60,48 @@ class EstrategiasModal(tk.Toplevel):
         # Diccionario de controles
         self.controls = {}
 
+        # Configurar una columna expansible para alinear botones a la derecha
+        # Usaremos la columna 4 como expansor y colocaremos los botones en la 5
+        try:
+            self.scrollable_frame.grid_columnconfigure(4, weight=1)
+        except Exception:
+            pass
+
         # ---------------- SECCIÓN FOREX STRATEGIES ----------------
         if estrategias_fx:
-            lbl_fx = tk.Label(self.scrollable_frame, text="Forex Strategies", 
-                             font=("Arial", 10, "bold"), anchor="w")
+            lbl_fx = ttk.Label(self.scrollable_frame, text="Forex Strategies", 
+                               font=("Arial", 10, "bold"), anchor="w")
             lbl_fx.grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 10))
 
+            # Botones para seleccionar/deseleccionar todas las Forex (centrados)
+            btn_fx_frame = tk.Frame(self.scrollable_frame)
+            btn_fx_frame.grid(row=1, column=0, columnspan=7, pady=(0, 5))
+            btn_fx_sel = ttk.Button(
+                btn_fx_frame,
+                text="Seleccionar todos",
+                command=lambda: self._set_group("forex", 1),
+                width=18
+            )
+            btn_fx_desel = ttk.Button(
+                btn_fx_frame,
+                text="Deseleccionar todos",
+                command=lambda: self._set_group("forex", 0),
+                width=20
+            )
+            btn_fx_sel.pack(side="left", padx=5)
+            btn_fx_desel.pack(side="left", padx=5)
+
             # Encabezado para Forex Strategies
-            tk.Label(self.scrollable_frame, text="Estrategia", width=20, anchor="w").grid(row=1, column=0, padx=5)
-            tk.Label(self.scrollable_frame, text="Riesgo (%)", width=10).grid(row=1, column=1, padx=5)
-            tk.Label(self.scrollable_frame, text="RR Ratio", width=10).grid(row=1, column=2, padx=5)
-            tk.Label(self.scrollable_frame, text="", width=10).grid(row=1, column=3, padx=5)
+            ttk.Label(self.scrollable_frame, text="Estrategia", width=20, anchor="w").grid(row=2, column=0, padx=5)
+            ttk.Label(self.scrollable_frame, text="Riesgo (%)", width=10).grid(row=2, column=1, padx=5)
+            ttk.Label(self.scrollable_frame, text="RR Ratio", width=10).grid(row=2, column=2, padx=5)
+            ttk.Label(self.scrollable_frame, text="", width=10).grid(row=2, column=3, padx=5)
 
             # Validación: permitir hasta 2 decimales en Riesgo (%)
             vcmd_riesgo = (self.register(self._validate_two_decimals), '%P')
 
             # Estrategias Forex con parámetros
-            for idx, nombre in enumerate(estrategias_fx, start=2):
+            for idx, nombre in enumerate(estrategias_fx, start=3):
                 var_check = tk.IntVar()
                 display_name = nombre.replace('_', ' ').capitalize()
                 chk = tk.Checkbutton(self.scrollable_frame, text=display_name, variable=var_check, 
@@ -102,7 +127,7 @@ class EstrategiasModal(tk.Toplevel):
                     version_text = "(versión 1.0)"
                 else:
                     version_text = "(versión 2.0)"
-                tk.Label(self.scrollable_frame, text=version_text, anchor="w").grid(row=idx, column=3, padx=5, sticky="w")
+                ttk.Label(self.scrollable_frame, text=version_text, anchor="w").grid(row=idx, column=3, padx=5, sticky="w")
 
                 self.controls[nombre] = {
                     "selected": var_check,
@@ -115,16 +140,34 @@ class EstrategiasModal(tk.Toplevel):
         if estrategias_candle:
             start_row = len(estrategias_fx) + 3 if estrategias_fx else 0
             
-            lbl_candle = tk.Label(self.scrollable_frame, text="Candle Strategies", 
-                                 font=("Arial", 10, "bold"), anchor="w")
+            lbl_candle = ttk.Label(self.scrollable_frame, text="Candle Strategies", 
+                                   font=("Arial", 10, "bold"), anchor="w")
             lbl_candle.grid(row=start_row, column=0, columnspan=3, sticky="w", pady=(20, 10))
 
+            # Botones para seleccionar/deseleccionar todas las Candle (centrados)
+            btn_candle_frame = tk.Frame(self.scrollable_frame)
+            btn_candle_frame.grid(row=start_row + 1, column=0, columnspan=7, pady=(0, 5))
+            btn_candle_sel = ttk.Button(
+                btn_candle_frame,
+                text="Seleccionar todos",
+                command=lambda: self._set_group("candle", 1),
+                width=18
+            )
+            btn_candle_desel = ttk.Button(
+                btn_candle_frame,
+                text="Deseleccionar todos",
+                command=lambda: self._set_group("candle", 0),
+                width=20
+            )
+            btn_candle_sel.pack(side="left", padx=5)
+            btn_candle_desel.pack(side="left", padx=5)
+
             # Encabezado para Candle Strategies (sin parámetros de riesgo)
-            tk.Label(self.scrollable_frame, text="Estrategia", width=20, anchor="w").grid(row=start_row+1, column=0, padx=5)
-            tk.Label(self.scrollable_frame, text="Sin parámetros", width=20).grid(row=start_row+1, column=1, columnspan=2, padx=5)
+            ttk.Label(self.scrollable_frame, text="Estrategia", width=20, anchor="w").grid(row=start_row+2, column=0, padx=5)
+            ttk.Label(self.scrollable_frame, text="Sin parámetros", width=20).grid(row=start_row+2, column=1, columnspan=2, padx=5)
 
             # Estrategias Candle (sin parámetros de riesgo)
-            for idx, nombre in enumerate(estrategias_candle, start=start_row+2):
+            for idx, nombre in enumerate(estrategias_candle, start=start_row+3):
                 var_check = tk.IntVar()
                 display_name = nombre.replace('_', ' ').capitalize()
                 chk = tk.Checkbutton(self.scrollable_frame, text=display_name, variable=var_check, 
@@ -132,8 +175,8 @@ class EstrategiasModal(tk.Toplevel):
                 chk.grid(row=idx, column=0, sticky="w", padx=5, pady=2)
 
                 # Espacio vacío para alinear con las forex strategies
-                tk.Label(self.scrollable_frame, text="").grid(row=idx, column=1, padx=5)
-                tk.Label(self.scrollable_frame, text="").grid(row=idx, column=2, padx=5)
+                ttk.Label(self.scrollable_frame, text="").grid(row=idx, column=1, padx=5)
+                ttk.Label(self.scrollable_frame, text="").grid(row=idx, column=2, padx=5)
 
                 self.controls[nombre] = {
                     "selected": var_check,
@@ -147,21 +190,39 @@ class EstrategiasModal(tk.Toplevel):
                 (len(estrategias_candle) + 2 if estrategias_candle else 0) + 2
             )
 
-            lbl_patterns = tk.Label(self.scrollable_frame, text="Candlestick Patterns", 
-                                    font=("Arial", 10, "bold"), anchor="w")
+            lbl_patterns = ttk.Label(self.scrollable_frame, text="Candlestick Patterns", 
+                                     font=("Arial", 10, "bold"), anchor="w")
             lbl_patterns.grid(row=start_row_patterns, column=0, columnspan=3, sticky="w", pady=(20, 10))
 
-            tk.Label(self.scrollable_frame, text="Patrón", width=20, anchor="w").grid(row=start_row_patterns+1, column=0, padx=5)
-            tk.Label(self.scrollable_frame, text="Sin parámetros", width=20).grid(row=start_row_patterns+1, column=1, columnspan=2, padx=5)
+            # Botones para seleccionar/deseleccionar todos los Patterns (centrados)
+            btn_patterns_frame = tk.Frame(self.scrollable_frame)
+            btn_patterns_frame.grid(row=start_row_patterns + 1, column=0, columnspan=7, pady=(0, 5))
+            btn_patterns_sel = ttk.Button(
+                btn_patterns_frame,
+                text="Seleccionar todos",
+                command=lambda: self._set_group("pattern", 1),
+                width=18
+            )
+            btn_patterns_desel = ttk.Button(
+                btn_patterns_frame,
+                text="Deseleccionar todos",
+                command=lambda: self._set_group("pattern", 0),
+                width=20
+            )
+            btn_patterns_sel.pack(side="left", padx=5)
+            btn_patterns_desel.pack(side="left", padx=5)
 
-            for idx, nombre in enumerate(sorted(patrones_list), start=start_row_patterns+2):
+            ttk.Label(self.scrollable_frame, text="Patrón", width=20, anchor="w").grid(row=start_row_patterns+2, column=0, padx=5)
+            ttk.Label(self.scrollable_frame, text="Sin parámetros", width=20).grid(row=start_row_patterns+2, column=1, columnspan=2, padx=5)
+
+            for idx, nombre in enumerate(sorted(patrones_list), start=start_row_patterns+3):
                 var_check = tk.IntVar()
                 display_name = nombre.replace('_', ' ').capitalize()
                 chk = tk.Checkbutton(self.scrollable_frame, text=display_name, variable=var_check, 
                                     anchor="w", width=20)
                 chk.grid(row=idx, column=0, sticky="w", padx=5, pady=2)
-                tk.Label(self.scrollable_frame, text="").grid(row=idx, column=1, padx=5)
-                tk.Label(self.scrollable_frame, text="").grid(row=idx, column=2, padx=5)
+                ttk.Label(self.scrollable_frame, text="").grid(row=idx, column=1, padx=5)
+                ttk.Label(self.scrollable_frame, text="").grid(row=idx, column=2, padx=5)
 
                 self.controls[nombre] = {
                     "selected": var_check,
@@ -172,14 +233,17 @@ class EstrategiasModal(tk.Toplevel):
         # Calcular la fila donde colocar los checkboxes
         base_row = 0
         if estrategias_fx:
-            base_row = max(base_row, 2 + len(estrategias_fx))
+            # Filas usadas por Forex: título(0), botones(1), header(2), items(3..len+2)
+            base_row = max(base_row, 3 + len(estrategias_fx))
         if estrategias_candle:
-            base_row = max(base_row, (len(estrategias_fx) + 3 if estrategias_fx else 0) + 2 + len(estrategias_candle))
+            # Inicio Candle en len_fx+3, usa: título, botones, header, items
+            base_row = max(base_row, (len(estrategias_fx) + 3 if estrategias_fx else 0) + 3 + len(estrategias_candle))
         if patrones_list:
+            # Inicio Patterns después de Candle, usa: título, botones, header, items
             base_row = max(base_row, (
                 (len(estrategias_fx) + 3 if estrategias_fx else 0) +
-                (len(estrategias_candle) + 2 if estrategias_candle else 0) +
-                2 + len(patrones_list)
+                (3 + len(estrategias_candle) if estrategias_candle else 0) +
+                3 + len(patrones_list)
             ))
         options_row = base_row + 2
         
@@ -206,7 +270,7 @@ class EstrategiasModal(tk.Toplevel):
         # ---------------- CAMPO MAX ORDENES ----------------
         frame_max = tk.Frame(self)
         frame_max.pack(pady=5)
-        tk.Label(frame_max, text="Número máximo de órdenes:").pack(side="left", padx=5)
+        ttk.Label(frame_max, text="Número máximo de órdenes:").pack(side="left", padx=5)
         self.max_orders_var = tk.StringVar(value="5")
         self.entry_max_orders = tk.Entry(frame_max, textvariable=self.max_orders_var, width=5)
         self.entry_max_orders.pack(side="left")
@@ -214,9 +278,9 @@ class EstrategiasModal(tk.Toplevel):
         # Botones Cancelar y Aceptar
         frame_btn = tk.Frame(self)
         frame_btn.pack(pady=10)
-        btn_cancelar = tk.Button(frame_btn, text="Cancelar", command=self.destroy)
+        btn_cancelar = ttk.Button(frame_btn, text="Cancelar", command=self.destroy)
         btn_cancelar.pack(side="left", padx=10)
-        btn_aceptar = tk.Button(frame_btn, text="Aceptar", command=self._aceptar)
+        btn_aceptar = ttk.Button(frame_btn, text="Aceptar", command=self._aceptar)
         btn_aceptar.pack(side="left", padx=10)
 
     def _aceptar(self):
@@ -287,3 +351,31 @@ class EstrategiasModal(tk.Toplevel):
             return re.fullmatch(r"\d*(?:\.|\,)?\d{0,2}", proposed) is not None
         except Exception:
             return False
+
+    def _toggle_group(self, tipo: str):
+        """Selecciona todas o deselecciona todas las estrategias de un grupo.
+        Si hay alguna desmarcada, selecciona todas. Si todas están seleccionadas, desmarca todas.
+        """
+        try:
+            estados = [
+                ctrl["selected"].get()
+                for ctrl in self.controls.values()
+                if ctrl.get("tipo") == tipo
+            ]
+            if not estados:
+                return
+            target = 1 if any(v == 0 for v in estados) else 0
+            for ctrl in self.controls.values():
+                if ctrl.get("tipo") == tipo:
+                    ctrl["selected"].set(target)
+        except Exception:
+            pass
+
+    def _set_group(self, tipo: str, value: int):
+        """Marca (1) o desmarca (0) todas las estrategias de un grupo."""
+        try:
+            for ctrl in self.controls.values():
+                if ctrl.get("tipo") == tipo:
+                    ctrl["selected"].set(1 if value else 0)
+        except Exception:
+            pass

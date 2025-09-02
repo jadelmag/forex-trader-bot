@@ -147,7 +147,12 @@ class GUIPrincipal:
         self.header_progressbar.pack(side="left", padx=(0, 6))
         # Etiqueta sobre la barra para mostrar el %
         self.header_progress_label = tk.Label(
-            self.header_progress_frame, text="0%", bg="#F0F0F0", fg="black"
+            self.header_progress_frame,
+            text="0%",
+            bg=self.frame_log_header.cget("bg"),  # mismo fondo que el header, evita caja blanca
+            fg="black",
+            bd=0,
+            highlightthickness=0,
         )
         # Usamos place para centrar el texto encima de la barra
         def _place_header_progress_text():
@@ -1509,6 +1514,30 @@ class GUIPrincipal:
                     text = str(msg)
                     self.root.after(0, lambda: self.log(text, color))
                     _file_log(text)
+
+                    # Sincronizar barra de progreso con logs de inicio/fin de entrenamiento RL
+                    if "INICIANDO ENTRENAMIENTO RL CON ESTRATEGIAS" in text:
+                        # Reset a 0%
+                        def _reset_progress():
+                            try:
+                                self.progress_var.set(0)
+                                self.header_progress_label.config(text="0%")
+                                # asegurar que el label quede por encima
+                                self.header_progress_label.lift()
+                            except Exception:
+                                pass
+                        self.root.after(0, _reset_progress)
+
+                    if "ENTRENAMIENTO RL COMPLETADO" in text:
+                        # Completar al 100%
+                        def _finish_progress():
+                            try:
+                                self.progress_var.set(100)
+                                self.header_progress_label.config(text="100%")
+                                self.header_progress_label.lift()
+                            except Exception:
+                                pass
+                        self.root.after(0, _finish_progress)
                 except Exception:
                     pass
 
