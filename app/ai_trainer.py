@@ -126,7 +126,7 @@ class AITrainer:
         self._emit_log(f"📊 Estrategias FX: {list(self._current_fx.keys())}", 'white')
         self._emit_log(f"📊 Estrategias Candle: {self._current_candle}", 'white')
         self._emit_log(f"📊 Patrones: {self._current_patterns}", 'white')
-        params_list = [(k, f"riesgo={v['riesgo']:.3f}, rr={v['rr']:.2f}") for k, v in self._current_fx.items()]
+        params_list = [(k, f"riesgo={v.get('riesgo', 0.0):.3f}, rr={v.get('rr', 0.0):.2f}") for k, v in self._current_fx.items()]
         self._emit_log(f"⚙️  Parámetros: {params_list}", 'white')
         
         # Recrear entorno con estrategias actuales
@@ -211,7 +211,7 @@ class AITrainer:
                     cur_set.add(random.choice(restantes))
         self._current_patterns = list(cur_set)
 
-        riesgos_list = [(k, f"{v['riesgo']:.3f}") for k, v in self._current_fx.items()]
+        riesgos_list = [(k, f"{v.get('riesgo', 0.0):.3f}") for k, v in self._current_fx.items()]
         self._emit_log(f"🔄 Configuración mutada - Riesgos: {riesgos_list}", 'yellow')
 
     def _save_best_configuration(self, stats: Dict, attempt: int):

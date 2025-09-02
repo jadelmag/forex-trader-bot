@@ -10,6 +10,7 @@ import asyncio
 import importlib.util
 from datetime import datetime
 import sys
+from stable_baselines3 import PPO
 
 from .csv_manager import CSVManager
 from .grafico_manager import GraficoManager
@@ -129,6 +130,41 @@ class GUIPrincipal:
         self.btn_clear_log = ttk.Button(self.frame_log_header, text="Limpiar Log", command=self._limpiar_log)
         self.btn_clear_log.pack(side="right")
 
+        # Barra de progreso compacta en el header (a la izquierda de "Limpiar Log")
+        self.progress_var = tk.IntVar(value=0)
+        self.header_progress_frame = tk.Frame(self.frame_log_header, bg="#F8F8F8")
+        # Empaquetamos a la derecha para quedar a la izquierda del botón (que también está a la derecha)
+        # Inicialmente NO visible; se mostrará sólo durante entrenamiento IA
+        # Widgets internos: Progressbar + etiqueta superpuesta con porcentaje
+        self.header_progressbar = ttk.Progressbar(
+            self.header_progress_frame,
+            orient='horizontal',
+            mode='determinate',
+            maximum=100,
+            variable=self.progress_var,
+            length=220,
+        )
+        self.header_progressbar.pack(side="left", padx=(0, 6))
+        # Etiqueta sobre la barra para mostrar el %
+        self.header_progress_label = tk.Label(
+            self.header_progress_frame, text="0%", bg="#F0F0F0", fg="black"
+        )
+        # Usamos place para centrar el texto encima de la barra
+        def _place_header_progress_text():
+            try:
+                x = self.header_progressbar.winfo_x()
+                y = self.header_progressbar.winfo_y()
+                w = self.header_progressbar.winfo_width()
+                h = self.header_progressbar.winfo_height()
+                # Centrar el texto en la barra
+                self.header_progress_label.place(x=x + w//2, y=y + h//2, anchor="center")
+            except Exception:
+                pass
+        # Ajustar posición tras dibujar
+        self.header_progressbar.bind("<Configure>", lambda e: _place_header_progress_text())
+        # No mostrar aún
+        # self.header_progress_frame.pack(side="right", padx=(0, 8))  # se packea dinámicamente en _show_progress_bar
+
         # Estilo exclusivo para el scrollbar de logs (no afecta botones)
         self._logs_style = ttk.Style()
         self._logs_style.configure(
@@ -166,25 +202,13 @@ class GUIPrincipal:
         self.text_log.pack(side="left", fill="both", expand=True)
         self.scrollbar_log_y.pack(side="right", fill="y")
 
-        # Barra de progreso inferior (en un frame separado bajo los logs)
+        # (Obsoleto) Barra de progreso inferior: dejamos la infra pero oculta por defecto
         self.frame_progress = tk.Frame(self.root, bg="#F0F0F0")
-        self.frame_progress.pack(fill="x", padx=20, pady=(0, 10))
-        ttk.Label(self.frame_progress, text="Progreso entrenamiento IA:", background="#F0F0F0").pack(side="left")
-        self.progress_var = tk.IntVar(value=0)
-        self.progress_bar = ttk.Progressbar(self.frame_progress, orient='horizontal', mode='determinate', maximum=100, variable=self.progress_var, length=400)
-        self.progress_bar.pack(side="left", padx=10, fill="x", expand=False)
-        # Información de iteraciones y ETA
+        # Mantener variables de info por compatibilidad (no visibles)
         self.progress_info_var = tk.StringVar(value="0/0 (0%) ETA --:--")
         self.progress_info_label = ttk.Label(self.frame_progress, textvariable=self.progress_info_var, background="#F0F0F0")
-        self.progress_info_label.pack(side="left", padx=(10,0))
-        # Inicialmente oculto
-        try:
-            self.frame_progress.pack_forget()
-        except Exception:
-            pass
-        # Botón para detener entrenamiento IA
         self.btn_stop_training = ttk.Button(self.frame_progress, text="Detener", command=lambda: self._stop_training(), state="disabled")
-        self.btn_stop_training.pack(side="right", padx=(10,0))
+        # No empaquetamos este frame para mantenerlo oculto
 
         # Contenedores de botones
         self.frame_left = tk.Frame(self.frame_controls, bg="#F0F0F0")
@@ -817,10 +841,21 @@ class GUIPrincipal:
                         self.root.after(0, lambda: self.log(str(msg), color=color))
                     except Exception:
                         pass
-                self.rl_agent = RLTradingAgent(self.df_actual, log_fn=lambda m: _log_ts(m, 'cyan'))
+                self.rl_agent = RLTradingAgent(
+                    self.df_actual,
+                    estrategias_fx={},
+                    estrategias_candle=[],
+                    patrones=[],
+                    log_fn=lambda m: _log_ts(m, 'cyan')
+                )
                 self.rl_agent.entrenar(timesteps=iterations, progress_cb=on_progress)
                 # Avisar al modal que el entrenamiento terminó OK
                 on_complete(success=True)
+                # Aviso visual de fin de entrenamiento
+                try:
+                    self.root.after(0, lambda: messagebox.showinfo("IA", "Entrenamiento completado y modelo guardado"))
+                except Exception:
+                    pass
                 # Tras finalizar el entrenamiento, aplicar automáticamente las señales RL
                 # para calcular y reflejar Beneficios/Pérdidas en la barra superior.
                 try:
@@ -839,7 +874,12 @@ class GUIPrincipal:
         if self.df_actual is None:
             messagebox.showwarning("Atención", "Debe cargar un CSV primero")
             return
-        self.rl_agent = RLTradingAgent(self.df_actual)
+        self.rl_agent = RLTradingAgent(
+            self.df_actual,
+            estrategias_fx={},
+            estrategias_candle=[],
+            patrones=[]
+        )
         cargado = self.rl_agent.cargar_modelo()
         if cargado:
             messagebox.showinfo("RL", "Modelo cargado correctamente")
@@ -1407,54 +1447,6 @@ class GUIPrincipal:
     # ---------------- IA ----------------
     def entrenar_ia(self):
         """Muestra el modal de entrenamiento de IA"""
-        
-        # Función para actualizar logs de UI
-        def ui_log(mensaje, color="white"):
-            try:
-                self.text_log.configure(state="normal")
-                self.text_log.insert("end", mensaje + "\n", color)
-                self.text_log.tag_configure(color, foreground=color)
-                self.text_log.see("end")
-                self.text_log.configure(state="disabled")
-            except Exception:
-                pass
-
-        # Función para actualizar barra de progreso
-        def ui_progress(pct):
-            try:
-                if hasattr(self, "progress_bar_ai"):
-                    self.progress_bar_ai["value"] = pct
-            except Exception:
-                pass
-
-        # Función que se llama al finalizar el entrenamiento
-        def ui_finish(success=True, error_msg=None):
-            def _ui_update():
-                # Restaurar opciones de menú
-                try:
-                    self._set_menu_opcion_state(self._menu_label_entrenar_ia, "normal")
-                    self._set_menu_opcion_state(self._menu_label_detener_ia, "disabled")
-                except Exception:
-                    pass
-                # Reset barra de progreso
-                if hasattr(self, "progress_bar_ai"):
-                    self.progress_bar_ai["value"] = 0
-                # Estado IA
-                if hasattr(self, "lbl_ai_status"):
-                    if success:
-                        self.lbl_ai_status.config(text="Entrenamiento completado ✅", fg="green")
-                        self._enviar_telegram_y_reflejar("Entrenamiento completado ✅", "green")
-                    else:
-                        self.lbl_ai_status.config(text="Entrenamiento fallido ❌", fg="red")
-                        if error_msg:
-                            self.log(f"Error en entrenamiento IA: {error_msg}", "red")
-                            self._enviar_telegram_y_reflejar(f"Error en entrenamiento IA: {error_msg}", "red")
-                # Limpiar referencia a trainer
-                self._ai_trainer = None
-
-            self.root.after(0, _ui_update)
-
-        # Callback que se llama al aceptar opciones del modal
         def on_accept(
             seleccion_fx=None,
             seleccion_patterns=None,
@@ -1467,38 +1459,277 @@ class GUIPrincipal:
             seed_val=None,
             save_best=True,
         ):
-            ui_log("Preparando entrenamiento IA...", "yellow")
-            
-            # Capital inicial
+            """Recibe selecciones del modal e inicia el entrenador en hilo de fondo."""
+            seleccion_fx = seleccion_fx or {}
+            seleccion_patterns = seleccion_patterns or []
+            seleccion_candle = seleccion_candle or []
+
+            # Mostrar barra de progreso
             try:
-                capital_inicial = float(self.entry_dinero.get()) if self.entry_dinero.get() else float(self.dinero_ficticio)
+                self._show_progress_bar()
+                self.progress_var.set(0)
+                self.progress_info_var.set("0/0 (0%) ETA --:--")
+                self._train_start_ts = time.time()
+                self._train_total = 0
+                self.btn_stop_training.config(state="normal")
             except Exception:
-                capital_inicial = float(self.dinero_ficticio)
-            
-            # Preparar agente RL con estrategias
+                pass
+
+            # Preparar archivo de log por sesión
             try:
-                self.rl_agent = RLTradingAgent(
-                    self.df_actual,
-                    estrategias_fx=seleccion_fx or {},
-                    estrategias_candle=seleccion_candle or [],
-                    patrones=seleccion_patterns or [],
-                    log_fn=lambda m: ui_log(m, 'cyan'),
-                )
-                
-                # Cargar modelo si existe
-                if selected_model_path:
-                    self.rl_agent.cargar_modelo()
+                project_root = os.path.dirname(os.path.dirname(__file__))
+                logs_dir = os.path.join(project_root, 'logs')
+                os.makedirs(logs_dir, exist_ok=True)
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                self._training_log_path = os.path.join(logs_dir, f'log_{timestamp}.txt')
+            except Exception:
+                self._training_log_path = None
+
+            def _file_log(line: str):
+                try:
+                    if not getattr(self, '_training_log_path', None):
+                        return
+                    ts = datetime.now().strftime('%H:%M:%S')
+                    with open(self._training_log_path, 'a', encoding='utf-8') as f:
+                        f.write(f"[{ts}] {line}\n")
+                except Exception:
+                    pass
+
+            # Obtener capital del entry
+            try:
+                capital_inicial = float(self.entry_dinero.get())
+                if capital_inicial <= 0:
+                    raise ValueError
+            except Exception:
+                messagebox.showerror("Entrenamiento IA", "Ingrese un capital válido en 'Dinero ficticio'")
+                return
+
+            # Callbacks seguros para UI
+            def ui_log(msg: str, color: str = 'white'):
+                try:
+                    text = str(msg)
+                    self.root.after(0, lambda: self.log(text, color))
+                    _file_log(text)
+                except Exception:
+                    pass
+
+            def ui_progress(cur: int, total: int):
+                try:
+                    pct = int((cur / max(1, total)) * 100)
+                    self.root.after(0, lambda: self.progress_var.set(min(max(pct, 0), 100)))
+                    self.root.after(0, lambda: self.header_progress_label.config(text=f"{min(max(pct, 0), 100)}%"))
+                    if getattr(self, '_train_total', 0) != total:
+                        self._train_total = total
+                    def _fmt_eta():
+                        try:
+                            start = getattr(self, '_train_start_ts', None)
+                            if not start:
+                                return "--:--"
+                            elapsed = max(0.0, time.time() - start)
+                            rate = (cur / elapsed) if elapsed > 0 else 0.0
+                            remaining = ((total - cur) / rate) if rate > 0 else 0.0
+                            m = int(remaining // 60)
+                            s = int(remaining % 60)
+                            return f"{m:02d}:{s:02d}"
+                        except Exception:
+                            return "--:--"
+                    eta_str = _fmt_eta()
+                    self.root.after(0, lambda: self.progress_info_var.set(f"{cur}/{total} ({pct}%) ETA {eta_str}"))
+                except Exception:
+                    pass
+
+            def ui_finish(stats: dict):
+                try:
+                    err = stats.get('error')
+                    if err:
+                        self.root.after(0, lambda: ui_log(f"Entrenamiento detenido: {err}", 'red'))
+                        self.root.after(0, self._hide_progress_bar)
+                        return
+                except Exception:
+                    pass
+
+                try:
+                    capital_final = float(stats.get('capital_final', self.dinero_ficticio))
+                    beneficio_total = float(stats.get('beneficio_total', 0.0))
+                    dinero_ganado = float(stats.get('dinero_ganado', 0.0))
+                    dinero_perdido = float(stats.get('dinero_perdido', 0.0))
+                    self.dinero_ficticio = capital_final
+                    self.beneficios = max(0.0, dinero_ganado)
+                    self.perdidas = abs(dinero_perdido)
+                    self.actualizar_labels()
+                except Exception:
+                    pass
+
+                try:
+                    ops_g = int(stats.get('operaciones_ganadas', 0))
+                    ops_p = int(stats.get('operaciones_perdidas', 0))
+                    ops_a = int(stats.get('operaciones_activas', 0))
+                    max_ops = int(stats.get('max_operaciones', 0))
+                    winrate = float(stats.get('winrate', 0.0))
+                    self.root.after(0, lambda: ui_log("="*60, 'white'))
+                    self.root.after(0, lambda: ui_log("RESUMEN ENTRENAMIENTO IA", 'yellow'))
+                    self.root.after(0, lambda: ui_log(f"Capital final: ${capital_final:,.2f}", 'cyan'))
+                    self.root.after(0, lambda: ui_log(f"Beneficio total: ${beneficio_total:,.2f}", 'cyan'))
+                    self.root.after(0, lambda: ui_log(f"Operaciones ganadas: {ops_g}", 'green'))
+                    self.root.after(0, lambda: ui_log(f"Operaciones perdidas: {ops_p}", 'red'))
+                    self.root.after(0, lambda: ui_log(f"Dinero ganado en operaciones ganadoras: ${float(stats.get('dinero_ganado', 0.0)):,.2f}", 'green'))
+                    self.root.after(0, lambda: ui_log(f"Dinero perdido en operaciones perdedoras: -${abs(float(stats.get('dinero_perdido', 0.0))):,.2f}", 'red'))
                     
+                    try:
+                        fx_cfg = stats.get('fx_config') or {}
+                        candle_cfg = stats.get('candle_config') or []
+                        patterns_cfg = stats.get('patterns_config') or []
+                        
+                        if fx_cfg:
+                            self.root.after(0, lambda: ui_log("Configuración FX utilizada:", 'white'))
+                            for k, v in fx_cfg.items():
+                                try:
+                                    riesgo = float(v.get('riesgo', 0.01))
+                                    rr = float(v.get('rr', 2.0))
+                                except Exception:
+                                    riesgo, rr = 0.01, 2.0
+                                line = f" - {k}: riesgo={riesgo:.3f}, rr={rr:.2f}"
+                                self.root.after(0, lambda l=line: ui_log(l, 'white'))
+                        
+                        if candle_cfg:
+                            self.root.after(0, lambda: ui_log(f"Estrategias Candle: {', '.join(candle_cfg)}", 'white'))
+                        
+                        if patterns_cfg:
+                            self.root.after(0, lambda: ui_log(f"Patrones: {', '.join(patterns_cfg)}", 'white'))
+                            
+                    except Exception:
+                        pass
+                        
+                    self.root.after(0, lambda: ui_log(f"Win Rate: {winrate:.1f}%", 'white'))
+                    self.root.after(0, lambda: ui_log(f"Slots usados: {ops_a}/{max_ops}", 'blue'))
+                    
+                    try:
+                        best_stats = stats.get('best', {})
+                        if best_stats:
+                            self.root.after(0, lambda: ui_log("="*60, 'white'))
+                            self.root.after(0, lambda: ui_log("MEJOR CONFIGURACIÓN ENCONTRADA", 'yellow'))
+                            self.root.after(0, lambda: ui_log(f"WinRate: {best_stats.get('stats', {}).get('winrate', 0):.1f}%", 'cyan'))
+                            self.root.after(0, lambda: ui_log(f"Intento: {best_stats.get('stats', {}).get('attempt', 0)}", 'white'))
+                    except Exception:
+                        pass
+                        
+                    self.root.after(0, lambda: ui_log("="*60, 'white'))
+                except Exception:
+                    pass
+
+                try:
+                    # Aviso visual al finalizar entrenamiento IA (modal avanzado)
+                    self.root.after(0, lambda: messagebox.showinfo("IA", "Entrenamiento IA completado y modelo guardado"))
+                except Exception:
+                    pass
+
+                # Aplicar señales RL automáticamente al finalizar el entrenamiento IA
+                try:
+                    self.root.after(0, lambda: (
+                        self.log("Aplicando señales RL post-entrenamiento...", color='yellow'),
+                        self.aplicar_senales_rl()
+                    ))
+                except Exception:
+                    pass
+
+                try:
+                    self.root.after(0, lambda: self.progress_var.set(100))
+                    self.root.after(0, lambda: self.header_progress_label.config(text="100%"))
+                    self.root.after(1200, self._hide_progress_bar)
+                except Exception:
+                    pass
+
+            # SOLUCIÓN OPCIÓN 1 - Preparar agente RL con verificación de compatibilidad
+            try:
+                if selected_model_path:
+                    model_dir, fname = os.path.split(selected_model_path)
+                    base, ext = os.path.splitext(fname)
+                    model_name = base
+                    if not model_dir:
+                        model_dir = 'models_rl'
+                    
+                    model_full_path = os.path.join(model_dir, model_name + ".zip")
+                    if os.path.exists(model_full_path):
+                        try:
+                            temp_model = PPO.load(model_full_path)
+                            old_dims = temp_model.policy.observation_space.shape[0]
+                            
+                            temp_agent = RLTradingAgent(
+                                self.df_actual,
+                                estrategias_fx=seleccion_fx,
+                                estrategias_candle=seleccion_candle,
+                                patrones=seleccion_patterns,
+                                log_fn=lambda m: ui_log(m, 'cyan'),
+                            )
+                            new_dims = temp_agent.env.observation_space.shape[0]
+                            
+                            if old_dims != new_dims:
+                                ui_log(f"⚠️ Modelo incompatible ({old_dims} vs {new_dims}). Eliminando y creando nuevo...", 'yellow')
+                                os.remove(model_full_path)
+                                self.rl_agent = RLTradingAgent(
+                                    self.df_actual,
+                                    estrategias_fx=seleccion_fx,
+                                    estrategias_candle=seleccion_candle,
+                                    patrones=seleccion_patterns,
+                                    model_dir=model_dir,
+                                    model_name=model_name,
+                                    log_fn=lambda m: ui_log(m, 'cyan'),
+                                )
+                                ui_log("🆕 Nuevo modelo creado con dimensiones correctas", 'green')
+                            else:
+                                self.rl_agent = RLTradingAgent(
+                                    self.df_actual,
+                                    estrategias_fx=seleccion_fx,
+                                    estrategias_candle=seleccion_candle,
+                                    patrones=seleccion_patterns,
+                                    model_dir=model_dir,
+                                    model_name=model_name,
+                                    log_fn=lambda m: ui_log(m, 'cyan'),
+                                )
+                                self.rl_agent.cargar_modelo()
+                                
+                        except Exception as e:
+                            ui_log(f"❌ Error verificando modelo: {e}. Creando nuevo...", 'red')
+                            if os.path.exists(model_full_path):
+                                os.remove(model_full_path)
+                            self.rl_agent = RLTradingAgent(
+                                self.df_actual,
+                                estrategias_fx=seleccion_fx,
+                                estrategias_candle=seleccion_candle,
+                                patrones=seleccion_patterns,
+                                model_dir=model_dir,
+                                model_name=model_name,
+                                log_fn=lambda m: ui_log(m, 'cyan'),
+                            )
+                    else:
+                        self.rl_agent = RLTradingAgent(
+                            self.df_actual,
+                            estrategias_fx=seleccion_fx,
+                            estrategias_candle=seleccion_candle,
+                            patrones=seleccion_patterns,
+                            model_dir=model_dir,
+                            model_name=model_name,
+                            log_fn=lambda m: ui_log(m, 'cyan'),
+                        )
+                else:
+                    if not hasattr(self, 'rl_agent') or self.rl_agent is None:
+                        self.rl_agent = RLTradingAgent(
+                            self.df_actual,
+                            estrategias_fx=seleccion_fx,
+                            estrategias_candle=seleccion_candle,
+                            patrones=seleccion_patterns,
+                            log_fn=lambda m: ui_log(m, 'cyan')
+                        )
             except Exception as e:
-                ui_log(f"Error preparando agente RL: {e}", 'red')
+                ui_log(f"No se pudo preparar el agente RL: {e}", 'red')
                 return
 
             # Iniciar entrenador
             trainer = AITrainer(
                 df=self.df_actual,
-                seleccion_fx=seleccion_fx or {},
-                seleccion_patterns=seleccion_patterns or [],
-                seleccion_candle=seleccion_candle or [],
+                seleccion_fx=seleccion_fx,
+                seleccion_patterns=seleccion_patterns,
+                seleccion_candle=seleccion_candle,
                 max_orders=max_orders,
                 capital_inicial=capital_inicial,
                 use_winrate=use_winrate,
@@ -1512,17 +1743,37 @@ class GUIPrincipal:
             )
             
             self._ai_trainer = trainer
-            trainer.start()
-            
-            # Actualizar menú: deshabilitar Entrenar IA y habilitar Detener IA
+
+            # Escribir cabecera de sesión
             try:
-                self._set_menu_opcion_state(self._menu_label_entrenar_ia, "disabled")
-                self._set_menu_opcion_state(self._menu_label_detener_ia, "normal")
+                ui_log("="*60, 'white')
+                ui_log("INICIO SESIÓN ENTRENAMIENTO IA", 'yellow')
+                ui_log(f"Fecha/Hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", 'white')
+                ui_log(f"Max órdenes: {max_orders}", 'white')
+                stop_desc = f"WinRate objetivo: {winrate:.1f}%" if use_winrate else "Sin condición explícita"
+                ui_log(f"Parada: {stop_desc}", 'white')
+                ui_log(f"Máximo intentos: {max_attempts if max_attempts > 0 else 'Ilimitado'}", 'white')
+                
+                if selected_model_path:
+                    ui_log(f"Modelo RL: {selected_model_path}", 'white')
+                if seleccion_fx:
+                    ui_log(f"Estrategias FX: {', '.join(seleccion_fx.keys())}", 'white')
+                if seleccion_candle:
+                    ui_log(f"Estrategias Candle: {', '.join(seleccion_candle)}", 'white')
+                if seleccion_patterns:
+                    ui_log(f"Patrones: {', '.join(seleccion_patterns)}", 'white')
+                ui_log("="*60, 'white')
             except Exception:
                 pass
+            
+            trainer.start()
 
-        # Abrir modal de configuración de IA
-        AITrainingModal(self.root, on_accept_callback=on_accept)
+        if self.df_actual is None:
+            messagebox.showwarning("Datos requeridos", "Por favor, carga los datos primero.")
+            return
+
+        modal = AITrainingModal(self.root, on_accept_callback=on_accept)
+        modal.show()
 
     def detener_entrenamiento_ia(self):
         """Detiene el entrenamiento de IA en curso si existe."""
@@ -1552,15 +1803,21 @@ class GUIPrincipal:
     # ---- Utilidades barra de progreso ----
     def _show_progress_bar(self):
         try:
-            self.frame_progress.pack(fill="x", padx=20, pady=(0, 10))
+            # Mostrar la barra en el header (a la izquierda de "Limpiar Log")
             self.progress_var.set(0)
+            self.header_progress_label.config(text="0%")
+            self.header_progress_frame.pack(side="right", padx=(0, 8))
+            # Asegurar que el texto se centra
+            self.header_progressbar.update_idletasks()
+            self.header_progress_label.lift()
         except Exception:
             pass
 
     def _hide_progress_bar(self):
         try:
-            self.frame_progress.pack_forget()
-            # Deshabilitar botón Detener cuando no hay entrenamiento
+            # Ocultar barra del header
+            self.header_progress_frame.pack_forget()
+            # Deshabilitar botón Detener cuando no hay entrenamiento (si se usa el inferior)
             self.btn_stop_training.config(state="disabled")
         except Exception:
             pass

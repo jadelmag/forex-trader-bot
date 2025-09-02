@@ -7,5 +7,6 @@ test.py
 /logs/*.json
 *.session
 *.session-journal
-/tensorboard_logs/**
+/tensorboard_logs/PP_0/events.*
 /tensorboard_logs/
+/tensorboard_logs/**/**

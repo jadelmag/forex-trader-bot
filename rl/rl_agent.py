@@ -98,28 +98,9 @@ class RLTradingAgent:
         """Carga el modelo entrenado desde disco."""
         load_path = os.path.join(self.model_dir, self.model_name)
         if os.path.exists(load_path + ".zip"):
-            try:
-                self.model = PPO.load(load_path, env=self.env)
-                self._log(f"📂 Modelo cargado desde {load_path}")
-                # Validar compatibilidad básica de espacios de observación
-                try:
-                    cur_dim = int(self.env.observation_space.shape[0]) if hasattr(self.env, 'observation_space') else None
-                    # En DummyVecEnv, observation_space está envs[0].observation_space
-                    if cur_dim is None and hasattr(self.env, 'envs') and self.env.envs:
-                        cur_dim = int(getattr(self.env.envs[0], 'observation_space').shape[0])
-                    model_dim = int(getattr(self.model, 'observation_space').shape[0]) if hasattr(self.model, 'observation_space') else None
-                    if cur_dim is not None and model_dim is not None and cur_dim != model_dim:
-                        self._log(f"⚠️ El espacio de observación actual ({cur_dim}) no coincide con el del modelo cargado ({model_dim}). Se entrenará un modelo nuevo.")
-                        self.model = None
-                        return False
-                except Exception:
-                    pass
-                return True
-            except Exception as e:
-                # Manejar incompatibilidades (e.g., espacios de observación distintos)
-                self._log(f"⚠️ No se pudo cargar el modelo existente debido a incompatibilidad: {e}. Se entrenará un modelo nuevo.")
-                self.model = None
-                return False
+            self.model = PPO.load(load_path, env=self.env)
+            self._log(f"📂 Modelo cargado desde {load_path}")
+            return True
         self._log("⚠️ No se encontró un modelo previo, entrene primero.")
         return False
 
