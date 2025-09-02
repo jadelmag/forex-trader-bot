@@ -474,5 +474,4 @@ Commons Clause + Apache/MIT
 
 ## En proceso
 
-* Entrenamiento de RL
 * Conectar con Metatrader
