@@ -697,8 +697,16 @@ class AITrainingModal(tk.Toplevel):
         seleccion_fx = {}
         for metodo, var in self.strategy_vars.items():
             if var.get():
-                riesgo = float(self.risk_vars[metodo].get() or 0.0) / (100 if float(self.risk_vars[metodo].get() or 0.0) > 1.0 else 1.0)
-                rr = float(self.rr_vars[metodo].get() or 0.0)
+                # Tratar siempre el input de riesgo como porcentaje (ej. 1.0 => 0.01)
+                try:
+                    riesgo_input = float(self.risk_vars[metodo].get() or 0.0)
+                except Exception:
+                    riesgo_input = 0.0
+                riesgo = riesgo_input / 100.0
+                try:
+                    rr = float(self.rr_vars[metodo].get() or 0.0)
+                except Exception:
+                    rr = 0.0
                 seleccion_fx[metodo] = {"tipo": "forex", "riesgo": riesgo, "rr": rr}
 
         seleccion_candle = []

@@ -247,6 +247,7 @@ class GUIPrincipal:
         self._menu_label_patrones = "Aplicar Patrones"
         self._menu_label_backtesting = "Iniciar Backtesting"
         self._menu_label_entrenar_ia = "Entrenar IA"
+        self._menu_label_detener_ia = "Detener IA"
 
         # Entradas del menú Opciones (inicialmente deshabilitadas)
         self.menu_opciones.add_command(
@@ -261,6 +262,9 @@ class GUIPrincipal:
         self.menu_opciones.add_separator()
         self.menu_opciones.add_command(
             label=self._menu_label_entrenar_ia, command=self.entrenar_ia, state="disabled"
+        )
+        self.menu_opciones.add_command(
+            label=self._menu_label_detener_ia, command=self.detener_entrenamiento_ia, state="disabled"
         )
 
         # ---------------- Menú desplegable Modelo IA (agrupa RL) ----------------
@@ -1403,9 +1407,58 @@ class GUIPrincipal:
     # ---------------- IA ----------------
     def entrenar_ia(self):
         """Muestra el modal de entrenamiento de IA"""
+        
+        # Función para actualizar logs de UI
+        def ui_log(mensaje, color="white"):
+            try:
+                self.text_log.configure(state="normal")
+                self.text_log.insert("end", mensaje + "\n", color)
+                self.text_log.tag_configure(color, foreground=color)
+                self.text_log.see("end")
+                self.text_log.configure(state="disabled")
+            except Exception:
+                pass
+
+        # Función para actualizar barra de progreso
+        def ui_progress(pct):
+            try:
+                if hasattr(self, "progress_bar_ai"):
+                    self.progress_bar_ai["value"] = pct
+            except Exception:
+                pass
+
+        # Función que se llama al finalizar el entrenamiento
+        def ui_finish(success=True, error_msg=None):
+            def _ui_update():
+                # Restaurar opciones de menú
+                try:
+                    self._set_menu_opcion_state(self._menu_label_entrenar_ia, "normal")
+                    self._set_menu_opcion_state(self._menu_label_detener_ia, "disabled")
+                except Exception:
+                    pass
+                # Reset barra de progreso
+                if hasattr(self, "progress_bar_ai"):
+                    self.progress_bar_ai["value"] = 0
+                # Estado IA
+                if hasattr(self, "lbl_ai_status"):
+                    if success:
+                        self.lbl_ai_status.config(text="Entrenamiento completado ✅", fg="green")
+                        self._enviar_telegram_y_reflejar("Entrenamiento completado ✅", "green")
+                    else:
+                        self.lbl_ai_status.config(text="Entrenamiento fallido ❌", fg="red")
+                        if error_msg:
+                            self.log(f"Error en entrenamiento IA: {error_msg}", "red")
+                            self._enviar_telegram_y_reflejar(f"Error en entrenamiento IA: {error_msg}", "red")
+                # Limpiar referencia a trainer
+                self._ai_trainer = None
+
+            self.root.after(0, _ui_update)
+
+        # Callback que se llama al aceptar opciones del modal
         def on_accept(
             seleccion_fx=None,
             seleccion_patterns=None,
+            seleccion_candle=None,
             max_orders=5,
             use_winrate=False,
             winrate=0.0,
@@ -1414,191 +1467,38 @@ class GUIPrincipal:
             seed_val=None,
             save_best=True,
         ):
-            """Recibe selecciones del modal e inicia el entrenador en hilo de fondo."""
-            seleccion_fx = seleccion_fx or {}
-            seleccion_patterns = seleccion_patterns or []
+            ui_log("Preparando entrenamiento IA...", "yellow")
             
-            # Eliminado: parsing de visualización por segundos
-
-            # Mostrar barra de progreso
+            # Capital inicial
             try:
-                self._show_progress_bar()
-                self.progress_var.set(0)
-                self.progress_info_var.set("0/0 (0%) ETA --:--")
-                self._train_start_ts = time.time()
-                self._train_total = 0
-                # Habilitar botón Detener
-                self.btn_stop_training.config(state="normal")
+                capital_inicial = float(self.entry_dinero.get()) if self.entry_dinero.get() else float(self.dinero_ficticio)
             except Exception:
-                pass
-
-            # Preparar archivo de log por sesión
+                capital_inicial = float(self.dinero_ficticio)
+            
+            # Preparar agente RL con estrategias
             try:
-                project_root = os.path.dirname(os.path.dirname(__file__))
-                logs_dir = os.path.join(project_root, 'logs')
-                os.makedirs(logs_dir, exist_ok=True)
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                self._training_log_path = os.path.join(logs_dir, f'log_{timestamp}.txt')
-            except Exception:
-                self._training_log_path = None
-
-            def _file_log(line: str):
-                try:
-                    if not getattr(self, '_training_log_path', None):
-                        return
-                    ts = datetime.now().strftime('%H:%M:%S')
-                    with open(self._training_log_path, 'a', encoding='utf-8') as f:
-                        f.write(f"[{ts}] {line}\n")
-                except Exception:
-                    pass
-
-            # Obtener capital del entry
-            try:
-                capital_inicial = float(self.entry_dinero.get())
-                if capital_inicial <= 0:
-                    raise ValueError
-            except Exception:
-                messagebox.showerror("Entrenamiento IA", "Ingrese un capital válido en 'Dinero ficticio'")
-                return
-
-            # Callbacks seguros para UI
-            def ui_log(msg: str, color: str = 'white'):
-                try:
-                    text = str(msg)
-                    self.root.after(0, lambda: self.log(text, color))
-                    _file_log(text)
-                except Exception:
-                    pass
-
-            def ui_progress(cur: int, total: int):
-                try:
-                    # Actualizar porcentaje barra
-                    pct = int((cur / max(1, total)) * 100)
-                    self.root.after(0, lambda: self.progress_var.set(min(max(pct, 0), 100)))
-                    # Guardar total si cambia
-                    if getattr(self, '_train_total', 0) != total:
-                        self._train_total = total
-                    # Calcular ETA
-                    def _fmt_eta():
-                        try:
-                            start = getattr(self, '_train_start_ts', None)
-                            if not start:
-                                return "--:--"
-                            elapsed = max(0.0, time.time() - start)
-                            rate = (cur / elapsed) if elapsed > 0 else 0.0
-                            remaining = ((total - cur) / rate) if rate > 0 else 0.0
-                            m = int(remaining // 60)
-                            s = int(remaining % 60)
-                            return f"{m:02d}:{s:02d}"
-                        except Exception:
-                            return "--:--"
-                    # En otro caso, no bloqueamos: opcionalmente podría diferirse
-                except Exception:
-                    ui_log("No fue posible guardar el modelo RL.", 'red')
-
-            def ui_finish(stats: dict):
-                # Si hubo error, loguear y ocultar barra inmediatamente
-                try:
-                    err = stats.get('error') if isinstance(stats, dict) else None
-                    if err:
-                        self.root.after(0, lambda: ui_log(f"Entrenamiento detenido: {err}", 'red'))
-                        self.root.after(0, self._hide_progress_bar)
-                        return
-                except Exception:
-                    pass
-
-                # Actualizar labels de dinero y resumen
-                try:
-                    capital_final = float(stats.get('capital_final', self.dinero_ficticio))
-                    beneficio_total = float(stats.get('beneficio_total', 0.0))
-                    dinero_ganado = float(stats.get('dinero_ganado', 0.0))
-                    dinero_perdido = float(stats.get('dinero_perdido', 0.0))
-                    # Actualizar estado interno
-                    self.dinero_ficticio = capital_final
-                    self.beneficios = max(0.0, dinero_ganado)
-                    # Mostrar pérdidas como valor positivo en la etiqueta
-                    self.perdidas = abs(dinero_perdido)
-                    # Refrescar etiquetas
-                    self.actualizar_labels()
-                except Exception:
-                    pass
-
-                # Mostrar resumen en el log inferior (y archivo)
-                try:
-                    ops_g = int(stats.get('operaciones_ganadas', 0))
-                    ops_p = int(stats.get('operaciones_perdidas', 0))
-                    ops_a = int(stats.get('operaciones_activas', 0))
-                    max_ops = int(stats.get('max_operaciones', 0))
-                    winrate = float(stats.get('winrate', 0.0))
-                    self.root.after(0, lambda: ui_log("="*60, 'white'))
-                    self.root.after(0, lambda: ui_log("RESUMEN ENTRENAMIENTO IA", 'yellow'))
-                    self.root.after(0, lambda: ui_log(f"Capital final: ${capital_final:,.2f}", 'cyan'))
-                    self.root.after(0, lambda: ui_log(f"Beneficio total: ${beneficio_total:,.2f}", 'cyan'))
-                    self.root.after(0, lambda: ui_log(f"Operaciones ganadas: {ops_g}", 'green'))
-                    self.root.after(0, lambda: ui_log(f"Operaciones perdidas: {ops_p}", 'red'))
-                    # Nuevas líneas: dinero ganado/perdido por categoría
-                    self.root.after(0, lambda: ui_log(f"Dinero ganado en operaciones ganadoras: ${float(stats.get('dinero_ganado', 0.0)):,.2f}", 'green'))
-                    self.root.after(0, lambda: ui_log(f"Dinero perdido en operaciones perdedoras: -${abs(float(stats.get('dinero_perdido', 0.0))):,.2f}", 'red'))
-                    # Configuración actual de estrategias Forex (como lista con viñetas)
-                    try:
-                        fx_cfg = stats.get('fx_config') or {}
-                        if fx_cfg:
-                            self.root.after(0, lambda: ui_log("Configuración FX utilizada:", 'white'))
-                            # Listar cada ítem como viñeta
-                            for k, v in fx_cfg.items():
-                                try:
-                                    riesgo = float(v.get('riesgo', 0.01))
-                                    rr = float(v.get('rr', 2.0))
-                                except Exception:
-                                    riesgo, rr = 0.01, 2.0
-                                line = f" - {k}: riesgo={riesgo:.3f}, rr={rr:.2f}"
-                                self.root.after(0, lambda l=line: ui_log(l, 'white'))
-                        else:
-                            self.root.after(0, lambda: ui_log("No se seleccionó ninguna estrategia forex", 'white'))
-                    except Exception:
-                        pass
-                    self.root.after(0, lambda: ui_log(f"Win Rate: {winrate:.1f}%", 'white'))
-                    self.root.after(0, lambda: ui_log(f"Slots usados: {ops_a}/{max_ops}", 'blue'))
-                    self.root.after(0, lambda: ui_log("="*60, 'white'))
-                except Exception:
-                    pass
-
-                # Completar y ocultar barra de progreso tras breve pausa
-                try:
-                    self.root.after(0, lambda: self.progress_var.set(100))
-                    self.root.after(1200, self._hide_progress_bar)
-                except Exception:
-                    pass
-
-            # Preparar/cargar agente RL si se proporcionó ruta
-            try:
+                self.rl_agent = RLTradingAgent(
+                    self.df_actual,
+                    estrategias_fx=seleccion_fx or {},
+                    estrategias_candle=seleccion_candle or [],
+                    patrones=seleccion_patterns or [],
+                    log_fn=lambda m: ui_log(m, 'cyan'),
+                )
+                
+                # Cargar modelo si existe
                 if selected_model_path:
-                    # Acepta rutas con o sin .zip
-                    model_dir, fname = os.path.split(selected_model_path)
-                    base, ext = os.path.splitext(fname)
-                    model_name = base
-                    if not model_dir:
-                        model_dir = 'models_rl'
-                    # Crear agente y cargar si existe
-                    self.rl_agent = RLTradingAgent(
-                        self.df_actual,
-                        model_dir=model_dir,
-                        model_name=model_name,
-                        log_fn=lambda m: ui_log(m, 'cyan'),
-                    )
                     self.rl_agent.cargar_modelo()
-                else:
-                    # Asegurar agente por defecto para guardar al final
-                    if not hasattr(self, 'rl_agent') or self.rl_agent is None:
-                        self.rl_agent = RLTradingAgent(self.df_actual, log_fn=lambda m: ui_log(m, 'cyan'))
+                    
             except Exception as e:
-                ui_log(f"No se pudo preparar el agente RL: {e}", 'red')
+                ui_log(f"Error preparando agente RL: {e}", 'red')
+                return
 
             # Iniciar entrenador
             trainer = AITrainer(
                 df=self.df_actual,
-                seleccion_fx=seleccion_fx,
-                seleccion_patterns=seleccion_patterns,
+                seleccion_fx=seleccion_fx or {},
+                seleccion_patterns=seleccion_patterns or [],
+                seleccion_candle=seleccion_candle or [],
                 max_orders=max_orders,
                 capital_inicial=capital_inicial,
                 use_winrate=use_winrate,
@@ -1610,39 +1510,44 @@ class GUIPrincipal:
                 on_progress=ui_progress,
                 on_finish=ui_finish,
             )
-            # Guardar referencia para poder detener
+            
             self._ai_trainer = trainer
-
-            # Escribir cabecera de sesión en archivo de log
+            trainer.start()
+            
+            # Actualizar menú: deshabilitar Entrenar IA y habilitar Detener IA
             try:
-                ui_log("="*60, 'white')
-                ui_log("INICIO SESIÓN ENTRENAMIENTO IA", 'yellow')
-                ui_log(f"Fecha/Hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", 'white')
-                ui_log(f"Max órdenes: {max_orders}", 'white')
-                stop_desc = (
-                    f"WinRate objetivo: {winrate:.1f}%" if use_winrate else "Sin condición explícita"
-                )
-                ui_log(f"Parada: {stop_desc}", 'white')
-                # Eliminado: log de visualización por segundos
-                if selected_model_path:
-                    ui_log(f"Modelo RL: {selected_model_path}", 'white')
-                if seleccion_fx:
-                    ui_log(f"Estrategias FX: {', '.join(seleccion_fx.keys())}", 'white')
-                if seleccion_patterns:
-                    ui_log(f"Patrones: {', '.join(seleccion_patterns)}", 'white')
-                ui_log("="*60, 'white')
+                self._set_menu_opcion_state(self._menu_label_entrenar_ia, "disabled")
+                self._set_menu_opcion_state(self._menu_label_detener_ia, "normal")
             except Exception:
                 pass
-            trainer.start()
 
-        # Verificar si hay datos cargados antes de abrir el modal
-        if self.df_actual is None:
-            messagebox.showwarning("Datos requeridos", "Por favor, carga los datos primero.")
-            return
+        # Abrir modal de configuración de IA
+        AITrainingModal(self.root, on_accept_callback=on_accept)
 
-        # Mostrar el modal de entrenamiento
-        modal = AITrainingModal(self.root, on_accept_callback=on_accept)
-        modal.show()
+    def detener_entrenamiento_ia(self):
+        """Detiene el entrenamiento de IA en curso si existe."""
+        try:
+            if hasattr(self, "_ai_trainer") and self._ai_trainer:
+                self._ai_trainer.stop()
+                self.log("Entrenamiento detenido manualmente ⏹️", "yellow")
+                self._enviar_telegram_y_reflejar("Entrenamiento detenido manualmente ⏹️", "yellow")
+
+                # Restaurar UI
+                try:
+                    self._set_menu_opcion_state(self._menu_label_entrenar_ia, "normal")
+                    self._set_menu_opcion_state(self._menu_label_detener_ia, "disabled")
+                except Exception:
+                    pass
+                if hasattr(self, "progress_bar_ai"):
+                    self.progress_bar_ai["value"] = 0
+                if hasattr(self, "lbl_ai_status"):
+                    self.lbl_ai_status.config(text="Listo para entrenar", fg="blue")
+
+                self._ai_trainer = None
+            else:
+                self.log("⚠️ No hay entrenamiento en curso para detener.", "orange")
+        except Exception as e:
+            self.log(f"Error al detener el entrenamiento: {e}", "red")
 
     # ---- Utilidades barra de progreso ----
     def _show_progress_bar(self):
@@ -1657,6 +1562,23 @@ class GUIPrincipal:
             self.frame_progress.pack_forget()
             # Deshabilitar botón Detener cuando no hay entrenamiento
             self.btn_stop_training.config(state="disabled")
+        except Exception:
+            pass
+
+    # ---- Utilidades Menú Opciones ----
+    def _set_menu_opcion_state(self, label: str, state: str):
+        """Cambia el estado ('normal'/'disabled') de una entrada del menú Opciones por su etiqueta."""
+        try:
+            end_index = self.menu_opciones.index('end')
+            if end_index is None:
+                return
+            for i in range(end_index + 1):
+                try:
+                    if self.menu_opciones.entrycget(i, 'label') == label:
+                        self.menu_opciones.entryconfigure(i, state=state)
+                        break
+                except Exception:
+                    continue
         except Exception:
             pass
 

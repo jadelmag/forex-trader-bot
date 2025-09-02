@@ -2,6 +2,7 @@
 
 import tkinter as tk
 from tkinter import ttk
+import re
 
 class EstrategiasModal(tk.Toplevel):
     def __init__(self, parent, estrategias_fx, estrategias_candle, callback, patrones_list=None):
@@ -67,9 +68,12 @@ class EstrategiasModal(tk.Toplevel):
 
             # Encabezado para Forex Strategies
             tk.Label(self.scrollable_frame, text="Estrategia", width=20, anchor="w").grid(row=1, column=0, padx=5)
-            tk.Label(self.scrollable_frame, text="% Riesgo", width=10).grid(row=1, column=1, padx=5)
+            tk.Label(self.scrollable_frame, text="Riesgo (%)", width=10).grid(row=1, column=1, padx=5)
             tk.Label(self.scrollable_frame, text="RR Ratio", width=10).grid(row=1, column=2, padx=5)
             tk.Label(self.scrollable_frame, text="", width=10).grid(row=1, column=3, padx=5)
+
+            # Validación: permitir hasta 2 decimales en Riesgo (%)
+            vcmd_riesgo = (self.register(self._validate_two_decimals), '%P')
 
             # Estrategias Forex con parámetros
             for idx, nombre in enumerate(estrategias_fx, start=2):
@@ -79,8 +83,14 @@ class EstrategiasModal(tk.Toplevel):
                                     anchor="w", width=20)
                 chk.grid(row=idx, column=0, sticky="w", padx=5, pady=2)
 
-                var_riesgo = tk.StringVar(value="1.0")  # % por defecto
-                entry_riesgo = tk.Entry(self.scrollable_frame, textvariable=var_riesgo, width=8)
+                var_riesgo = tk.StringVar(value="1.00")  # % por defecto
+                entry_riesgo = tk.Entry(
+                    self.scrollable_frame,
+                    textvariable=var_riesgo,
+                    width=8,
+                    validate="key",
+                    validatecommand=vcmd_riesgo,
+                )
                 entry_riesgo.grid(row=idx, column=1, padx=5)
 
                 var_rr = tk.StringVar(value="2")  # ratio por defecto
@@ -267,3 +277,13 @@ class EstrategiasModal(tk.Toplevel):
                 self.canvas.yview_scroll(1, "units")
         except Exception:
             pass
+
+    def _validate_two_decimals(self, proposed: str) -> bool:
+        """Permitir vacío, dígitos enteros o decimales con hasta 2 lugares."""
+        try:
+            if proposed == "":
+                return True
+            # Permitir formato tipo: 0, 1, 10, 1., 1.0, 1.23
+            return re.fullmatch(r"\d*(?:\.|\,)?\d{0,2}", proposed) is not None
+        except Exception:
+            return False
