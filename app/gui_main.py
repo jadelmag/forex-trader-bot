@@ -456,7 +456,7 @@ class GUIPrincipal:
             messagebox.showerror("Error", "Ingrese un capital válido en el campo 'Dinero ficticio'")
             return
 
-        # Configurar máximo de operaciones en el Risk Manager con el capital del entry
+        # Configurar Risk Manager
         self.risk_manager = RiskManager(max_operaciones_activas=max_orders, capital_inicial=capital_inicial)
         self.risk_integration = RiskManagerIntegration(self.risk_manager, None)
         self.risk_manager.reset()
@@ -468,35 +468,50 @@ class GUIPrincipal:
             self.strategies_candle = CandleStrategies(self.df_actual)
 
         df_new = self.df_actual.copy()
-
-        # Instancia para patrones de velas (si se usa)
         patterns_instance = None
 
-        # Primera pasada: aplicar estrategias y generar señales
         for nombre, params in seleccion.items():
             try:
                 tipo_sel = params.get("tipo")
                 if tipo_sel == "forex":
-                    # Estrategia Forex con gestión de riesgo
                     metodo = getattr(self.strategies_fx, nombre, None)
                     if not callable(metodo):
                         self.log(f"Estrategia Forex no encontrada: {nombre}", color='red')
                         continue
-                    
+
                     risk_kwargs = {
                         'risk_per_trade': params.get('riesgo', 0.01),
                         'rr_ratio': params.get('rr', 2.0),
                     }
-                    df_res = metodo(**risk_kwargs)
+
+                    # Argumentos por defecto
+                    if nombre == "carry_trade_strategy":
+                        if 'rate_diff' not in params:
+                            if 'InterestRate_Base' in df_new.columns and 'InterestRate_Quote' in df_new.columns:
+                                params['rate_diff'] = (df_new['InterestRate_Base'] - df_new['InterestRate_Quote']) / 100
+                            else:
+                                params['rate_diff'] = pd.Series(0, index=df_new.index)
+                        df_res = metodo(rate_diff=params['rate_diff'], **risk_kwargs)
+
+                    elif nombre in {"hedging_overlay", "martingale_overlay"}:
+                        if 'base_signal' not in params:
+                            if 'TrendSignal' in df_new.columns:
+                                params['base_signal'] = df_new['TrendSignal'].fillna(0)
+                            else:
+                                params['base_signal'] = pd.Series(0, index=df_new.index)
+                        df_res = metodo(base_signal=params['base_signal'], **risk_kwargs)
+
+                    else:
+                        df_res = metodo(**risk_kwargs)
+
                 elif tipo_sel == "candle":
-                    # Estrategia Candle sin gestión de riesgo
                     metodo = getattr(self.strategies_candle, nombre, None)
                     if not callable(metodo):
                         self.log(f"Estrategia Candle no encontrada: {nombre}", color='red')
                         continue
                     df_res = metodo()
+
                 elif tipo_sel == "pattern":
-                    # Detección de patrón (no abre operaciones directamente)
                     if patterns_instance is None:
                         patterns_instance = CandlestickPatterns(self.df_actual)
                     metodo = getattr(patterns_instance, nombre, None)
@@ -508,16 +523,15 @@ class GUIPrincipal:
                     self.log(f"Tipo de selección desconocido: {tipo_sel}", color='red')
                     continue
 
+                # Aplicar señales al df_new
                 if 'Signal' in df_res.columns:
                     col_name = f"{nombre}_Signal"
                     sig_series = df_res['Signal']
-                    # Limitar a max_orders señales por estrategia (0 = ilimitado -> no limitar)
                     nonzero_idx = sig_series[sig_series != 0].index
                     sig_indices = nonzero_idx if (isinstance(max_orders, int) and max_orders <= 0) else nonzero_idx[:max_orders]
                     df_new[col_name] = 0
                     df_new.loc[sig_indices, col_name] = sig_series.loc[sig_indices]
-                    
-                    # Loguear detección de señales solo si está habilitado
+
                     if opciones["mostrar_deteccion"]:
                         for idx in sig_indices:
                             val = sig_series.loc[idx]
@@ -536,87 +550,54 @@ class GUIPrincipal:
                             if close_val is not None:
                                 msg += f" | Precio: {close_val:.5f}"
                             self.log(msg, color=color)
-                        
+
             except Exception as e:
                 self.log(f"Error aplicando estrategia {nombre}: {e}", color='red')
 
-        # Segunda pasada: procesar el dataframe completo con el Risk Manager solo si está habilitado
+        # --- Segunda pasada: Simulación con Risk Manager ---
         if opciones["mostrar_simulacion"]:
             self.log("="*60, color='white')
             self.log("INICIANDO SIMULACIÓN CON RISK MANAGER", color='yellow')
             self.log("="*60, color='white')
-            
-            # Calcular ATR para el Risk Manager
+
             df_new['ATR'] = (df_new['High'] - df_new['Low']).rolling(14).mean()
-            # Rellenar NaN values con un valor por defecto
-            if df_new['ATR'].isna().all():
-                df_new['ATR'] = (df_new['High'] - df_new['Low']).mean() * 0.1
-            else:
-                df_new['ATR'] = df_new['ATR'].fillna(df_new['ATR'].mean())
-            
-            # Variables para calcular beneficios y pérdidas totales
+            df_new['ATR'] = df_new['ATR'].fillna((df_new['High'] - df_new['Low']).mean() * 0.1)
+
             beneficios_totales = 0
             perdidas_totales = 0
-            
             resultados = []
             operaciones_abiertas = 0
 
             for idx, row in df_new.iterrows():
-                # Saltar filas con valores NaN en precio
                 if np.isnan(row['Close']):
                     continue
-                    
-                # Verificar cierre de operaciones existentes por SL/TP
-                operaciones_cerradas = self.risk_manager.verificar_cierre_operaciones(
-                    row['Close'], idx
-                )
-                
-                # Registrar operaciones cerradas y acumular beneficios/pérdidas
+
+                operaciones_cerradas = self.risk_manager.verificar_cierre_operaciones(row['Close'], idx)
+
                 for op in operaciones_cerradas:
-                    if op.tipo == 'BUY':
-                        profit = (op.precio_cierre - op.precio_apertura) * op.lote_size
-                    else:  # SELL
-                        profit = (op.precio_apertura - op.precio_cierre) * op.lote_size
-                    
-                    # Validar profit
+                    profit = (op.precio_cierre - op.precio_apertura) * op.lote_size if op.tipo == 'BUY' else (op.precio_apertura - op.precio_cierre) * op.lote_size
                     if np.isnan(profit) or np.isinf(profit):
                         profit = 0.0
-                    
-                    # Acumular en beneficios o pérdidas
                     if profit >= 0:
                         beneficios_totales += profit
                     else:
                         perdidas_totales += abs(profit)
-                        
-                    resultados.append({
-                        'timestamp': idx,
-                        'operacion': op,
-                        'resultado': op.resultado,
-                        'profit': profit
-                    })
-                    
+                    resultados.append({'timestamp': idx, 'operacion': op, 'resultado': op.resultado, 'profit': profit})
                     color = 'green' if op.resultado == 'GANANCIA' else 'red'
                     self.log(f"CIERRE AUTOMÁTICO: {op} -> {op.resultado} | Profit: ${profit:+.2f}", color=color)
 
-                # Procesar nuevas señales de todas las estrategias
                 señales_del_dia = []
                 for nombre in seleccion.keys():
                     col_name = f"{nombre}_Signal"
                     if col_name in df_new.columns and not np.isnan(df_new.loc[idx, col_name]) and df_new.loc[idx, col_name] != 0:
-                        señales_del_dia.append({
-                            'estrategia': nombre,
-                            'senal': df_new.loc[idx, col_name],
-                            'precio': row['Close']
-                        })
+                        señales_del_dia.append({'estrategia': nombre, 'senal': df_new.loc[idx, col_name], 'precio': row['Close']})
 
-                # Procesar cada señal del día
                 for señal_info in señales_del_dia:
                     if self.risk_manager.puede_abrir_operacion():
-                        # Obtener valor ATR válido
                         atr_value = row.get('ATR')
                         if np.isnan(atr_value) or atr_value <= 0:
                             atr_value = (df_new['High'] - df_new['Low']).mean() * 0.1
-                        
+
                         operacion = self.risk_integration.procesar_senal(
                             senal=señal_info['senal'],
                             precio_actual=señal_info['precio'],
@@ -624,18 +605,12 @@ class GUIPrincipal:
                             atr_value=atr_value,
                             rr_ratio=2.0
                         )
-                        
+
                         if operacion:
-                            resultados.append({
-                                'timestamp': idx,
-                                'operacion': operacion,
-                                'tipo': 'APERTURA'
-                            })
-                            
+                            resultados.append({'timestamp': idx, 'operacion': operacion, 'tipo': 'APERTURA'})
                             self.log(f"APERTURA: {operacion} | Estrategia: {señal_info['estrategia']}", color='green')
                             operaciones_abiertas += 1
 
-                # Actualizar contador de operaciones activas en cada iteración
                 ops_activas = self.risk_manager.get_operaciones_activas_count()
                 if ops_activas != operaciones_abiertas:
                     operaciones_abiertas = ops_activas
@@ -643,60 +618,39 @@ class GUIPrincipal:
                         den = '∞' if (isinstance(max_orders, int) and max_orders <= 0) else str(max_orders)
                         self.log(f"Operaciones activas: {operaciones_abiertas}/{den}", color='blue')
 
-            # Cerrar cualquier operación pendiente al final del periodo
-            precio_cierre_final = df_new['Close'].iloc[-1]
-            if np.isnan(precio_cierre_final):
-                # Buscar último precio válido
-                precios_validos = df_new['Close'].dropna()
-                precio_cierre_final = precios_validos.iloc[-1] if not precios_validos.empty else None
-            
-            if precio_cierre_final is not None:
-                for op in self.risk_manager.operaciones_activas[:]:  # Copia de la lista para iterar seguro
-                    if op.estado == 'ACTIVA':
-                        profit = op.cerrar(precio_cierre_final, df_new.index[-1])
-                        
-                        # Validar profit
-                        if np.isnan(profit) or np.isinf(profit):
-                            profit = 0.0
-                        
-                        # Acumular en beneficios o pérdidas
-                        if profit >= 0:
-                            beneficios_totales += profit
-                        else:
-                            perdidas_totales += abs(profit)
-                            
-                        self.risk_manager.capital += profit
-                        self.risk_manager.beneficio_total += profit
-                        
-                        if profit >= 0:
-                            self.risk_manager.operaciones_ganadas += 1
-                        else:
-                            self.risk_manager.operaciones_perdidas += 1
-                        
-                        color = 'green' if profit >= 0 else 'red'
-                        self.log(f"CIERRE FINAL: {op} | Profit: ${profit:+.2f}", color=color)
-                        
-                        # Mover a cerradas
-                        self.risk_manager.operaciones_cerradas.append(op)
-                        self.risk_manager.operaciones_activas.remove(op)
+            # Cerrar operaciones pendientes
+            precio_cierre_final = df_new['Close'].iloc[-1] if not np.isnan(df_new['Close'].iloc[-1]) else df_new['Close'].dropna().iloc[-1]
+            for op in self.risk_manager.operaciones_activas[:]:
+                if op.estado == 'ACTIVA':
+                    profit = op.cerrar(precio_cierre_final, df_new.index[-1])
+                    if np.isnan(profit) or np.isinf(profit):
+                        profit = 0.0
+                    if profit >= 0:
+                        beneficios_totales += profit
+                    else:
+                        perdidas_totales += abs(profit)
+                    self.risk_manager.capital += profit
+                    self.risk_manager.beneficio_total += profit
+                    if profit >= 0:
+                        self.risk_manager.operaciones_ganadas += 1
+                    else:
+                        self.risk_manager.operaciones_perdidas += 1
+                    color = 'green' if profit >= 0 else 'red'
+                    self.log(f"CIERRE FINAL: {op} | Profit: ${profit:+.2f}", color=color)
+                    self.risk_manager.operaciones_cerradas.append(op)
+                    self.risk_manager.operaciones_activas.remove(op)
 
-
-            # Mostrar estadísticas finales
+            # Estadísticas finales
             self.log("="*60, color='white')
             self.log("ESTADÍSTICAS FINALES DEL RISK MANAGER", color='yellow')
             self.log("="*60, color='white')
-            
             stats = self.risk_manager.get_estadisticas()
-            
-            # Validar valores estadísticos
             capital_final = stats['capital_actual'] if not np.isnan(stats['capital_actual']) else capital_inicial
             beneficio_total = stats['beneficio_total'] if not np.isnan(stats['beneficio_total']) else 0
-            
             self.log(f"Capital final: ${capital_final:,.2f}", color='cyan')
             self.log(f"Beneficio total: ${beneficio_total:,.2f}", color='cyan')
             self.log(f"Operaciones ganadas: {stats['operaciones_ganadas']}", color='green')
             self.log(f"Operaciones perdidas: {stats['operaciones_perdidas']}", color='red')
-            
             total_ops = stats['operaciones_ganadas'] + stats['operaciones_perdidas']
             win_rate = (stats['operaciones_ganadas'] / total_ops * 100) if total_ops > 0 else 0
             self.log(f"Win Rate: {win_rate:.1f}%", color='white')
@@ -704,13 +658,11 @@ class GUIPrincipal:
             den_final = '∞' if (max_ops is None or (isinstance(max_ops, (int, float)) and max_ops <= 0)) else str(max_ops)
             self.log(f"Slots utilizados: {stats['operaciones_activas']}/{den_final}", color='blue')
 
-            # ACTUALIZAR LAS ETIQUETAS DE LA INTERFAZ
             self.dinero_ficticio = capital_final
             self.beneficios = beneficios_totales
             self.perdidas = perdidas_totales
             self.actualizar_labels()
 
-            # Mostrar resumen en el log también
             self.log("="*60, color='white')
             self.log("RESUMEN EN INTERFAZ", color='yellow')
             self.log(f"Dinero total: ${capital_final:,.2f}", color='white')
@@ -718,7 +670,6 @@ class GUIPrincipal:
             self.log(f"Pérdidas acumuladas: ${perdidas_totales:,.2f}", color='red')
             self.log("="*60, color='white')
         else:
-            # Si la simulación está deshabilitada, solo mostrar mensaje
             self.log("="*60, color='white')
             self.log("SIMULACIÓN DESHABILITADA - Solo se muestran detecciones", color='yellow')
             self.log("="*60, color='white')
@@ -726,8 +677,7 @@ class GUIPrincipal:
         # Redibujar gráfico con las señales
         self.grafico_manager.dibujar_csv(df_new)
         self.df_actual = df_new
-        
-        # Reinstalar TooltipZoomPan
+
         if self.tooltip_zoom_pan:
             try:
                 self.tooltip_zoom_pan.cleanup()
@@ -736,7 +686,6 @@ class GUIPrincipal:
         if hasattr(self.grafico_manager, 'canvas') and hasattr(self.grafico_manager, 'grafico'):
             self.tooltip_zoom_pan = TooltipZoomPan(self.root, self.grafico_manager.canvas, self.grafico_manager.grafico)
 
-        # Añadir visualización de operaciones en el gráfico si está disponible
         if hasattr(self.grafico_manager, 'dibujar_operaciones'):
             operaciones_totales = self.risk_manager.operaciones_cerradas + [
                 op for op in self.risk_manager.operaciones_activas if op.estado == 'ACTIVA'
