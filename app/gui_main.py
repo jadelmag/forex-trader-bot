@@ -20,6 +20,7 @@ from .patterns_modal import PatternsModal
 from .strategies_modal import EstrategiasModal
 from .ai_training_modal import AITrainingModal
 from .rl_training_modal import RLTrainingModal
+from .csv_to_pkl_modal import CSVToPKLModal
 from .ai_trainer import AITrainer
 
 from patterns.candlestickpatterns import CandlestickPatterns
@@ -239,6 +240,11 @@ class GUIPrincipal:
         )
         self.btn_guardar_procesados.pack(side="left", padx=5)
 
+        self.btn_procesar_csv_pkl = ttk.Button(
+            self.frame_left, text="Procesar CSV a PKL", command=self.abrir_modal_csv_a_pkl
+        )
+        self.btn_procesar_csv_pkl.pack(side="left", padx=5)
+
         # ---------------- Dinero/beneficios/pérdidas (centro) ----------------
         self.label_dinero = tk.Label(
             self.frame_center, text=f"Dinero: ${self.dinero_ficticio:,.2f}", fg="black", bg="#F0F0F0"
@@ -345,6 +351,13 @@ class GUIPrincipal:
     def guardar_procesados(self):
         self.csv_manager.df_cache = self.df_actual
         self.csv_manager.guardar_procesados()
+
+    def abrir_modal_csv_a_pkl(self):
+        """Abre el modal para convertir un CSV en un archivo PKL."""
+        try:
+            CSVToPKLModal(self.root)
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo abrir el modal: {e}")
 
     # ---------------- Funciones Dinero ----------------
     def add_dinero(self):

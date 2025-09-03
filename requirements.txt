@@ -17,3 +17,6 @@ pytest==7.4.3
 
 # Telegram
 telethon==1.28.5
+
+# PyArrow
+pyarrow>=14.0.0 
