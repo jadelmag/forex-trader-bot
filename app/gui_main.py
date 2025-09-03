@@ -22,6 +22,7 @@ from .ai_training_modal import AITrainingModal
 from .rl_training_modal import RLTrainingModal
 from .csv_to_pkl_modal import CSVToPKLModal
 from .ai_trainer import AITrainer
+from .processed_loader_modal import ProcessedDataModal
 
 from patterns.candlestickpatterns import CandlestickPatterns
 
@@ -340,13 +341,18 @@ class GUIPrincipal:
             pass
 
     def cargar_procesados(self):
-        df = self.csv_manager.cargar_procesados()
-        if df is not None:
-            self.df_actual = df
-            self._dibujar_grafico(df)
-            # Habilitar botón de patrones tras cargar datos
-            self._update_btn_aplicar_patrones()
-            self._update_btn_cargar_estrategias()
+        """Abre el nuevo modal para cargar datos procesados (Parquet/PKL) con opciones de rango."""
+        try:
+            def _on_loaded(df):
+                try:
+                    # Reutilizamos la misma ruta de pintado y habilitación de botones
+                    self._on_csv_cargado(df)
+                except Exception as e:
+                    messagebox.showerror("Error", f"No se pudo cargar los datos: {e}")
+
+            ProcessedDataModal(self.root, on_loaded_df=_on_loaded)
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo abrir el modal: {e}")
 
     def guardar_procesados(self):
         self.csv_manager.df_cache = self.df_actual
