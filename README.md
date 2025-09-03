@@ -384,6 +384,21 @@ Patrón de continuación de cuatro velas donde tres velas muestran una fuerte te
 #### 20. Two Black Gapping
 Patrón de continuación bajista que ocurre después de una ruptura de soporte, con dos velas negras separadas por un gap a la baja.
 
+#### 21. Mean Reversion Overlay
+Estrategia que identifica condiciones de sobrecompra/sobreventa extremas para operar contra la tendencia actual, basada en la teoría de que los precios tienden a volver a su media histórica.
+
+#### 22. Martingale Overlay
+Sistema de gestión de capital que duplica el tamaño de la posición después de una pérdida, diseñado para recuperar pérdidas pasadas con una sola operación ganadora. Se recomienda usar con extrema precaución.
+
+#### 23. Price Action Patterns
+Estrategia avanzada que combina múltiples patrones de acción del precio, incluyendo velas individuales, formaciones de múltiples velas y estructuras de mercado para identificar oportunidades de trading de alta probabilidad.
+
+#### 24. Stochastic Strategy
+Estrategia basada en el oscilador estocástico que identifica condiciones de sobrecompra y sobreventa, con filtros de tendencia para mejorar la precisión de las señales.
+
+#### 25. Stochastic Oscillator Strategy
+Variante avanzada que utiliza múltiples configuraciones del oscilador estocástico (rápido y lento) junto con divergencias para identificar posibles puntos de reversión del mercado.
+
 
 
 ---

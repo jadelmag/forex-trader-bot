@@ -18,7 +18,7 @@ class EstrategiasModal(tk.Toplevel):
 
         # Centrar ventana sobre el padre
         self.update_idletasks()
-        w = 500
+        w = 550
         # Altura total del modal: área de lista (400) + controles inferiores
         h_total = 500
         x = parent.winfo_rootx() + (parent.winfo_width() - w) // 2
@@ -107,6 +107,47 @@ class EstrategiasModal(tk.Toplevel):
                 chk = tk.Checkbutton(self.scrollable_frame, text=display_name, variable=var_check, 
                                     anchor="w", width=20)
                 chk.grid(row=idx, column=0, sticky="w", padx=5, pady=2)
+                
+                # Definir niveles de riesgo para cada estrategia
+                risk_levels = {
+                    # Alto riesgo
+                    "breakout": ("Alto", "red"),
+                    "scalping_1m_strategy": ("Alto", "red"),
+                    "news_trading_strategy": ("Alto", "red"),
+                    "grid_trading_strategy": ("Alto", "red"),
+                    "mean_reversion": ("Alto", "red"),
+                    "mean_reversion_strategy": ("Alto", "red"),
+                    "mean_reversion_overlay": ("Alto", "red"),
+                    # Medio riesgo
+                    "adx_strategy": ("Medio", "orange"),
+                    "trend_following": ("Medio", "orange"),
+                    "macd_strategy": ("Medio", "orange"),
+                    "ichimoku_cloud_strategy": ("Medio", "orange"),
+                    "carry_trade_strategy": ("Medio", "orange"),
+                    "hedging_overlay": ("Medio", "orange"),
+                    "martingale_overlay": ("Medio", "orange"),
+                    "price_action_patterns": ("Medio", "orange"),
+                    "stochastic_strategy": ("Medio", "orange"),
+                    "stochastic_oscillator_strategy": ("Medio", "orange"),
+                    # Bajo riesgo
+                    "rsi_strategy": ("Bajo", "green"),
+                    "moving_average_crossover": ("Bajo", "green"),
+                    "bollinger_bands_strategy": ("Bajo", "green"),
+                    "support_resistance_strategy": ("Bajo", "green"),
+                    "supply_demand_zones": ("Bajo", "green"),
+                    "trendline_strategy": ("Bajo", "green"),
+                    "range_trading_strategy": ("Bajo", "green")
+                }
+                
+                # Aplicar etiqueta de riesgo si la estrategia está en el diccionario
+                if nombre in risk_levels:
+                    level, color = risk_levels[nombre]
+                    ttk.Label(
+                        self.scrollable_frame, 
+                        text=f"[Riesgo {level}]", 
+                        foreground=color,
+                        font=('Arial', 8, 'bold')
+                    ).grid(row=idx, column=4, padx=5, sticky="w")
 
                 var_riesgo = tk.StringVar(value="1.00")  # % por defecto
                 entry_riesgo = tk.Entry(
@@ -173,6 +214,47 @@ class EstrategiasModal(tk.Toplevel):
                 chk = tk.Checkbutton(self.scrollable_frame, text=display_name, variable=var_check, 
                                     anchor="w", width=20)
                 chk.grid(row=idx, column=0, sticky="w", padx=5, pady=2)
+                
+                # Definir niveles de riesgo para cada estrategia
+                risk_levels = {
+                    # Alto riesgo
+                    "breakout": ("Alto", "red"),
+                    "scalping_1m_strategy": ("Alto", "red"),
+                    "news_trading_strategy": ("Alto", "red"),
+                    "grid_trading_strategy": ("Alto", "red"),
+                    "mean_reversion": ("Alto", "red"),
+                    "mean_reversion_strategy": ("Alto", "red"),
+                    "mean_reversion_overlay": ("Alto", "red"),
+                    # Medio riesgo
+                    "adx_strategy": ("Medio", "orange"),
+                    "trend_following": ("Medio", "orange"),
+                    "macd_strategy": ("Medio", "orange"),
+                    "ichimoku_cloud_strategy": ("Medio", "orange"),
+                    "carry_trade_strategy": ("Medio", "orange"),
+                    "hedging_overlay": ("Medio", "orange"),
+                    "martingale_overlay": ("Medio", "orange"),
+                    "price_action_patterns": ("Medio", "orange"),
+                    "stochastic_strategy": ("Medio", "orange"),
+                    "stochastic_oscillator_strategy": ("Medio", "orange"),
+                    # Bajo riesgo
+                    "rsi_strategy": ("Bajo", "green"),
+                    "moving_average_crossover": ("Bajo", "green"),
+                    "bollinger_bands_strategy": ("Bajo", "green"),
+                    "support_resistance_strategy": ("Bajo", "green"),
+                    "supply_demand_zones": ("Bajo", "green"),
+                    "trendline_strategy": ("Bajo", "green"),
+                    "range_trading_strategy": ("Bajo", "green")
+                }
+                
+                # Aplicar etiqueta de riesgo si la estrategia está en el diccionario
+                if nombre in risk_levels:
+                    level, color = risk_levels[nombre]
+                    ttk.Label(
+                        self.scrollable_frame, 
+                        text=f"[Riesgo {level}]", 
+                        foreground=color,
+                        font=('Arial', 8, 'bold')
+                    ).grid(row=idx, column=4, padx=5, sticky="w")
 
                 # Espacio vacío para alinear con las forex strategies
                 ttk.Label(self.scrollable_frame, text="").grid(row=idx, column=1, padx=5)
@@ -221,6 +303,47 @@ class EstrategiasModal(tk.Toplevel):
                 chk = tk.Checkbutton(self.scrollable_frame, text=display_name, variable=var_check, 
                                     anchor="w", width=20)
                 chk.grid(row=idx, column=0, sticky="w", padx=5, pady=2)
+                
+                # Definir niveles de riesgo para cada estrategia
+                risk_levels = {
+                    # Alto riesgo
+                    "breakout": ("Alto", "red"),
+                    "scalping_1m_strategy": ("Alto", "red"),
+                    "news_trading_strategy": ("Alto", "red"),
+                    "grid_trading_strategy": ("Alto", "red"),
+                    "mean_reversion": ("Alto", "red"),
+                    "mean_reversion_strategy": ("Alto", "red"),
+                    "mean_reversion_overlay": ("Alto", "red"),
+                    # Medio riesgo
+                    "adx_strategy": ("Medio", "orange"),
+                    "trend_following": ("Medio", "orange"),
+                    "macd_strategy": ("Medio", "orange"),
+                    "ichimoku_cloud_strategy": ("Medio", "orange"),
+                    "carry_trade_strategy": ("Medio", "orange"),
+                    "hedging_overlay": ("Medio", "orange"),
+                    "martingale_overlay": ("Medio", "orange"),
+                    "price_action_patterns": ("Medio", "orange"),
+                    "stochastic_strategy": ("Medio", "orange"),
+                    "stochastic_oscillator_strategy": ("Medio", "orange"),
+                    # Bajo riesgo
+                    "rsi_strategy": ("Bajo", "green"),
+                    "moving_average_crossover": ("Bajo", "green"),
+                    "bollinger_bands_strategy": ("Bajo", "green"),
+                    "support_resistance_strategy": ("Bajo", "green"),
+                    "supply_demand_zones": ("Bajo", "green"),
+                    "trendline_strategy": ("Bajo", "green"),
+                    "range_trading_strategy": ("Bajo", "green")
+                }
+                
+                # Aplicar etiqueta de riesgo si la estrategia está en el diccionario
+                if nombre in risk_levels:
+                    level, color = risk_levels[nombre]
+                    ttk.Label(
+                        self.scrollable_frame, 
+                        text=f"[Riesgo {level}]", 
+                        foreground=color,
+                        font=('Arial', 8, 'bold')
+                    ).grid(row=idx, column=4, padx=5, sticky="w")
                 ttk.Label(self.scrollable_frame, text="").grid(row=idx, column=1, padx=5)
                 ttk.Label(self.scrollable_frame, text="").grid(row=idx, column=2, padx=5)
 
