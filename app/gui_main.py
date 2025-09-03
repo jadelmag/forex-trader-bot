@@ -125,6 +125,11 @@ class GUIPrincipal:
 
         self.frame_log = tk.Frame(self.root, bg="#F8F8F8", relief="sunken", bd=1)
         self.frame_log.pack(fill="both", expand=False, padx=20, pady=(0, 20), ipady=120)
+        # Altura fija del área de log
+        self.frame_log.configure(height=50)
+        self.frame_log.pack_propagate(False)
+        # Flag: altura del log ya bloqueada
+        self._log_height_locked = True
 
         # Header del área de logs con botón en la esquina superior derecha
         self.frame_log_header = tk.Frame(self.frame_log, bg="#F8F8F8")
@@ -327,10 +332,32 @@ class GUIPrincipal:
     def _on_csv_cargado(self, df_seleccion):
         self.df_actual = df_seleccion
         self._dibujar_grafico(df_seleccion)
+        # Tras dibujar el primer gráfico, fijar la altura actual del área de logs
+        self._fix_log_height_once()
         # Tras seleccionar CSV, actualizar estados por si ya hay dinero ficticio
         try:
             self._update_btn_aplicar_patrones()
             self._update_btn_cargar_estrategias()
+        except Exception:
+            pass
+
+    def _fix_log_height_once(self):
+        """Fija la altura del área de logs a la altura actual (una sola vez)
+        para que se mantenga constante el resto de la sesión.
+        """
+        try:
+            if self._log_height_locked:
+                return
+            # Asegurar que los tamaños actuales están calculados
+            self.root.update_idletasks()
+            current_h = self.frame_log.winfo_height()
+            # Si por cualquier motivo no hay altura aún, usar un valor razonable
+            if not current_h or current_h <= 0:
+                current_h = 240
+            # Fijar altura y evitar que el contenido la cambie
+            self.frame_log.configure(height=current_h)
+            self.frame_log.pack_propagate(False)
+            self._log_height_locked = True
         except Exception:
             pass
 
