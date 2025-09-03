@@ -30,7 +30,7 @@ class ProcessedDataModal(tk.Toplevel):
         self.parent = parent
         self.on_loaded_df = on_loaded_df
         self.title("Cargar datos procesados")
-        self.geometry("560x360")
+        self.geometry("560x320")
         self.resizable(False, False)
         self.grab_set()
 

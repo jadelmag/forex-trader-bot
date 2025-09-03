@@ -36,7 +36,7 @@ class GUIPrincipal:
     def __init__(self, root):
         self.root = root
         self.root.title("Trading Bot - Forex Market")
-        self.root.geometry("2000x950")
+        self.root.geometry("1500x950")
         self.root.configure(bg="#F0F0F0")
         self.root.attributes('-toolwindow', 1)
 
@@ -227,24 +227,18 @@ class GUIPrincipal:
         self.frame_right = tk.Frame(self.frame_controls, bg="#F0F0F0")
         self.frame_right.pack(side="right", anchor="e")
 
-        # ---------------- Botones CSV (izquierda) ----------------
-        self.btn_cargar_csv = ttk.Button(self.frame_left, text="Cargar CSV", command=self.cargar_csv)
-        self.btn_cargar_csv.pack(side="left", padx=5)
+        # ---------------- Menú desplegable Procesar datos (agrupa botones de la izquierda) ----------------
+        self.btn_procesar_datos = ttk.Menubutton(self.frame_left, text="Procesar datos")
+        self.btn_procesar_datos.pack(side="left", padx=5)
+        self.menu_procesar_datos = tk.Menu(self.btn_procesar_datos, tearoff=0)
+        self.btn_procesar_datos.configure(menu=self.menu_procesar_datos)
 
-        self.btn_cargar_procesados = ttk.Button(
-            self.frame_left, text="Cargar datos procesados", command=self.cargar_procesados
-        )
-        self.btn_cargar_procesados.pack(side="left", padx=5)
-
-        self.btn_guardar_procesados = ttk.Button(
-            self.frame_left, text="Guardar datos procesados", command=self.guardar_procesados
-        )
-        self.btn_guardar_procesados.pack(side="left", padx=5)
-
-        self.btn_procesar_csv_pkl = ttk.Button(
-            self.frame_left, text="Procesar CSV a PKL", command=self.abrir_modal_csv_a_pkl
-        )
-        self.btn_procesar_csv_pkl.pack(side="left", padx=5)
+        # Entradas del menú
+        self.menu_procesar_datos.add_command(label="Cargar CSV", command=self.cargar_csv)
+        self.menu_procesar_datos.add_command(label="Cargar datos procesados", command=self.cargar_procesados)
+        self.menu_procesar_datos.add_separator()
+        self.menu_procesar_datos.add_command(label="Guardar datos procesados", command=self.guardar_procesados)
+        self.menu_procesar_datos.add_command(label="Procesar CSV a PKL", command=self.abrir_modal_csv_a_pkl)
 
         # ---------------- Dinero/beneficios/pérdidas (centro) ----------------
         self.label_dinero = tk.Label(

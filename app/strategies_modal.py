@@ -224,7 +224,12 @@ class EstrategiasModal(tk.Toplevel):
                 ttk.Label(self.scrollable_frame, text="").grid(row=idx, column=1, padx=5)
                 ttk.Label(self.scrollable_frame, text="").grid(row=idx, column=2, padx=5)
 
-                self.controls[nombre] = {
+                # IMPORTANTE: evitar colisión de nombres con CandleStrategies
+                # Algunos patrones (p.ej., three_white_soldiers, three_black_crows)
+                # también existen como estrategias de vela. Para evitar sobreescribir
+                # entradas de self.controls, se añade un prefijo de namespace.
+                pattern_key = f"pattern::{nombre}"
+                self.controls[pattern_key] = {
                     "selected": var_check,
                     "tipo": "pattern"
                 }
@@ -297,8 +302,12 @@ class EstrategiasModal(tk.Toplevel):
                     seleccion[nombre] = {"riesgo": riesgo, "rr": rr, "tipo": "forex"}
                 else:
                     # Para Candle Strategies: solo marcar como seleccionada
-                    seleccion[nombre] = {"tipo": "candle"}
-
+                    if ctrl["tipo"] == "candle":
+                        seleccion[nombre] = {"tipo": "candle"}
+                    else:
+                        # ctrl["tipo"] == "pattern": quitar namespace 'pattern::' del nombre
+                        real_name = nombre.split("::", 1)[1] if nombre.startswith("pattern::") else nombre
+                        seleccion[real_name] = {"tipo": "pattern"}
         # Añadir max_orders y opciones de visualización al resultado
         try:
             max_orders = int(self.max_orders_var.get())
