@@ -1183,11 +1183,211 @@ class GUIPrincipal:
         
     def iniciar_simulacion(self):
         """Inicia la simulación del mercado"""
-        self.log("Iniciando simulación...")
+        try:
+            # Get available strategies
+            import sys
+            import os
+            # Add the project root to the Python path
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            if project_root not in sys.path:
+                sys.path.append(project_root)
+                
+            from strategies import get_available_strategies
+            from patterns import get_available_patterns
+            
+            # Get available strategies and patterns
+            estrategias_fx, estrategias_candle = get_available_strategies()
+            patrones_list = get_available_patterns()
+            
+            # Create and show the simulation modal
+            from .binance_modal import BinanceSimulationModal
+            
+            def on_simulation_config(config):
+                # Store the simulation configuration
+                self.simulation_config = config
+                self.simulation_active = True
+                self.simulation_candles_elapsed = 0
+                self.active_orders = []
+                
+                # Update UI
+                self.menu_streamer.entryconfig("Iniciar simulación", state="disabled")
+                self.menu_streamer.entryconfig("Detener simulación", state="normal")
+                self.log("Simulación iniciada. Esperando 20 velas antes de operar...", color="green")
+                
+                # If we have a candle streamer, connect to its update event
+                if hasattr(self, 'candle_streamer') and self.candle_streamer:
+                    if not hasattr(self, '_on_candle_update_connected'):
+                        self._on_candle_update_connected = True
+                        self.candle_streamer.on_candle_update(self._on_candle_update)
+            
+            # Show the modal
+            BinanceSimulationModal(
+                self.root,
+                estrategias_fx=estrategias_fx,
+                estrategias_candle=estrategias_candle,
+                patrones_list=patrones_list,
+                callback=on_simulation_config
+            )
+            
+        except Exception as e:
+            self.log(f"Error al iniciar la simulación: {str(e)}", color="red")
+            import traceback
+            self.log(traceback.format_exc(), color="red")
 
+    def _on_candle_update(self, df):
+        """Maneja la actualización de velas durante la simulación"""
+        if not hasattr(self, 'simulation_active') or not self.simulation_active:
+            return
+            
+        try:
+            # Incrementar el contador de velas
+            if not hasattr(self, 'simulation_candles_elapsed'):
+                self.simulation_candles_elapsed = 0
+            else:
+                self.simulation_candles_elapsed += 1
+            
+            # Obtener la última vela
+            last_candle = df.iloc[-1].copy()
+            
+            # Actualizar el log con el progreso
+            if self.simulation_candles_elapsed % 10 == 0:  # Cada 10 velas
+                self.log(f"Simulación en progreso - Velas procesadas: {self.simulation_candles_elapsed}", color="blue")
+            
+            # Si aún no han pasado 20 velas, no hacer nada
+            if self.simulation_candles_elapsed < 20:
+                return
+                
+            # Aplicar estrategias de Forex
+            from .strategies import apply_forex_strategies
+            from .patterns.candlestickpatterns import CandlestickPatterns
+            
+            # Aplicar patrones de velas
+            patterns = CandlestickPatterns(df)
+            df_patterns = patterns.combined_signal_optimized()
+            
+            # Aplicar estrategias de Forex
+            for strategy in self.simulation_config.get('estrategias_fx', []):
+                try:
+                    strategy_name = strategy['name']
+                    risk = strategy.get('risk', 0.01)
+                    rr_ratio = strategy.get('rr_ratio', 2.0)
+                    
+                    # Aplicar la estrategia
+                    signals = apply_forex_strategies(df, [strategy_name])
+                    
+                    # Procesar señales
+                    if not signals.empty and signals.iloc[-1] == 1:  # Señal de compra
+                        self._procesar_senal_compra(last_candle, strategy_name, risk, rr_ratio)
+                        
+                except Exception as e:
+                    self.log(f"Error aplicando estrategia {strategy_name}: {str(e)}", color="red")
+            
+            # Aplicar estrategias de velas
+            for strategy_name in self.simulation_config.get('estrategias_candle', []):
+                try:
+                    # Aquí iría la lógica para aplicar estrategias de velas
+                    pass
+                except Exception as e:
+                    self.log(f"Error aplicando estrategia de vela {strategy_name}: {str(e)}", color="red")
+            
+            # Verificar si hay órdenes activas que necesiten ser cerradas
+            self._verificar_cierre_ordenes(last_candle)
+            
+        except Exception as e:
+            self.log(f"Error en _on_candle_update: {str(e)}", color="red")
+            import traceback
+            self.log(traceback.format_exc(), color="red")
+    
+    def _procesar_senal_compra(self, candle, strategy_name, risk, rr_ratio):
+        """Procesa una señal de compra de la estrategia"""
+        try:
+            # Verificar límite de órdenes activas
+            max_orders = int(self.simulation_config.get('max_orders', 5))
+            if len(self.active_orders) >= max_orders:
+                self.log(f"Límite de {max_orders} órdenes activas alcanzado", color="orange")
+                return
+                
+            # Calcular tamaño de posición basado en el riesgo
+            # (esto es un ejemplo simplificado)
+            entry_price = candle['Close']
+            stop_loss = entry_price * (1 - risk)
+            take_profit = entry_price * (1 + (risk * rr_ratio))
+            
+            # Crear orden
+            order = {
+                'type': 'buy',
+                'entry_price': entry_price,
+                'stop_loss': stop_loss,
+                'take_profit': take_profit,
+                'size': 1.0,  # Tamaño fijo por simplicidad
+                'strategy': strategy_name,
+                'timestamp': candle.name if hasattr(candle, 'name') else None
+            }
+            
+            self.active_orders.append(order)
+            self.log(f"Orden de COMPRA abierta: {entry_price:.5f} (TP: {take_profit:.5f}, SL: {stop_loss:.5f})", 
+                    color="green")
+                    
+        except Exception as e:
+            self.log(f"Error al procesar señal de compra: {str(e)}", color="red")
+    
+    def _verificar_cierre_ordenes(self, candle):
+        """Verifica si alguna orden activa necesita ser cerrada"""
+        if not hasattr(self, 'active_orders'):
+            self.active_orders = []
+            return
+            
+        current_price = candle['Close']
+        
+        for order in list(self.active_orders):
+            try:
+                if order['type'] == 'buy':
+                    # Verificar si se alcanzó el take profit o stop loss
+                    if current_price >= order['take_profit']:
+                        profit = (order['take_profit'] - order['entry_price']) * order['size']
+                        self.active_orders.remove(order)
+                        self.log(f"Take Profit alcanzado: +{profit:.5f} pips", color="green")
+                    elif current_price <= order['stop_loss']:
+                        loss = (order['entry_price'] - current_price) * order['size']
+                        self.active_orders.remove(order)
+                        self.log(f"Stop Loss alcanzado: -{loss:.5f} pips", color="red")
+                        
+            except Exception as e:
+                self.log(f"Error verificando cierre de orden: {str(e)}", color="red")
+    
     def detener_simulacion(self):
         """Detiene la simulación del mercado"""
-        self.log("Deteniendo simulación...")
+        try:
+            if hasattr(self, 'simulation_active') and self.simulation_active:
+                self.simulation_active = False
+                self._on_candle_update_connected = False
+                
+                # Mostrar resumen de la simulación
+                if hasattr(self, 'simulation_candles_elapsed'):
+                    self.log(f"\n--- SIMULACIÓN FINALIZADA ---", color="blue")
+                    self.log(f"Velas procesadas: {self.simulation_candles_elapsed}", color="white")
+                    self.log(f"Órdenes abiertas al finalizar: {len(self.active_orders) if hasattr(self, 'active_orders') else 0}", 
+                            color="white")
+                
+                # Limpiar estado de simulación
+                if hasattr(self, 'active_orders'):
+                    del self.active_orders
+                if hasattr(self, 'simulation_candles_elapsed'):
+                    del self.simulation_candles_elapsed
+                if hasattr(self, 'simulation_config'):
+                    del self.simulation_config
+                
+                # Actualizar UI
+                self.menu_streamer.entryconfig("Iniciar simulación", state="normal")
+                self.menu_streamer.entryconfig("Detener simulación", state="disabled")
+                self.log("Simulación detenida correctamente", color="green")
+            else:
+                self.log("No hay ninguna simulación activa", color="orange")
+                
+        except Exception as e:
+            self.log(f"Error al detener la simulación: {str(e)}", color="red")
+            import traceback
+            self.log(traceback.format_exc(), color="red")
     
     def generar_informe(self):
         """Genera un informe con los datos actuales"""
