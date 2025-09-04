@@ -281,7 +281,7 @@ class GUIPrincipal:
         self.menu_streamer.add_command(label="Desconectar", command=self.detener_streamer, state="disabled")
         self.menu_streamer.add_command(label="Cambiar símbolo/intervalo", command=self.cambiar_config_streamer, state="disabled")
         self.menu_streamer.add_separator()
-        self.menu_streamer.add_command(label="Iniciar simulación", command=self.iniciar_simulacion, state="normal")
+        self.menu_streamer.add_command(label="Iniciar simulación", command=self.iniciar_simulacion, state="disabled")
         self.menu_streamer.add_command(label="Detener simulación", command=self.detener_simulacion, state="disabled")
         self.menu_streamer.add_separator()
         self.menu_streamer.add_command(label="Generar informe", command=self.generar_informe, state="normal")
@@ -311,6 +311,12 @@ class GUIPrincipal:
             self.frame_center, text=f"Pérdidas: ${self.perdidas:,.2f}", fg="red", bg="#F0F0F0"
         )
         self.label_perdidas.pack(side="left", padx=10)
+
+        # Etiqueta de estado de simulación
+        self.label_sim_status = tk.Label(
+            self.frame_center, text="Estado: Inactivo", fg="gray", bg="#F0F0F0"
+        )
+        self.label_sim_status.pack(side="left", padx=12)
 
         # ---------------- Botones derecha ----------------
         self.label_entry_dinero = tk.Label(self.frame_right, text="Dinero ficticio:", bg="#F0F0F0")
@@ -1101,6 +1107,8 @@ class GUIPrincipal:
             self.menu_streamer.entryconfig("Conectar", state="disabled")
             self.menu_streamer.entryconfig("Desconectar", state="normal")
             self.menu_streamer.entryconfig("Cambiar símbolo/intervalo", state="normal")
+            # Al conectar el streamer, permitir iniciar simulación
+            self.menu_streamer.entryconfig("Iniciar simulación", state="normal")
             
         except Exception as e:
             self.log(f"Error al iniciar CandleStreamer: {str(e)}", color="red")
@@ -1153,13 +1161,17 @@ class GUIPrincipal:
         """Detiene el CandleStreamer y limpia el frame del gráfico"""
         try:
             if self.candle_streamer is not None:
+                # Si hay una simulación activa, detenerla primero para limpiar estado correctamente
+                if getattr(self, 'simulation_active', False):
+                    self.detener_simulacion()
+
                 self.candle_streamer.stop()
                 self.candle_streamer = None
                 self.log("CandleStreamer detenido correctamente", color="green")
                 self.menu_streamer.entryconfig("Conectar", state="normal")
                 self.menu_streamer.entryconfig("Desconectar", state="disabled")
                 self.menu_streamer.entryconfig("Cambiar símbolo/intervalo", state="disabled")
-                self.menu_streamer.entryconfig("Iniciar simulación", state="normal")
+                self.menu_streamer.entryconfig("Iniciar simulación", state="disabled")
                 self.menu_streamer.entryconfig("Detener simulación", state="disabled")
                 
                 # Limpiar el frame del gráfico
@@ -1208,11 +1220,19 @@ class GUIPrincipal:
                 self.simulation_active = True
                 self.simulation_candles_elapsed = 0
                 self.active_orders = []
+                self._sim_started_logged = False  # flag to log start once when wait reaches 0
                 
                 # Update UI
                 self.menu_streamer.entryconfig("Iniciar simulación", state="disabled")
                 self.menu_streamer.entryconfig("Detener simulación", state="normal")
-                self.log("Simulación iniciada. Esperando 20 velas antes de operar...", color="green")
+                wait_candles = config.get('wait_candles', 20)
+                self.log(f"Simulación iniciada. Esperando {wait_candles} velas antes de operar...", color="green")
+                # Actualizar estado visual (azul durante la espera)
+                if hasattr(self, 'label_sim_status'):
+                    try:
+                        self.label_sim_status.configure(text=f"Esperando {wait_candles} velas...", fg="blue")
+                    except Exception:
+                        pass
                 
                 # If we have a candle streamer, connect to its update event
                 if hasattr(self, 'candle_streamer') and self.candle_streamer:
@@ -1247,15 +1267,41 @@ class GUIPrincipal:
                 self.simulation_candles_elapsed += 1
             
             # Obtener la última vela
-            last_candle = df.iloc[-1].copy()
+            last_candle = df.iloc[-1]
+            # Guardar último close para cálculo de PnL no realizado
+            try:
+                self._last_close = float(last_candle["Close"])
+            except Exception:
+                self._last_close = None
             
             # Actualizar el log con el progreso
             if self.simulation_candles_elapsed % 10 == 0:  # Cada 10 velas
                 self.log(f"Simulación en progreso - Velas procesadas: {self.simulation_candles_elapsed}", color="blue")
             
-            # Si aún no han pasado 20 velas, no hacer nada
-            if self.simulation_candles_elapsed < 20:
+            # Verificar si ya pasaron las velas de espera (usar el valor del modal)
+            wait_candles = int(self.simulation_config['wait_candles'])
+            remaining = wait_candles - self.simulation_candles_elapsed
+            if remaining > 0:
+                # Mostrar siempre el estado de espera en azul
+                self.log(f"Esperando {remaining} velas más antes de operar...", color="blue")
+                # Actualizar estado visual (azul durante la espera)
+                if hasattr(self, 'label_sim_status'):
+                    try:
+                        self.label_sim_status.configure(text=f"Esperando {remaining} velas...", fg="blue")
+                    except Exception:
+                        pass
                 return
+            else:
+                # Justo al alcanzar 0 velas de espera, anunciar inicio de la simulación en progreso
+                if not getattr(self, '_sim_started_logged', False):
+                    self.log("Simulación en progreso!!", color="blue")
+                    self._sim_started_logged = True
+                    # Actualizar estado visual (mantener azul como solicitado)
+                    if hasattr(self, 'label_sim_status'):
+                        try:
+                            self.label_sim_status.configure(text="Simulación en progreso!!", fg="blue")
+                        except Exception:
+                            pass
                 
             # Aplicar estrategias de Forex
             from .strategies import apply_forex_strategies
@@ -1266,7 +1312,7 @@ class GUIPrincipal:
             df_patterns = patterns.combined_signal_optimized()
             
             # Aplicar estrategias de Forex
-            for strategy in self.simulation_config.get('estrategias_fx', []):
+            for strategy in self.simulation_config.get('forex_strategies', []):
                 try:
                     strategy_name = strategy['name']
                     risk = strategy.get('risk', 0.01)
@@ -1283,7 +1329,7 @@ class GUIPrincipal:
                     self.log(f"Error aplicando estrategia {strategy_name}: {str(e)}", color="red")
             
             # Aplicar estrategias de velas
-            for strategy_name in self.simulation_config.get('estrategias_candle', []):
+            for strategy_name in self.simulation_config.get('candle_strategies', []):
                 try:
                     # Aquí iría la lógica para aplicar estrategias de velas
                     pass
@@ -1297,6 +1343,47 @@ class GUIPrincipal:
             self.log(f"Error en _on_candle_update: {str(e)}", color="red")
             import traceback
             self.log(traceback.format_exc(), color="red")
+
+    def _update_sim_status_color(self):
+        """Actualiza el color del label de estado de simulación según el PnL.
+        Verde si profit, rojo si drawdown, azul si neutro o no determinable."""
+        try:
+            if not hasattr(self, 'label_sim_status'):
+                return
+            # Intentar usar PnL no realizado de posiciones activas si hay
+            if hasattr(self, 'posiciones_activas') and self.posiciones_activas and getattr(self, '_last_close', None) is not None:
+                pnl = 0.0
+                for pos in self.posiciones_activas:
+                    try:
+                        entry = float(pos.get('precio', 0.0))
+                        pnl += (self._last_close - entry)
+                    except Exception:
+                        continue
+                if pnl > 1e-12:
+                    self.label_sim_status.configure(fg="green")
+                    return
+                elif pnl < -1e-12:
+                    self.label_sim_status.configure(fg="red")
+                    return
+                else:
+                    self.label_sim_status.configure(fg="blue")
+                    return
+
+            # Si no hay posiciones, usar totales realizados si existen
+            if hasattr(self, 'beneficios') and hasattr(self, 'perdidas'):
+                neto = float(self.beneficios) - float(self.perdidas)
+                if neto > 1e-12:
+                    self.label_sim_status.configure(fg="green")
+                elif neto < -1e-12:
+                    self.label_sim_status.configure(fg="red")
+                else:
+                    self.label_sim_status.configure(fg="blue")
+                return
+
+            # Fallback
+            self.label_sim_status.configure(fg="blue")
+        except Exception:
+            pass
     
     def _procesar_senal_compra(self, candle, strategy_name, risk, rr_ratio):
         """Procesa una señal de compra de la estrategia"""
@@ -1378,9 +1465,17 @@ class GUIPrincipal:
                     del self.simulation_config
                 
                 # Actualizar UI
-                self.menu_streamer.entryconfig("Iniciar simulación", state="normal")
+                # Rehabilitar inicio solo si el streamer sigue conectado
+                start_state = "normal" if getattr(self, 'candle_streamer', None) is not None else "disabled"
+                self.menu_streamer.entryconfig("Iniciar simulación", state=start_state)
                 self.menu_streamer.entryconfig("Detener simulación", state="disabled")
                 self.log("Simulación detenida correctamente", color="green")
+                # Resetear estado visual
+                if hasattr(self, 'label_sim_status'):
+                    try:
+                        self.label_sim_status.configure(text="Estado: Inactivo", fg="gray")
+                    except Exception:
+                        pass
             else:
                 self.log("No hay ninguna simulación activa", color="orange")
                 

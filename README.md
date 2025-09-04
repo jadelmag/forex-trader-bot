@@ -514,4 +514,8 @@ Commons Clause + Apache/MIT
 
 ## En proceso
 
-* Conectar con Metatrader
+* Iniciar simulación con datos reales [DOING]
+* Detener simulación [TODO]
+* Generar informe [TODO]
+* Configuración de la aplicacion [TODO]
+* Conectar con Metatrader [TODO]

@@ -27,6 +27,7 @@ class CandleStreamer:
                  base_folder: str = 'trading_view', parent_frame=None, log_callback=None):
         # Callback para logging
         self.log_callback = log_callback if callable(log_callback) else print
+
         # Validar interval
         if interval not in self.ALLOWED_INTERVALS:
             print(f'Intervalo inválido. Se asigna por defecto: 1m')
@@ -51,6 +52,8 @@ class CandleStreamer:
         self.df.index = pd.to_datetime(self.df.index)
 
         self.current_candle = None
+        # Suscriptores de actualización de velas (GUI puede registrarse)
+        self._candle_update_callbacks = []
 
         # Obtener símbolos desde archivo o API
         self.symbols = self._load_or_fetch_symbols()
@@ -121,6 +124,35 @@ class CandleStreamer:
         self._rect_start = None  # (x0, y0) en coords de datos
         self._rect_patch = None
         self._init_hover()
+
+    def on_candle_update(self, callback):
+        """Permite registrar un callback que será llamado con el DataFrame
+        de velas cada vez que haya una actualización (incluye la vela en curso).
+        """
+        try:
+            if callable(callback) and callback not in self._candle_update_callbacks:
+                self._candle_update_callbacks.append(callback)
+        except Exception:
+            pass
+
+    def _notify_candle_update(self):
+        """Notifica a los suscriptores entregando un DataFrame que incluye la vela
+        actual (si existe)."""
+        try:
+            df_current = self.df.copy()
+            if self.current_candle is not None:
+                cur = pd.DataFrame([self.current_candle]).set_index('Date')
+                df_current = pd.concat([df_current, cur])
+                if not df_current.empty:
+                    df_current.sort_index(inplace=True)
+            for cb in list(self._candle_update_callbacks):
+                try:
+                    cb(df_current)
+                except Exception:
+                    # No romper si un callback falla
+                    pass
+        except Exception:
+            pass
 
     @classmethod
     def _load_or_fetch_symbols(cls):
@@ -194,6 +226,8 @@ class CandleStreamer:
                 print(f"Nueva vela iniciada: {self.current_candle}", 'green')
                 # Refrescar gráfico con la nueva vela en curso
                 self._plot_last_candles()
+                # Notificar actualización de vela
+                self._notify_candle_update()
             else:
                 prev_high = self.current_candle['High']
                 prev_low = self.current_candle['Low']
@@ -211,6 +245,8 @@ class CandleStreamer:
                     print(f"Vela actualizada: {self.current_candle}", 'gray')
                 # Refrescar gráfico en cada actualización intra-intervalo
                 self._plot_last_candles()
+                # Notificar actualización intra-intervalo
+                self._notify_candle_update()
         except Exception as e:
             print(f"Error en _add_trade_to_candle: {e}", 'red')
 

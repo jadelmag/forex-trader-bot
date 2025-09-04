@@ -20,7 +20,7 @@ class BinanceSimulationModal(tk.Toplevel):
         self.update_idletasks()
         w = 550
         # Altura total del modal: área de lista (400) + controles inferiores
-        h_total = 500
+        h_total = 550
         x = parent.winfo_rootx() + (parent.winfo_width() - w) // 2
         y = parent.winfo_rooty() + (parent.winfo_height() - h_total) // 2
         self.geometry(f"{w}x{h_total}+{x}+{y}")
@@ -395,13 +395,32 @@ class BinanceSimulationModal(tk.Toplevel):
         )
         chk_simulacion.grid(row=options_row + 1, column=0, columnspan=3, sticky="w", padx=5, pady=5)
 
-        # ---------------- CAMPO MAX ORDENES ----------------
-        frame_max = tk.Frame(self)
-        frame_max.pack(pady=5)
-        ttk.Label(frame_max, text="Número máximo de órdenes:").pack(side="left", padx=5)
+        # ---------------- CAMPOS DE CONFIGURACIÓN ----------------
+        frame_config = tk.Frame(self)
+        frame_config.pack(pady=5, fill='x')
+        
+        # Frame para agrupar los campos de configuración verticalmente (centrado)
+        config_fields = tk.Frame(frame_config)
+        config_fields.pack(pady=0, expand=True)
+        
+        # Frame para velas de espera
+        frame_wait = tk.Frame(config_fields)
+        frame_wait.pack(pady=2)
+        ttk.Label(frame_wait, text="Velas a esperar:").pack(side="left", padx=6)
+        self.wait_candles_var = tk.StringVar(value="20")
+        vcmd = (self.register(self._validate_int), '%P')
+        self.entry_wait_candles = tk.Entry(frame_wait, textvariable=self.wait_candles_var, width=5, 
+                                         validate="key", validatecommand=vcmd)
+        self.entry_wait_candles.pack(side="left", padx=2)
+        
+        # Frame para máximo de órdenes
+        frame_max = tk.Frame(config_fields)
+        frame_max.pack(pady=2)
+        ttk.Label(frame_max, text="Máx. órdenes:").pack(side="left", padx=6)
         self.max_orders_var = tk.StringVar(value="5")
-        self.entry_max_orders = tk.Entry(frame_max, textvariable=self.max_orders_var, width=5)
-        self.entry_max_orders.pack(side="left")
+        self.entry_max_orders = tk.Entry(frame_max, textvariable=self.max_orders_var, width=5, 
+                                       validate="key", validatecommand=vcmd)
+        self.entry_max_orders.pack(side="left", padx=2)
 
         # Botones Cancelar y Aceptar
         frame_btn = tk.Frame(self)
@@ -411,6 +430,15 @@ class BinanceSimulationModal(tk.Toplevel):
         btn_aceptar = ttk.Button(frame_btn, text="Aceptar", command=self._aceptar)
         btn_aceptar.pack(side="left", padx=10)
 
+    def _validate_int(self, value: str) -> bool:
+        """Valida que el valor sea un número entero positivo o vacío."""
+        if value == "":
+            return True
+        try:
+            return int(value) >= 0
+        except ValueError:
+            return False
+            
     def _aceptar(self):
         try:
             # Get selected strategies and patterns
@@ -431,7 +459,12 @@ class BinanceSimulationModal(tk.Toplevel):
                     elif ctrl["tipo"] == "pattern" and name.startswith("pattern::"):
                         selected_patterns.append(name.replace("pattern::", ""))
             
-            # Get max orders
+            # Get wait candles and max orders
+            try:
+                wait_candles = int(self.wait_candles_var.get() or 20)
+            except (ValueError, AttributeError):
+                wait_candles = 20
+                
             try:
                 max_orders = int(self.max_orders_var.get() or 5)
             except (ValueError, AttributeError):
@@ -446,6 +479,7 @@ class BinanceSimulationModal(tk.Toplevel):
                 'forex_strategies': selected_forex,
                 'candle_strategies': selected_candle,
                 'patterns': selected_patterns,
+                'wait_candles': wait_candles,
                 'max_orders': max_orders,
                 'show_detection': show_detection,
                 'show_simulation': show_simulation,
