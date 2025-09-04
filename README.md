@@ -199,6 +199,21 @@ python -m app.main
 5. Enseñale a encontrar patrones de velas en el botón **Entrenar**.
 6. Ejecuta el backtesting en el botón **Backtesting**.
 
+
+Si queremos entrenar la IA con 2000 velas tendremos que ir al fichero rl/rl_agent.py y modificar la variable window_size y que sea coincida con el tamaño de la ventana de la gráfica, que en este caso es 2000.
+
+2️⃣ Recomendación práctica
+
+Rango óptimo: 500 – 2000 velas
+---
+500 velas → rápido, suficiente para muchas estrategias intradía
+
+1000 velas → equilibrio entre información y rendimiento
+
+2000 velas → solo si tu estrategia necesita analizar tendencias muy largas
+
+***Nunca pases más de 2000–3000 velas a menos que tengas hardware muy potente, porque el vector de observación crecerá demasiado.***
+
 ---
 
 ## Exportar datos
