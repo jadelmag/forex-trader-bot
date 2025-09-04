@@ -76,9 +76,19 @@ forex-trader-bot/
 │ ├─ candle_strategies.py   # Estrategias de velas
 │ └─ risk_manager.py        # Gestión de riesgo
 |
+├─ symbols/                 # Carpeta donde se guardan los archivos de símbolos
+│ └─ symbols.csv            # Símbolos de monedas
+|
 ├─ telegram/                # Carpeta donde se guardan los archivos de Telegram
 │ ├─ __init__.py            # TelegramNotifier
 │ └─ telegram-notifier.py   # Notificador de Telegram
+|
+├─ trading_view/            # Carpeta donde se guardan los archivos de Trading View
+│ ├─ __init__.py            # CandleStreamer
+│ ├─ trade_view_csv/        # Carpeta donde se guardan los archivos CSV de Trading View
+│ │ └─ EURUSDT_data.csv     # Fichero CSV de Trading View
+│ ├─ candle_streamer.py     # Fichero de Trading View
+│ └─ config_modal.py        # Modal de configuración de CandleStreamer
 |
 ├─ .gitignore               # Fichero .gitignore
 ├─ csv_parser.py            # Script para convertir CSV crudos de Dukascopy al formato estándar

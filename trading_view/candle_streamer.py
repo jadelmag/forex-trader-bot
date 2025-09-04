@@ -8,6 +8,8 @@ import mplfinance as mpf
 from datetime import datetime, timedelta
 import matplotlib
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+import numpy as np
 import os
 import requests
 import tkinter as tk  # Añadido para el soporte de Tkinter
@@ -97,6 +99,18 @@ class CandleStreamer:
                 self.ax_price = self.axlist[0]
                 self.ax_volume = self.axlist[2]
 
+        # Estado para tooltips de hover
+        self._last_df = pd.DataFrame()
+        self._last_x = None  # posiciones x (mdates float) del último DF
+        self._hover_annot = None
+        self._hover_cid = None
+        self.debug_hover = False  # activar para logs de eventos de hover
+        self._hover_marker = None  # marcador visual en la vela
+        # Zoom con scroll
+        self._scroll_cid = None
+        self._user_xlim = None  # conservar límites de zoom del usuario
+        self._init_hover()
+
     @classmethod
     def _load_or_fetch_symbols(cls):
         symbols_folder = 'symbols'
@@ -182,7 +196,7 @@ class CandleStreamer:
                 if (prev_high != self.current_candle['High'] or 
                     prev_low != self.current_candle['Low'] or 
                     prev_volume != self.current_candle['Volume']):
-                    print(f"Vela actualizada: {self.current_candle}", 'gray')
+                    self._log(f"Vela actualizada: {self.current_candle}", 'gray')
                 # Refrescar gráfico en cada actualización intra-intervalo
                 self._plot_last_candles()
         except Exception as e:
@@ -220,6 +234,14 @@ class CandleStreamer:
 
             print(f"Plotting {len(last_df)} filas", 'gray')
 
+        # Guardar el último DF para el manejo de hover
+        self._last_df = last_df
+        # Cachear posiciones X en coordenadas de Matplotlib para evitar problemas de zona horaria
+        try:
+            self._last_x = mdates.date2num(self._last_df.index.to_pydatetime()) if not self._last_df.empty else None
+        except Exception:
+            self._last_x = None
+        
         if last_df.empty:
             return
             
@@ -239,6 +261,18 @@ class CandleStreamer:
                          volume=self.ax_volume,
                          show_nontrading=False)
                 
+                # Asegurar que la anotación de hover existe tras limpiar/redibujar
+                self._ensure_hover_annotation()
+
+                # Restaurar límites de zoom del usuario si existen
+                if self._user_xlim is not None:
+                    try:
+                        self.ax_price.set_xlim(self._user_xlim)
+                        if hasattr(self, 'ax_volume') and self.ax_volume:
+                            self.ax_volume.set_xlim(self._user_xlim)
+                    except Exception:
+                        pass
+
                 # Actualizar el canvas si está en modo embebido
                 if hasattr(self, 'canvas'):
                     self.canvas.draw()
@@ -252,6 +286,152 @@ class CandleStreamer:
             self.parent_frame.after(0, _update_plot)
         else:
             _update_plot()
+
+    def _init_hover(self):
+        """Inicializa el manejo de hover sobre las velas (anotación + evento)."""
+        try:
+            if not hasattr(self, 'fig'):
+                return
+            # Conectar evento de movimiento del ratón una sola vez
+            canvas = self.canvas.get_tk_widget() if hasattr(self, 'canvas') else None
+            if self._hover_cid is None:
+                self._hover_cid = self.fig.canvas.mpl_connect('motion_notify_event', self._on_motion)
+            # Conectar scroll para zoom
+            if self._scroll_cid is None:
+                self._scroll_cid = self.fig.canvas.mpl_connect('scroll_event', self._on_scroll)
+            # Crear (o posponer) la anotación
+            self._ensure_hover_annotation()
+        except Exception as e:
+            print(f"Error inicializando hover: {e}")
+
+    def _ensure_hover_annotation(self):
+        """Crea la anotación de hover si no existe o si fue destruida al limpiar los ejes."""
+        try:
+            if not hasattr(self, 'ax_price'):
+                return
+            need_new = (
+                self._hover_annot is None or
+                self._hover_annot.axes is None or
+                self._hover_annot.axes != self.ax_price
+            )
+            if need_new:
+                # Crear una anotación invisible por defecto
+                self._hover_annot = self.ax_price.annotate(
+                    "",
+                    xy=(0, 0),
+                    xytext=(15, 15),
+                    textcoords="offset points",
+                    bbox=dict(boxstyle="round", fc="w", ec="0.5", alpha=0.9),
+                    arrowprops=dict(arrowstyle="->", color="#333"),
+                    fontsize=9,
+                    zorder=10,
+                )
+                self._hover_annot.set_visible(False)
+                # Crear marcador si no existe
+                if self._hover_marker is None or self._hover_marker.axes != self.ax_price:
+                    self._hover_marker, = self.ax_price.plot([], [], marker='o', markersize=5,
+                                                             color='#1f77b4', alpha=0.9, zorder=9)
+                    self._hover_marker.set_visible(False)
+        except Exception as e:
+            print(f"Error creando anotación de hover: {e}")
+
+    def _on_motion(self, event):
+        """Maneja el evento de movimiento del ratón para mostrar tooltip de vela."""
+        try:
+            # Requiere eje de precio y datos
+            if not hasattr(self, 'ax_price') or self._last_df is None or self._last_df.empty:
+                return
+            # Mostrar sólo si el ratón está sobre el eje de precio o volumen
+            if (event.inaxes not in (self.ax_price, getattr(self, 'ax_volume', None)) or
+                event.xdata is None or event.ydata is None):
+                # Ocultar si estaba visible
+                if self._hover_annot is not None and self._hover_annot.get_visible():
+                    self._hover_annot.set_visible(False)
+                    if self._hover_marker is not None and self._hover_marker.get_visible():
+                        self._hover_marker.set_visible(False)
+                    if hasattr(self, 'canvas'):
+                        self.canvas.draw_idle()
+                    else:
+                        self.fig.canvas.draw_idle()
+                return
+
+            # Asegurar que existe la anotación
+            self._ensure_hover_annotation()
+
+            # Buscar índice de vela más cercano usando coordenadas x numéricas (evita problemas de tz)
+            if self._last_x is None or len(self._last_x) == 0:
+                return
+            loc = int(np.argmin(np.abs(self._last_x - event.xdata)))
+
+            loc = max(0, min(loc, len(self._last_df) - 1))
+            ts = self._last_df.index[loc]
+            row = self._last_df.iloc[loc]
+
+            # Preparar texto
+            ts_str = ts.strftime('%Y-%m-%d %H:%M:%S') if hasattr(ts, 'strftime') else str(ts)
+            txt = (
+                f"{ts_str}\n"
+                f"O: {row['Open']:.5f}  H: {row['High']:.5f}\n"
+                f"L: {row['Low']:.5f}  C: {row['Close']:.5f}\n"
+                f"V: {row['Volume']:.4f}"
+            )
+
+            # Colocar anotación cerca de la vela seleccionada
+            xnum = mdates.date2num(ts)
+            yval = float(row['High'])
+            self._hover_annot.xy = (xnum, yval)
+            self._hover_annot.set_text(txt)
+            self._hover_annot.set_visible(True)
+            # Actualizar marcador cerca del cierre
+            self._hover_marker.set_data([xnum], [float(row['Close'])])
+            self._hover_marker.set_visible(True)
+
+            # Redibujar ligero
+            if hasattr(self, 'canvas'):
+                self.canvas.draw_idle()
+            else:
+                self.fig.canvas.draw_idle()
+        except Exception as e:
+            if self.debug_hover:
+                print(f"Hover error: {e}")
+
+    def _on_scroll(self, event):
+        """Zoom con la rueda del ratón centrado en el cursor. Sólo eje X, sincronizado entre subplots."""
+        try:
+            if event.xdata is None or event.inaxes not in (getattr(self, 'ax_price', None), getattr(self, 'ax_volume', None)):
+                return
+            ax = self.ax_price  # usamos el eje de precio como referencia
+            cur_left, cur_right = ax.get_xlim()
+            x = event.xdata
+            width = cur_right - cur_left
+            if width <= 0:
+                return
+            # Factor de zoom: rueda hacia arriba acerca, hacia abajo aleja
+            base = 1.2
+            if event.button == 'up':
+                scale = 1 / base
+            elif event.button == 'down':
+                scale = base
+            else:
+                return
+            new_width = width * scale
+            # Recalcular límites manteniendo el punto del cursor como ancla
+            left = x - (x - cur_left) * (new_width / width)
+            right = left + new_width
+            # Aplicar a ambos ejes
+            self.ax_price.set_xlim(left, right)
+            if hasattr(self, 'ax_volume') and self.ax_volume:
+                self.ax_volume.set_xlim(left, right)
+            # Guardar para persistir en redibujos
+            self._user_xlim = (left, right)
+            # Redibujar
+            if hasattr(self, 'canvas'):
+                self.canvas.draw_idle()
+            else:
+                self.fig.canvas.draw_idle()
+        except Exception as e:
+            if self.debug_hover:
+                print(f"Scroll zoom error: {e}")
 
     def _update_csv(self):
         self.df.to_csv(self.csv_file)
@@ -321,7 +501,7 @@ class CandleStreamer:
                 trade_price = float(data['p'])
                 trade_volume = float(data['q'])
                 trade_time = datetime.fromtimestamp(data['T']/1000)
-                print(f"Procesando trade - Precio: {trade_price}, Volumen: {trade_volume}, Hora: {trade_time}")
+                self._log(f"Procesando trade - Precio: {trade_price}, Volumen: {trade_volume}, Hora: {trade_time}")
                 self._add_trade_to_candle(trade_price, trade_volume, trade_time)
         except Exception as e:
             print(f"Error procesando mensaje: {e}")
