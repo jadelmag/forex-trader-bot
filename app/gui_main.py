@@ -1038,12 +1038,23 @@ class GUIPrincipal:
             messagebox.showerror("Error", f"Error al aplicar señales RL: {str(e)}")
             self.log(f"Error: {str(e)}", color="red")
 
+    def log(self, message, color="white"):
+        """Añade un mensaje al área de log con el color especificado"""
+        try:
+            self.text_log.configure(state="normal")
+            self.text_log.insert("end", message + "\n", color)
+            self.text_log.tag_configure(color, foreground=color)
+            self.text_log.see("end")
+            self.text_log.configure(state="disabled")
+        except Exception as e:
+            print(f"Error al escribir en el log: {str(e)}")
+            
     def _limpiar_log(self):
         """Limpia el área de log"""
         self.text_log.configure(state="normal")
         self.text_log.delete("1.0", "end")
         self.text_log.configure(state="disabled")
-        
+            
     def _start_streamer_with_config(self, config):
         """Inicia el CandleStreamer con la configuración proporcionada"""
         try:
@@ -1172,84 +1183,19 @@ class GUIPrincipal:
         
     def iniciar_simulacion(self):
         """Inicia la simulación del mercado"""
-        try:
-            # Aquí irá la lógica para iniciar la simulación
-            self.log("Iniciando simulación...", color="blue")
-            
-            # Actualizar estados de los botones
-            self.menu_streamer.entryconfig("Iniciar simulación", state="disabled")
-            self.menu_streamer.entryconfig("Detener simulación", state="normal")
-            self.menu_streamer.entryconfig("Conectar", state="disabled")
-            
-            # TODO: Implementar la lógica de simulación
-            
-        except Exception as e:
-            self.log(f"Error al iniciar la simulación: {str(e)}", color="red")
-            import traceback
-            self.log(traceback.format_exc(), color="red")
-    
+        self.log("Iniciando simulación...")
+
     def detener_simulacion(self):
         """Detiene la simulación del mercado"""
-        try:
-            # Aquí irá la lógica para detener la simulación
-            self.log("Deteniendo simulación...", color="blue")
-            
-            # Actualizar estados de los botones
-            self.menu_streamer.entryconfig("Iniciar simulación", state="normal")
-            self.menu_streamer.entryconfig("Detener simulación", state="disabled")
-            self.menu_streamer.entryconfig("Conectar", state="normal")
-            
-            # TODO: Implementar la lógica para detener la simulación
-            
-        except Exception as e:
-            self.log(f"Error al detener la simulación: {str(e)}", color="red")
-            import traceback
-            self.log(traceback.format_exc(), color="red")
+        self.log("Deteniendo simulación...")
     
     def generar_informe(self):
         """Genera un informe con los datos actuales"""
-        try:
-            # Aquí irá la lógica para generar el informe
-            self.log("Generando informe...", color="blue")
-            
-            # TODO: Implementar la generación del informe
-            
-            self.log("Informe generado correctamente", color="green")
-            
-        except Exception as e:
-            self.log(f"Error al generar el informe: {str(e)}", color="red")
-            import traceback
-            self.log(traceback.format_exc(), color="red")
+        self.log("Generando informe...")
             
     def configuracion(self):
         """Envía la configuración actual del streamer"""
-        try:
-            if self.candle_streamer is None:
-                self.log("Error: No hay un streamer activo", color="red")
-                return
-                
-            # Obtener la configuración actual
-            config = {
-                'symbol': getattr(self.candle_streamer, 'symbol', 'N/A'),
-                'interval': getattr(self.candle_streamer, 'interval', 'N/A'),
-                'max_plot': getattr(self.candle_streamer, 'max_plot', 'N/A'),
-                'status': 'Conectado' if hasattr(self.candle_streamer, 'ws') and self.candle_streamer.ws else 'Desconectado'
-            }
-            
-            # Aquí iría la lógica para enviar la configuración
-            # Por ahora, solo mostramos la configuración en el log
-            self.log("\n=== CONFIGURACIÓN ACTUAL ===", color="cyan")
-            for key, value in config.items():
-                self.log(f"{key.capitalize()}: {value}", color="white")
-            self.log("===========================\n", color="cyan")
-            
-            # TODO: Implementar el envío real de la configuración
-            self.log("Funcionalidad de envío de configuración pendiente de implementar", color="yellow")
-            
-        except Exception as e:
-            self.log(f"Error al enviar la configuración: {str(e)}", color="red")
-            import traceback
-            self.log(traceback.format_exc(), color="red")
+        self.log("Configuración")
 
     def cambiar_config_streamer(self):
         """Abre el modal para cambiar símbolo/intervalo y reinicia el streamer con la nueva configuración."""
