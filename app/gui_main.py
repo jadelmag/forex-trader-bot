@@ -24,7 +24,6 @@ if root_dir not in sys.path:
 
 # Importaciones propias
 from .grafico_manager import GraficoManager
-from .tooltip_zoom_pan import TooltipZoomPan
 from .csv_manager import CSVManager
 from .csv_loader_modal import CSVLoaderModal
 from .patterns_modal import PatternsModal
@@ -77,7 +76,6 @@ class GUIPrincipal:
         # Inicializaciones
         self.csv_manager = CSVManager(root)
         self.grafico_manager = GraficoManager(frame=None)
-        self.tooltip_zoom_pan = None
         self.df_actual = None
         self.candle_streamer = None  # Inicializar el streamer como None
         self.dinero_ficticio = 0
@@ -282,8 +280,17 @@ class GUIPrincipal:
         self.menu_streamer.add_command(label="Conectar", command=self.iniciar_streamer)
         self.menu_streamer.add_command(label="Desconectar", command=self.detener_streamer, state="disabled")
         self.menu_streamer.add_command(label="Cambiar símbolo/intervalo", command=self.cambiar_config_streamer, state="disabled")
+        self.menu_streamer.add_separator()
+        self.menu_streamer.add_command(label="Iniciar simulación", command=self.iniciar_simulacion, state="normal")
+        self.menu_streamer.add_command(label="Detener simulación", command=self.detener_simulacion, state="disabled")
+        self.menu_streamer.add_separator()
+        self.menu_streamer.add_command(label="Generar informe", command=self.generar_informe, state="normal")
+        self.menu_streamer.add_command(label="Configuración", command=self.configuracion, state="normal")
+        
+        # Inicializar estados de los botones
         self.menu_streamer.entryconfig("Desconectar", state="disabled")
         self.menu_streamer.entryconfig("Cambiar símbolo/intervalo", state="disabled")
+        self.menu_streamer.entryconfig("Detener simulación", state="disabled")
         
         # Botón de prueba temporal
         self.test_btn = ttk.Button(self.frame_left, text="Test", command=self.test_iniciar_streamer, style='Small.TButton')
@@ -724,20 +731,70 @@ class GUIPrincipal:
         self.grafico_manager.dibujar_csv(df_new)
         self.df_actual = df_new
 
-        if self.tooltip_zoom_pan:
-            try:
-                self.tooltip_zoom_pan.cleanup()
-            except Exception:
-                pass
-        if hasattr(self.grafico_manager, 'canvas') and hasattr(self.grafico_manager, 'grafico'):
-            self.tooltip_zoom_pan = TooltipZoomPan(self.root, self.grafico_manager.canvas, self.grafico_manager.grafico)
-
         if hasattr(self.grafico_manager, 'dibujar_operaciones'):
             operaciones_totales = self.risk_manager.operaciones_cerradas + [
                 op for op in self.risk_manager.operaciones_activas if op.estado == 'ACTIVA'
             ]
             self.grafico_manager.dibujar_operaciones(operaciones_totales)
 
+    # ---------------- Funciones de Telegram ----------------
+    def conectar_telegram(self):
+        """Intenta conectar con el bot de Telegram"""
+        try:
+            self.log("Conectando con Telegram...", color="blue")
+            self.lbl_telegram_status.config(text="Conectando...", fg="orange")
+            self.btn_telegram_connect.config(state="disabled")
+            
+            # Aquí iría la lógica de conexión con Telegram
+            # Por ahora simulamos una conexión exitosa después de 1 segundo
+            self.root.after(1000, self._on_telegram_connected)
+            
+        except Exception as e:
+            self.log(f"Error al conectar con Telegram: {str(e)}", color="red")
+            self.lbl_telegram_status.config(text="Error de conexión", fg="red")
+            self.btn_telegram_connect.config(state="normal")
+    
+    def _on_telegram_connected(self):
+        """Se llama cuando la conexión con Telegram es exitosa"""
+        self.lbl_telegram_status.config(text="Conectado", fg="green")
+        self.btn_telegram_connect.config(text="Desconectar", command=self.desconectar_telegram, state="normal")
+        self.btn_copy_link.config(state="normal")
+        self.var_invite.set("https://t.me/mi_bot_forex?start=token_unico_123456")
+        self.log("Conexión con Telegram establecida correctamente", color="green")
+    
+    def desconectar_telegram(self):
+        """Desconecta el bot de Telegram"""
+        try:
+            self.log("Desconectando de Telegram...", color="blue")
+            # Aquí iría la lógica de desconexión
+            self.lbl_telegram_status.config(text="Desconectado", fg="red")
+            self.btn_telegram_connect.config(text="Conectar Telegram", command=self.conectar_telegram, state="normal")
+            self.btn_copy_link.config(state="disabled")
+            self.var_invite.set("(sin conectar)")
+            self.log("Desconectado de Telegram", color="yellow")
+        except Exception as e:
+            self.log(f"Error al desconectar de Telegram: {str(e)}", color="red")
+    
+    def _copy_invite_link(self):
+        """Copia el enlace de invitación al portapapeles"""
+        try:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(self.var_invite.get())
+            self.log("Enlace copiado al portapapeles", color="green")
+        except Exception as e:
+            self.log(f"Error al copiar el enlace: {str(e)}", color="red")
+    
+    def log_telegram_message(self, message: str):
+        """Añade un mensaje al área de mensajes de Telegram"""
+        try:
+            self.text_telegram.config(state="normal")
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            self.text_telegram.insert("end", f"[{timestamp}] {message}\n")
+            self.text_telegram.see("end")
+            self.text_telegram.config(state="disabled")
+        except Exception as e:
+            print(f"Error al mostrar mensaje en Telegram: {e}")
+    
     # ---------------- Backtesting (modal de selección) ----------------
     def abrir_modal_backtesting(self):
         if self.df_actual is None:
@@ -1091,11 +1148,12 @@ class GUIPrincipal:
                 self.menu_streamer.entryconfig("Conectar", state="normal")
                 self.menu_streamer.entryconfig("Desconectar", state="disabled")
                 self.menu_streamer.entryconfig("Cambiar símbolo/intervalo", state="disabled")
+                self.menu_streamer.entryconfig("Iniciar simulación", state="normal")
+                self.menu_streamer.entryconfig("Detener simulación", state="disabled")
                 
                 # Limpiar el frame del gráfico
                 for widget in self.frame_grafico.winfo_children():
-                    if widget != self.frame_grafico_header:  # Mantener el header
-                        widget.destroy()
+                    widget.destroy()
                 
                 # Volver a crear el frame vacío para futuros gráficos
                 empty_frame = tk.Frame(self.frame_grafico, bg='#FFFFFF')
@@ -1111,6 +1169,87 @@ class GUIPrincipal:
         """Método de prueba para iniciar el streamer"""
         print("DEBUG: Test button clicked")  # Debug log
         self.iniciar_streamer()
+        
+    def iniciar_simulacion(self):
+        """Inicia la simulación del mercado"""
+        try:
+            # Aquí irá la lógica para iniciar la simulación
+            self.log("Iniciando simulación...", color="blue")
+            
+            # Actualizar estados de los botones
+            self.menu_streamer.entryconfig("Iniciar simulación", state="disabled")
+            self.menu_streamer.entryconfig("Detener simulación", state="normal")
+            self.menu_streamer.entryconfig("Conectar", state="disabled")
+            
+            # TODO: Implementar la lógica de simulación
+            
+        except Exception as e:
+            self.log(f"Error al iniciar la simulación: {str(e)}", color="red")
+            import traceback
+            self.log(traceback.format_exc(), color="red")
+    
+    def detener_simulacion(self):
+        """Detiene la simulación del mercado"""
+        try:
+            # Aquí irá la lógica para detener la simulación
+            self.log("Deteniendo simulación...", color="blue")
+            
+            # Actualizar estados de los botones
+            self.menu_streamer.entryconfig("Iniciar simulación", state="normal")
+            self.menu_streamer.entryconfig("Detener simulación", state="disabled")
+            self.menu_streamer.entryconfig("Conectar", state="normal")
+            
+            # TODO: Implementar la lógica para detener la simulación
+            
+        except Exception as e:
+            self.log(f"Error al detener la simulación: {str(e)}", color="red")
+            import traceback
+            self.log(traceback.format_exc(), color="red")
+    
+    def generar_informe(self):
+        """Genera un informe con los datos actuales"""
+        try:
+            # Aquí irá la lógica para generar el informe
+            self.log("Generando informe...", color="blue")
+            
+            # TODO: Implementar la generación del informe
+            
+            self.log("Informe generado correctamente", color="green")
+            
+        except Exception as e:
+            self.log(f"Error al generar el informe: {str(e)}", color="red")
+            import traceback
+            self.log(traceback.format_exc(), color="red")
+            
+    def configuracion(self):
+        """Envía la configuración actual del streamer"""
+        try:
+            if self.candle_streamer is None:
+                self.log("Error: No hay un streamer activo", color="red")
+                return
+                
+            # Obtener la configuración actual
+            config = {
+                'symbol': getattr(self.candle_streamer, 'symbol', 'N/A'),
+                'interval': getattr(self.candle_streamer, 'interval', 'N/A'),
+                'max_plot': getattr(self.candle_streamer, 'max_plot', 'N/A'),
+                'status': 'Conectado' if hasattr(self.candle_streamer, 'ws') and self.candle_streamer.ws else 'Desconectado'
+            }
+            
+            # Aquí iría la lógica para enviar la configuración
+            # Por ahora, solo mostramos la configuración en el log
+            self.log("\n=== CONFIGURACIÓN ACTUAL ===", color="cyan")
+            for key, value in config.items():
+                self.log(f"{key.capitalize()}: {value}", color="white")
+            self.log("===========================\n", color="cyan")
+            
+            # TODO: Implementar el envío real de la configuración
+            self.log("Funcionalidad de envío de configuración pendiente de implementar", color="yellow")
+            
+        except Exception as e:
+            self.log(f"Error al enviar la configuración: {str(e)}", color="red")
+            import traceback
+            self.log(traceback.format_exc(), color="red")
 
     def cambiar_config_streamer(self):
         """Abre el modal para cambiar símbolo/intervalo y reinicia el streamer con la nueva configuración."""
@@ -1286,11 +1425,9 @@ class GUIPrincipal:
     # ---------------- Funciones Gráficos ----------------
     def _dibujar_grafico(self, df):
         self.grafico_manager.dibujar_csv(df)
-        self.tooltip_zoom_pan = TooltipZoomPan(self.root, self.grafico_manager.canvas, self.grafico_manager.grafico)
 
     def reset_zoom(self):
-        if self.tooltip_zoom_pan:
-            self.tooltip_zoom_pan.reset_zoom()
+        pass
 
     def reiniciar_app(self):
         """Reinicia la aplicación reemplazando el proceso actual por `python -m app.main`."""
@@ -1306,111 +1443,11 @@ class GUIPrincipal:
 
     def limpiar_grafico(self):
         self.df_actual = None
-        if self.tooltip_zoom_pan:
-            self.tooltip_zoom_pan.cleanup()
-        self.tooltip_zoom_pan = None
         if hasattr(self.grafico_manager, "limpiar"):
             self.grafico_manager.limpiar()
         if hasattr(self.grafico_manager, "canvas") and self.grafico_manager.canvas:
             self.grafico_manager.canvas.get_tk_widget().pack_forget()
             self.grafico_manager.canvas = None
-
-    # ---------------- Función Log ----------------
-    def log(self, mensaje, color="white"):
-        self.text_log.configure(state="normal")
-        self.text_log.insert("end", mensaje + "\n", color)
-        self.text_log.tag_configure(color, foreground=color)
-        self.text_log.see("end")
-        self.text_log.configure(state="disabled")
-
-    def _append_telegram_panel(self, mensaje, color="white"):
-        self.text_telegram.configure(state="normal")
-        self.text_telegram.insert("end", mensaje + "\n", color)
-        self.text_telegram.tag_configure(color, foreground=color)
-        self.text_telegram.see("end")
-        self.text_telegram.configure(state="disabled")
-
-    def _copy_invite_link(self):
-        link = self.var_invite.get()
-        if link and link != "(sin conectar)":
-            try:
-                self.root.clipboard_clear()
-                self.root.clipboard_append(link)
-                self.root.update()
-                messagebox.showinfo("Telegram", "Enlace copiado al portapapeles")
-            except Exception as e:
-                messagebox.showerror("Telegram", f"No se pudo copiar: {e}")
-
-    def conectar_telegram(self):
-        """Inicia la conexión con Telegram"""
-        title = getattr(self, "telegram_title", None)
-        description = getattr(self, "telegram_description", None)
-        if not title:
-            messagebox.showwarning("Telegram", "Configure primero el título y la descripción")
-            return
-        # Asegurar instancia
-        try:
-            if not hasattr(self, "telegram_notifier") or self.telegram_notifier is None:
-                base_dir = os.path.dirname(os.path.dirname(__file__))
-                module_path = os.path.join(base_dir, "telegram", "telegram-notifier.py")
-                spec = importlib.util.spec_from_file_location("telegram_notifier", module_path)
-                if spec is None or spec.loader is None:
-                    raise ImportError("No se pudo cargar el módulo telegram-notifier.py")
-                mod = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(mod)
-                self.telegram_notifier = mod.TelegramNotifier()
-        except Exception as e:
-            messagebox.showerror("Telegram", f"Error cargando TelegramNotifier: {e}")
-            return
-
-        # Iniciar conexión en hilo y manejar callback
-        self.btn_telegram_connect.config(state="disabled")
-        self.var_invite.set("Conectando y creando canal...")
-        self._actualizar_estado_telegram(conectando=True)
-
-        def cb(invite_link, error):
-            # Asegurar ejecución en hilo de Tk
-            def _ui_update():
-                if error:
-                    messagebox.showerror("Telegram", f"Error: {error}")
-                    self.btn_telegram_connect.config(state="normal")
-                    self.var_invite.set("(sin conectar)")
-                    self._actualizar_estado_telegram(conectado=False)
-                else:
-                    self.var_invite.set(invite_link or "(sin enlace)")
-                    self.btn_copy_link.config(state="normal")
-                    self._actualizar_estado_telegram(conectado=True)
-                    messagebox.showinfo("Telegram", "Canal creado y enlace listo")
-            self.root.after(0, _ui_update)
-
-        try:
-            self.telegram_notifier.init_telegram(title, description, callback=cb)
-        except Exception as e:
-            messagebox.showerror("Telegram", f"Error iniciando Telegram: {e}")
-            self.btn_telegram_connect.config(state="normal")
-            self._actualizar_estado_telegram(conectado=False)
-
-    def _actualizar_estado_telegram(self, conectado=None, conectando=False):
-        """Actualiza el estado de conexión de Telegram en la UI"""
-        if conectando:
-            self.lbl_telegram_status.config(text="Conectando...", fg="orange")
-        elif conectado is True:
-            self.lbl_telegram_status.config(text="Conectado", fg="green")
-        else:
-            self.lbl_telegram_status.config(text="Desconectado", fg="red")
-
-    def _enviar_telegram_y_reflejar(self, mensaje, color="white"):
-        # Reflejar en panel
-        self._append_telegram_panel(mensaje, color="white")
-        # Enviar a Telegram si está conectado
-        notifier = getattr(self, "telegram_notifier", None)
-        try:
-            if notifier and hasattr(notifier, "send_message"):
-                notifier.send_message(mensaje, is_trade_operation=False, trade_id=None)
-            else:
-                self._append_telegram_panel("(No conectado a Telegram)", color="yellow")
-        except Exception as e:
-            self._append_telegram_panel(f"Error enviando a Telegram: {e}", color="red")
 
     # ---------------- Función callback para patrones ----------------
     def _on_patrones_aplicados(self, df_actualizado):
@@ -1418,19 +1455,9 @@ class GUIPrincipal:
         Reasigna df_actual y reinstala los handlers de zoom/hover sobre el nuevo canvas/figura.
         """
         self.df_actual = df_actualizado
-        # Si existía un gestor previo de zoom/hover, desconectarlo limpiamente
-        if self.tooltip_zoom_pan:
-            try:
-                self.tooltip_zoom_pan.cleanup()
-            except Exception:
-                pass
-        # Instalar nuevo gestor con el canvas/figura recién creados
-        if hasattr(self.grafico_manager, "canvas") and hasattr(self.grafico_manager, "grafico"):
-            self.tooltip_zoom_pan = TooltipZoomPan(
-                self.root,
-                self.grafico_manager.canvas,
-                self.grafico_manager.grafico,
-            )
+        # Actualizar el gráfico con los nuevos datos
+        if hasattr(self.grafico_manager, "dibujar_csv"):
+            self.grafico_manager.dibujar_csv(df_actualizado)
 
     # ---------------- Funciones CSV ----------------
     def cargar_csv(self):

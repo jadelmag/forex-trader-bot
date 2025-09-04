@@ -207,7 +207,8 @@ class CandleStreamer:
                 if (prev_high != self.current_candle['High'] or 
                     prev_low != self.current_candle['Low'] or 
                     prev_volume != self.current_candle['Volume']):
-                    self._log(f"Vela actualizada: {self.current_candle}", 'gray')
+                    # self._log(f"Vela actualizada: {self.current_candle}", 'gray')
+                    print(f"Vela actualizada: {self.current_candle}", 'gray')
                 # Refrescar gráfico en cada actualización intra-intervalo
                 self._plot_last_candles()
         except Exception as e:
@@ -321,33 +322,70 @@ class CandleStreamer:
             print(f"Error inicializando hover: {e}")
 
     def _ensure_hover_annotation(self):
-        """Crea la anotación de hover si no existe o si fue destruida al limpiar los ejes."""
+        """Asegura que la anotación y el marcador de hover existen y están adjuntos al eje.
+        Tras un ax.clear() los artistas se eliminan del eje, así que aquí los recreamos o reanudamos.
+        """
         try:
             if not hasattr(self, 'ax_price'):
                 return
-            need_new = (
+
+            # --- Anotación ---
+            annot_missing = (
                 self._hover_annot is None or
                 self._hover_annot.axes is None or
-                self._hover_annot.axes != self.ax_price
+                self._hover_annot.axes != self.ax_price or
+                # Si fue removida por ax.clear(), ya no estará en los textos del eje
+                self._hover_annot not in getattr(self.ax_price, 'texts', [])
             )
-            if need_new:
-                # Crear una anotación invisible por defecto
+            if annot_missing:
                 self._hover_annot = self.ax_price.annotate(
                     "",
                     xy=(0, 0),
                     xytext=(15, 15),
                     textcoords="offset points",
-                    bbox=dict(boxstyle="round", fc="w", ec="0.5", alpha=0.9),
-                    arrowprops=dict(arrowstyle="->", color="#333"),
+                    bbox=dict(
+                        boxstyle="round,pad=0.5,rounding_size=0.2",
+                        fc="#f8f9fa",
+                        ec="#6c757d",
+                        alpha=0.95,
+                        linewidth=1.0
+                    ),
+                    arrowprops=dict(
+                        arrowstyle="-|>",
+                        color="#6c757d",
+                        shrinkA=0,
+                        shrinkB=5,
+                        patchA=None,
+                        patchB=None,
+                        connectionstyle="arc3,rad=0.3"
+                    ),
                     fontsize=9,
-                    zorder=10,
+                    zorder=100,
+                    ha='left',
+                    va='bottom',
+                    linespacing=1.4
                 )
                 self._hover_annot.set_visible(False)
-                # Crear marcador si no existe
-                if self._hover_marker is None or self._hover_marker.axes != self.ax_price:
-                    self._hover_marker, = self.ax_price.plot([], [], marker='o', markersize=5,
-                                                             color='#1f77b4', alpha=0.9, zorder=9)
-                    self._hover_marker.set_visible(False)
+
+            # --- Marcador ---
+            marker_missing = (
+                self._hover_marker is None or
+                self._hover_marker.axes is None or
+                self._hover_marker.axes != self.ax_price or
+                self._hover_marker not in getattr(self.ax_price, 'lines', [])
+            )
+            if marker_missing:
+                self._hover_marker, = self.ax_price.plot(
+                    [], [],
+                    marker='o',
+                    markersize=8,
+                    markerfacecolor='#1f77b4',
+                    markeredgecolor='white',
+                    markeredgewidth=1.0,
+                    alpha=0.9,
+                    zorder=99
+                )
+                self._hover_marker.set_visible(False)
         except Exception as e:
             print(f"Error creando anotación de hover: {e}")
 
@@ -365,10 +403,8 @@ class CandleStreamer:
                     self._hover_annot.set_visible(False)
                     if self._hover_marker is not None and self._hover_marker.get_visible():
                         self._hover_marker.set_visible(False)
-                    if hasattr(self, 'canvas'):
-                        self.canvas.draw_idle()
-                    else:
-                        self.fig.canvas.draw_idle()
+                    # Redibuja de forma ociosa usando el canvas de la figura (compatible con TkAgg)
+                    self.fig.canvas.draw_idle()
                 return
 
             # Si estamos arrastrando con botón derecho, hacer pan en X
@@ -383,10 +419,8 @@ class CandleStreamer:
                     if hasattr(self, 'ax_volume') and self.ax_volume:
                         self.ax_volume.set_xlim(left, right)
                     self._user_xlim = (left, right)
-                    if hasattr(self, 'canvas'):
-                        self.canvas.draw_idle()
-                    else:
-                        self.fig.canvas.draw_idle()
+                    # Redibuja de forma ociosa usando el canvas de la figura
+                    self.fig.canvas.draw_idle()
                 except Exception as e:
                     if self.debug_hover:
                         print(f"Pan error: {e}")
@@ -416,10 +450,8 @@ class CandleStreamer:
                         self._rect_patch.set_width(max(xmax - xmin, 0))
                         self._rect_patch.set_height(max(ymax - ymin, 0))
                     self._rect_patch.set_visible(True)
-                    if hasattr(self, 'canvas'):
-                        self.canvas.draw_idle()
-                    else:
-                        self.fig.canvas.draw_idle()
+                    # Redibuja de forma ociosa usando el canvas de la figura
+                    self.fig.canvas.draw_idle()
                 except Exception as e:
                     if self.debug_hover:
                         print(f"Rect draw error: {e}")
@@ -443,30 +475,58 @@ class CandleStreamer:
             ts = self._last_df.index[loc]
             row = self._last_df.iloc[loc]
 
-            # Preparar texto
+            # Calcular cambio y color
+            open_price = float(row['Open'])
+            close_price = float(row['Close'])
+            change = close_price - open_price
+            change_pct = (change / open_price) * 100 if open_price != 0 else 0
+            color = '#28a745' if close_price >= open_price else '#dc3545'  # Verde si sube, rojo si baja
+            
+            # Formatear fecha y valores
             ts_str = ts.strftime('%Y-%m-%d %H:%M:%S') if hasattr(ts, 'strftime') else str(ts)
+            
+            # Crear texto con formato simple (sin secuencias ANSI)
+            sign = '+' if change >= 0 else ''
             txt = (
                 f"{ts_str}\n"
-                f"O: {row['Open']:.5f}  H: {row['High']:.5f}\n"
-                f"L: {row['Low']:.5f}  C: {row['Close']:.5f}\n"
-                f"V: {row['Volume']:.4f}"
+                f"--------------------\n"
+                f"Open:   {open_price:.5f}\n"
+                f"High:   {float(row['High']):.5f}\n"
+                f"Low:    {float(row['Low']):.5f}\n"
+                f"Close:  {close_price:.5f}  ({sign}{change:.5f}, {change_pct:+.2f}%)\n"
+                f"--------------------\n"
+                f"Volume: {float(row['Volume']):.4f}\n"
             )
 
-            # Colocar anotación cerca de la vela seleccionada
+            # Posicionar anotación inteligentemente
             xnum = mdates.date2num(ts)
             yval = float(row['High'])
-            self._hover_annot.xy = (xnum, yval)
+            
+            # Determinar posición óptima para no salir de la pantalla
+            x, y = xnum, yval
+            xlim = self.ax_price.get_xlim()
+            ylim = self.ax_price.get_ylim()
+            x_range = xlim[1] - xlim[0]
+            y_range = ylim[1] - ylim[0]
+            
+            # Ajustar posición para que no se salga de los límites
+            x_offset = 15 if x < (xlim[0] + xlim[1]) / 2 else -15
+            y_offset = 15 if y < (ylim[0] + ylim[1]) / 2 else -15
+            
+            # Actualizar anotación
+            self._hover_annot.xy = (x, y)
+            self._hover_annot.set_position((x_offset, y_offset))
             self._hover_annot.set_text(txt)
             self._hover_annot.set_visible(True)
-            # Actualizar marcador cerca del cierre
-            self._hover_marker.set_data([xnum], [float(row['Close'])])
+            
+            # Actualizar marcador en el cierre con el color correspondiente
+            self._hover_marker.set_data([xnum], [close_price])
+            self._hover_marker.set_markerfacecolor(color)
             self._hover_marker.set_visible(True)
 
             # Redibujar ligero
-            if hasattr(self, 'canvas'):
-                self.canvas.draw_idle()
-            else:
-                self.fig.canvas.draw_idle()
+            # Redibuja de forma ociosa usando el canvas de la figura
+            self.fig.canvas.draw_idle()
         except Exception as e:
             if self.debug_hover:
                 print(f"Hover error: {e}")
@@ -704,12 +764,11 @@ class CandleStreamer:
                 self.df = self.df[~self.df.index.duplicated(keep='last')]
                 self.df.sort_index(inplace=True)
 
-            print(f"Precargadas {len(hist_df)} velas históricas para {symbol} ({k_interval}).", 'green')
-            # Pintar inmediatamente tras la precarga
+            print(f"Precargadas {len(hist_df)} velas históricas para {self.symbol} ({self.interval}).")
             self._plot_last_candles()
             self._update_csv()
         except Exception as e:
-            print(f"Error en precarga histórica: {e}", 'red')
+            print(f"Error en precarga histórica: {e}")
 
     def _on_message(self, ws, message):
         try:
@@ -720,7 +779,8 @@ class CandleStreamer:
                 trade_price = float(data['p'])
                 trade_volume = float(data['q'])
                 trade_time = datetime.fromtimestamp(data['T']/1000)
-                self._log(f"Procesando trade - Precio: {trade_price}, Volumen: {trade_volume}, Hora: {trade_time}")
+                print(f"Procesando trade - Precio: {trade_price}, Volumen: {trade_volume}, Hora: {trade_time}")
+                # self._log(f"Procesando trade - Precio: {trade_price}, Volumen: {trade_volume}, Hora: {trade_time}")
                 self._add_trade_to_candle(trade_price, trade_volume, trade_time)
         except Exception as e:
             print(f"Error procesando mensaje: {e}")
@@ -791,3 +851,55 @@ class CandleStreamer:
             self.canvas.get_tk_widget().destroy()
         if hasattr(self, 'thread') and self.thread:
             self.thread.join()
+
+    def set_symbol(self, symbol):
+        """Cambia el símbolo activo y reinicia el stream"""
+        if symbol != self.symbol:
+            self.stop()
+            self.symbol = symbol
+            self.csv_file = os.path.join(self.csv_folder, f'{self.symbol}_data.csv')
+            self.df = pd.DataFrame(columns=["Open", "High", "Low", "Close", "Volume"])
+            self.df.index.name = 'Date'
+            self.df.index = pd.to_datetime(self.df.index)
+            self.current_candle = None
+            self.start()
+
+    def set_interval(self, interval):
+        """Cambia el intervalo de tiempo"""
+        if interval in self.ALLOWED_INTERVALS and interval != self.interval:
+            self.stop()
+            self.interval = interval
+            self.start()
+
+    def set_max_plot(self, max_plot):
+        """Cambia el número máximo de velas a mostrar"""
+        if max_plot in self.ALLOWED_MAX_PLOT and max_plot != self.max_plot:
+            self.max_plot = max_plot
+            self._plot_last_candles()
+
+    def get_available_symbols(self):
+        """Devuelve la lista de símbolos disponibles"""
+        return self.symbols
+
+    def get_current_data(self):
+        """Devuelve los datos actuales del DataFrame"""
+        return self.df.copy()
+
+    def get_current_candle(self):
+        """Devuelve la vela actual en formación"""
+        return self.current_candle.copy() if self.current_candle else None
+
+    def export_to_csv(self, filename=None):
+        """Exporta los datos a un archivo CSV"""
+        if filename is None:
+            filename = self.csv_file
+        self.df.to_csv(filename)
+        print(f"Datos exportados a: {filename}")
+
+    def clear_data(self):
+        """Limpia todos los datos almacenados"""
+        self.df = pd.DataFrame(columns=["Open", "High", "Low", "Close", "Volume"])
+        self.df.index.name = 'Date'
+        self.df.index = pd.to_datetime(self.df.index)
+        self.current_candle = None
+        self._plot_last_candles()
