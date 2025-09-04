@@ -10,6 +10,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import numpy as np
+from matplotlib.patches import Rectangle
 import os
 import requests
 import tkinter as tk  # Añadido para el soporte de Tkinter
@@ -109,6 +110,16 @@ class CandleStreamer:
         # Zoom con scroll
         self._scroll_cid = None
         self._user_xlim = None  # conservar límites de zoom del usuario
+        # Pan con arrastre
+        self._press_cid = None
+        self._release_cid = None
+        self._pan_active = False          # pan con botón derecho
+        self._pan_start_x = None
+        self._pan_xlim_start = None
+        # Zoom por recuadro (botón izquierdo)
+        self._rect_active = False
+        self._rect_start = None  # (x0, y0) en coords de datos
+        self._rect_patch = None
         self._init_hover()
 
     @classmethod
@@ -299,6 +310,11 @@ class CandleStreamer:
             # Conectar scroll para zoom
             if self._scroll_cid is None:
                 self._scroll_cid = self.fig.canvas.mpl_connect('scroll_event', self._on_scroll)
+            # Conectar eventos de click para pan
+            if self._press_cid is None:
+                self._press_cid = self.fig.canvas.mpl_connect('button_press_event', self._on_button_press)
+            if self._release_cid is None:
+                self._release_cid = self.fig.canvas.mpl_connect('button_release_event', self._on_button_release)
             # Crear (o posponer) la anotación
             self._ensure_hover_annotation()
         except Exception as e:
@@ -336,7 +352,7 @@ class CandleStreamer:
             print(f"Error creando anotación de hover: {e}")
 
     def _on_motion(self, event):
-        """Maneja el evento de movimiento del ratón para mostrar tooltip de vela."""
+        """Maneja hover, pan (botón derecho) y dibujo de recuadro para zoom (botón izquierdo)."""
         try:
             # Requiere eje de precio y datos
             if not hasattr(self, 'ax_price') or self._last_df is None or self._last_df.empty:
@@ -353,6 +369,66 @@ class CandleStreamer:
                         self.canvas.draw_idle()
                     else:
                         self.fig.canvas.draw_idle()
+                return
+
+            # Si estamos arrastrando con botón derecho, hacer pan en X
+            if self._pan_active and self._pan_start_x is not None and self._pan_xlim_start is not None:
+                try:
+                    cur_left, cur_right = self._pan_xlim_start
+                    dx = event.xdata - self._pan_start_x
+                    # desplazamiento inverso: mover a la derecha cuando arrastras a la derecha
+                    left = cur_left - dx
+                    right = cur_right - dx
+                    self.ax_price.set_xlim(left, right)
+                    if hasattr(self, 'ax_volume') and self.ax_volume:
+                        self.ax_volume.set_xlim(left, right)
+                    self._user_xlim = (left, right)
+                    if hasattr(self, 'canvas'):
+                        self.canvas.draw_idle()
+                    else:
+                        self.fig.canvas.draw_idle()
+                except Exception as e:
+                    if self.debug_hover:
+                        print(f"Pan error: {e}")
+                finally:
+                    # En modo pan, no mostrar tooltip para evitar parpadeo
+                    if self._hover_annot is not None and self._hover_annot.get_visible():
+                        self._hover_annot.set_visible(False)
+                    if self._hover_marker is not None and self._hover_marker.get_visible():
+                        self._hover_marker.set_visible(False)
+                return
+
+            # Si estamos dibujando recuadro (botón izquierdo), actualizar el parche
+            if self._rect_active and self._rect_start is not None:
+                try:
+                    x0, y0 = self._rect_start
+                    x1, y1 = event.xdata, event.ydata
+                    xmin, xmax = sorted([x0, x1])
+                    ymin, ymax = sorted([y0, y1])
+                    # Crear el parche si no existe
+                    if self._rect_patch is None or self._rect_patch.axes != self.ax_price:
+                        self._rect_patch = Rectangle((xmin, ymin), xmax - xmin, ymax - ymin,
+                                                     fill=False, linestyle='--', linewidth=1.0,
+                                                     edgecolor='gray', alpha=0.9)
+                        self.ax_price.add_patch(self._rect_patch)
+                    else:
+                        self._rect_patch.set_xy((xmin, ymin))
+                        self._rect_patch.set_width(max(xmax - xmin, 0))
+                        self._rect_patch.set_height(max(ymax - ymin, 0))
+                    self._rect_patch.set_visible(True)
+                    if hasattr(self, 'canvas'):
+                        self.canvas.draw_idle()
+                    else:
+                        self.fig.canvas.draw_idle()
+                except Exception as e:
+                    if self.debug_hover:
+                        print(f"Rect draw error: {e}")
+                finally:
+                    # ocultar hover mientras se dibuja
+                    if self._hover_annot is not None and self._hover_annot.get_visible():
+                        self._hover_annot.set_visible(False)
+                    if self._hover_marker is not None and self._hover_marker.get_visible():
+                        self._hover_marker.set_visible(False)
                 return
 
             # Asegurar que existe la anotación
@@ -394,6 +470,149 @@ class CandleStreamer:
         except Exception as e:
             if self.debug_hover:
                 print(f"Hover error: {e}")
+
+    def _on_button_press(self, event):
+        """Inicia pan (botón derecho) o zoom por recuadro (botón izquierdo)."""
+        try:
+            if event.inaxes not in (getattr(self, 'ax_price', None), getattr(self, 'ax_volume', None)):
+                return
+            # Doble clic con botón central: reset de vista a estado inicial
+            if getattr(event, 'dblclick', False) and event.button == 2:
+                self._reset_view()
+                return
+            # Pan con botón derecho en cualquiera de los ejes
+            if event.button == 3:
+                self._pan_active = True
+                self._pan_start_x = event.xdata
+                self._pan_xlim_start = self.ax_price.get_xlim()
+                return
+            # Zoom por recuadro con botón izquierdo (con o sin Shift), solo si empieza en eje de precio
+            if event.button == 1 and event.inaxes is getattr(self, 'ax_price', None):
+                self._rect_active = True
+                self._rect_start = (event.xdata, event.ydata)
+                try:
+                    if self._rect_patch is None or self._rect_patch.axes != self.ax_price:
+                        from matplotlib.patches import Rectangle as _Rect
+                        self._rect_patch = _Rect(self._rect_start, 0, 0, fill=False,
+                                                 linestyle='--', linewidth=1.0,
+                                                 edgecolor='gray', alpha=0.9)
+                        self.ax_price.add_patch(self._rect_patch)
+                    else:
+                        self._rect_patch.set_xy(self._rect_start)
+                        self._rect_patch.set_width(0)
+                        self._rect_patch.set_height(0)
+                    self._rect_patch.set_visible(True)
+                    if hasattr(self, 'canvas'):
+                        self.canvas.draw_idle()
+                    else:
+                        self.fig.canvas.draw_idle()
+                except Exception as e:
+                    if self.debug_hover:
+                        print(f"Rect init error: {e}")
+                return
+        except Exception as e:
+            if self.debug_hover:
+                print(f"Button press error: {e}")
+
+    def _reset_view(self):
+        """Restaura el zoom/pan a la vista inicial (toda la serie visible y autoscale en Y)."""
+        try:
+            if self._last_df is None or self._last_df.empty:
+                return
+            # Calcular límites X completos
+            if self._last_x is None or len(self._last_x) == 0:
+                try:
+                    xvals = mdates.date2num(self._last_df.index.to_pydatetime())
+                except Exception:
+                    return
+            else:
+                xvals = self._last_x
+            xmin = float(np.min(xvals))
+            xmax = float(np.max(xvals))
+            # Aplicar límites X a precio y volumen
+            self.ax_price.set_xlim(xmin, xmax)
+            if hasattr(self, 'ax_volume') and self.ax_volume:
+                self.ax_volume.set_xlim(xmin, xmax)
+            # Autoscale Y en precio (y en volumen por separado)
+            try:
+                self.ax_price.relim()
+                self.ax_price.autoscale_view()
+            except Exception:
+                pass
+            try:
+                if hasattr(self, 'ax_volume') and self.ax_volume:
+                    self.ax_volume.relim()
+                    self.ax_volume.autoscale_view()
+            except Exception:
+                pass
+            # Borrar límites de usuario para que se restaure en futuros dibujados
+            self._user_xlim = None
+            # Ocultar recuadro si existiera
+            try:
+                if self._rect_patch is not None:
+                    self._rect_patch.set_visible(False)
+            except Exception:
+                pass
+            # Redibujar
+            if hasattr(self, 'canvas'):
+                self.canvas.draw_idle()
+            else:
+                self.fig.canvas.draw_idle()
+        except Exception as e:
+            if self.debug_hover:
+                print(f"Reset view error: {e}")
+
+    def _on_button_release(self, event):
+        """Finaliza pan (botón derecho) o aplica zoom por recuadro (botón izquierdo)."""
+        try:
+            if event.inaxes not in (getattr(self, 'ax_price', None), getattr(self, 'ax_volume', None)):
+                # limpiar estados aunque se suelte fuera
+                self._pan_active = False
+                self._rect_active = False
+                return
+            # Fin pan con botón derecho
+            if event.button == 3:
+                if self._pan_active:
+                    self._user_xlim = self.ax_price.get_xlim()
+                self._pan_active = False
+                self._pan_start_x = None
+                self._pan_xlim_start = None
+                return
+            # Fin zoom por recuadro con botón izquierdo
+            if event.button == 1 and self._rect_active and self._rect_start is not None:
+                try:
+                    x0, y0 = self._rect_start
+                    x1, y1 = event.xdata, event.ydata
+                    if x1 is None or y1 is None:
+                        return
+                    xmin, xmax = sorted([x0, x1])
+                    ymin, ymax = sorted([y0, y1])
+                    if abs(xmax - xmin) < 1e-9 or abs(ymax - ymin) < 1e-12:
+                        return
+                    # Aplicar zoom X a ambos ejes y Y sólo a precio
+                    self.ax_price.set_xlim(xmin, xmax)
+                    if hasattr(self, 'ax_volume') and self.ax_volume:
+                        self.ax_volume.set_xlim(xmin, xmax)
+                    self.ax_price.set_ylim(ymin, ymax)
+                    self._user_xlim = (xmin, xmax)
+                except Exception as e:
+                    if self.debug_hover:
+                        print(f"Rect apply error: {e}")
+                finally:
+                    try:
+                        if self._rect_patch is not None:
+                            self._rect_patch.set_visible(False)
+                    except Exception:
+                        pass
+                    if hasattr(self, 'canvas'):
+                        self.canvas.draw_idle()
+                    else:
+                        self.fig.canvas.draw_idle()
+                    self._rect_active = False
+                    self._rect_start = None
+        except Exception as e:
+            if self.debug_hover:
+                print(f"Button release error: {e}")
 
     def _on_scroll(self, event):
         """Zoom con la rueda del ratón centrado en el cursor. Sólo eje X, sincronizado entre subplots."""
