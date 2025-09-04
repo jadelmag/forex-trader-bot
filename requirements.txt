@@ -20,3 +20,9 @@ telethon==1.28.5
 
 # PyArrow
 pyarrow>=14.0.0 
+
+# Websocket
+websocket-client>=1.7.0
+
+# Requests para llamadas HTTP
+requests>=2.31.0

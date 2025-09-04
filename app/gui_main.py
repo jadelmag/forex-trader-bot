@@ -3,18 +3,29 @@
 import os
 import time
 import tkinter as tk
-from tkinter import ttk, messagebox
-import numpy as np  
-import pandas as pd  
-import asyncio
-import importlib.util
-from datetime import datetime
+from tkinter import ttk, messagebox, filedialog
+import os
 import sys
-from stable_baselines3 import PPO
+import pandas as pd
+import numpy as np
+import json
+import time
+from datetime import datetime
+import importlib.util
+import threading
+from typing import Dict, List, Optional, Callable, Any, Tuple
+import sys
+from pathlib import Path
 
-from .csv_manager import CSVManager
+# Añadir el directorio raíz al path para importar módulos
+root_dir = str(Path(__file__).parent.parent)
+if root_dir not in sys.path:
+    sys.path.append(root_dir)
+
+# Importaciones propias
 from .grafico_manager import GraficoManager
 from .tooltip_zoom_pan import TooltipZoomPan
+from .csv_manager import CSVManager
 from .csv_loader_modal import CSVLoaderModal
 from .patterns_modal import PatternsModal
 from .strategies_modal import EstrategiasModal
@@ -25,6 +36,15 @@ from .ai_trainer import AITrainer
 from .processed_loader_modal import ProcessedDataModal
 
 from patterns.candlestickpatterns import CandlestickPatterns
+
+# Añadir el directorio padre al path para importar el módulo trandig-view
+import sys
+from pathlib import Path
+root_dir = str(Path(__file__).parent.parent)
+if root_dir not in sys.path:
+    sys.path.append(root_dir)
+
+from trading_view.candle_streamer import CandleStreamer
 
 # Imports externos
 from strategies import ForexStrategies, CandleStrategies
@@ -39,6 +59,12 @@ class GUIPrincipal:
         self.root.geometry("1500x950")
         self.root.configure(bg="#F0F0F0")
         self.root.attributes('-toolwindow', 1)
+        self.root.resizable(True, True)
+
+        # Configurar estilo para botones más compactos
+        style = ttk.Style()
+        style.configure('TButton', padding=2, font=('Segoe UI', 9))
+        style.configure('Small.TButton', padding=1, font=('Segoe UI', 8))
 
         # Set window icon
         try:
@@ -53,6 +79,7 @@ class GUIPrincipal:
         self.grafico_manager = GraficoManager(frame=None)
         self.tooltip_zoom_pan = None
         self.df_actual = None
+        self.candle_streamer = None  # Inicializar el streamer como None
         self.dinero_ficticio = 0
         self.beneficios = 0
         self.perdidas = 0
@@ -81,8 +108,8 @@ class GUIPrincipal:
         # Header del área de gráfico con botón Reset Zoom en la esquina superior derecha
         self.frame_grafico_header = tk.Frame(self.frame_grafico, bg="#FFFFFF")
         self.frame_grafico_header.pack(fill="x", padx=8, pady=(6, 0))
-        self.btn_reset_zoom = ttk.Button(self.frame_grafico_header, text="Reset Zoom", command=self.reset_zoom)
-        self.btn_reset_zoom.pack(side="right")
+        self.btn_reset_zoom = ttk.Button(self.frame_grafico_header, text="Reset Zoom", command=self.reset_zoom, style='Small.TButton')
+        self.btn_reset_zoom.pack(side="right", padx=2, pady=1)
 
         # Panel lateral de Telegram
         self.frame_telegram_panel = tk.Frame(self.frame_middle, bg="#F8F8F8", relief="sunken", bd=1, width=360)
@@ -99,8 +126,8 @@ class GUIPrincipal:
         self.lbl_telegram_status = tk.Label(self.telegram_status_frame, text="Desconectado", fg="red", bg="#F8F8F8")
         self.lbl_telegram_status.pack(side="left", padx=5)
         
-        self.btn_telegram_connect = ttk.Button(self.frame_telegram_panel, text="Conectar y crear canal", command=self.conectar_telegram, state="disabled")
-        self.btn_telegram_connect.pack(fill="x", padx=10)
+        self.btn_telegram_connect = ttk.Button(self.frame_telegram_panel, text="Conectar Telegram", command=self.conectar_telegram, state="disabled", style='Small.TButton')
+        self.btn_telegram_connect.pack(fill="x", padx=5, pady=2)
 
         # Link de invitación + copiar
         link_frame = tk.Frame(self.frame_telegram_panel, bg="#F8F8F8")
@@ -109,8 +136,8 @@ class GUIPrincipal:
         self.var_invite = tk.StringVar(value="(sin conectar)")
         self.lbl_invite = tk.Label(link_frame, textvariable=self.var_invite, bg="#F8F8F8", fg="#0066CC", wraplength=320, justify="left")
         self.lbl_invite.pack(fill="x")
-        self.btn_copy_link = ttk.Button(link_frame, text="Copiar enlace", command=self._copy_invite_link, state="disabled")
-        self.btn_copy_link.pack(anchor="e", pady=(4, 0))
+        self.btn_copy_link = ttk.Button(link_frame, text="Copiar", command=self._copy_invite_link, state="disabled", style='Small.TButton')
+        self.btn_copy_link.pack(anchor="e", pady=(2, 0), padx=2)
 
         # Área de mensajes tipo canal
         tk.Label(self.frame_telegram_panel, text="Mensajes del canal:", bg="#F8F8F8").pack(anchor="w", padx=10, pady=(10,0))
@@ -134,8 +161,8 @@ class GUIPrincipal:
         # Header del área de logs con botón en la esquina superior derecha
         self.frame_log_header = tk.Frame(self.frame_log, bg="#F8F8F8")
         self.frame_log_header.pack(fill="x", padx=8, pady=(6, 0))
-        self.btn_clear_log = ttk.Button(self.frame_log_header, text="Limpiar Log", command=self._limpiar_log)
-        self.btn_clear_log.pack(side="right")
+        self.btn_clear_log = ttk.Button(self.frame_log_header, text="Limpiar", command=self._limpiar_log, style='Small.TButton')
+        self.btn_clear_log.pack(side="right", padx=2, pady=1)
 
         # Barra de progreso compacta en el header (a la izquierda de "Limpiar Log")
         self.progress_var = tk.IntVar(value=0)
@@ -245,6 +272,23 @@ class GUIPrincipal:
         self.menu_procesar_datos.add_command(label="Guardar datos procesados", command=self.guardar_procesados)
         self.menu_procesar_datos.add_command(label="Procesar CSV a PKL", command=self.abrir_modal_csv_a_pkl)
 
+        # Botón desplegable para el CandleStreamer
+        self.btn_streamer = ttk.Menubutton(self.frame_left, text="Candle Streamer")
+        self.btn_streamer.pack(side="left", padx=5)
+        self.menu_streamer = tk.Menu(self.btn_streamer, tearoff=0)
+        self.btn_streamer.configure(menu=self.menu_streamer)
+        
+        # Añadir opciones al menú del streamer
+        self.menu_streamer.add_command(label="Conectar", command=self.iniciar_streamer)
+        self.menu_streamer.add_command(label="Desconectar", command=self.detener_streamer, state="disabled")
+        self.menu_streamer.add_command(label="Cambiar símbolo/intervalo", command=self.cambiar_config_streamer, state="disabled")
+        self.menu_streamer.entryconfig("Desconectar", state="disabled")
+        self.menu_streamer.entryconfig("Cambiar símbolo/intervalo", state="disabled")
+        
+        # Botón de prueba temporal
+        self.test_btn = ttk.Button(self.frame_left, text="Test", command=self.test_iniciar_streamer, style='Small.TButton')
+        self.test_btn.pack(side="left", padx=2)
+
         # ---------------- Dinero/beneficios/pérdidas (centro) ----------------
         self.label_dinero = tk.Label(
             self.frame_center, text=f"Dinero: ${self.dinero_ficticio:,.2f}", fg="black", bg="#F0F0F0"
@@ -267,8 +311,8 @@ class GUIPrincipal:
         # Entry y botón para cargar dinero ficticio (NO dentro de Opciones)
         self.entry_dinero = ttk.Entry(self.frame_right, width=12)
         self.entry_dinero.pack(side="left", padx=5)
-        self.btn_add_dinero = ttk.Button(self.frame_right, text="Añadir", command=self.add_dinero)
-        self.btn_add_dinero.pack(side="left", padx=5)
+        self.btn_add_dinero = ttk.Button(self.frame_right, text="Añadir", command=self.add_dinero, style='Small.TButton')
+        self.btn_add_dinero.pack(side="left", padx=2)
 
         # ---------------- Menú desplegable Opciones ----------------
         # Usar ttk.Menubutton para que coincida el estilo con los demás botones
@@ -317,15 +361,17 @@ class GUIPrincipal:
 
         # ---------------- Botones TELEGRAM ----------------
         self.btn_telegram = ttk.Button(
-            self.frame_right, text="Telegram", command=self.abrir_modal_telegram, state="disabled"
+            self.frame_right, text="Telegram", command=self.abrir_modal_telegram, 
+            state="disabled", style='Small.TButton'
         )
-        self.btn_telegram.pack(side="left", padx=5)
+        self.btn_telegram.pack(side="left", padx=2)
 
         # Botón Reiniciar (reinicia completamente la app como si se relanzara `python -m app.main`)
         self.btn_reiniciar = ttk.Button(
-            self.frame_right, text="Reiniciar", command=self.reiniciar_app
+            self.frame_right, text="Reiniciar", command=self.reiniciar_app,
+            style='Small.TButton'
         )
-        self.btn_reiniciar.pack(side="left", padx=5)
+        self.btn_reiniciar.pack(side="left", padx=2)
 
     # Fin de __init__
 
@@ -940,20 +986,182 @@ class GUIPrincipal:
         self.text_log.configure(state="normal")
         self.text_log.delete("1.0", "end")
         self.text_log.configure(state="disabled")
+        
+    def _start_streamer_with_config(self, config):
+        """Inicia el CandleStreamer con la configuración proporcionada"""
+        try:
+            # Limpiar el frame del gráfico actual
+            for widget in self.frame_grafico.winfo_children():
+                if widget != self.frame_grafico_header:  # Mantener el header
+                    widget.destroy()
+            
+            # Crear un frame para el gráfico del streamer
+            chart_frame = tk.Frame(self.frame_grafico, bg='#FFFFFF')
+            chart_frame.pack(fill='both', expand=True, padx=1, pady=1)
+            
+            if self.candle_streamer is not None:
+                self.candle_streamer.stop()
+                self.candle_streamer = None
+            
+            # Crear el streamer con el frame del gráfico y la función de log
+            self.candle_streamer = CandleStreamer(
+                interval=config["interval"],
+                max_plot=config["max_plot"],
+                parent_frame=chart_frame,  # Pasar el frame para el gráfico
+                log_callback=self.log  # Pasar la función de logging
+            )
+            
+            # Configurar el símbolo si se proporciona
+            if "symbol" in config and config["symbol"]:
+                self.candle_streamer.symbol = config["symbol"]
+                self.candle_streamer.csv_file = os.path.join(self.candle_streamer.csv_folder, f'{self.candle_streamer.symbol}_data.csv')
+            
+            # Iniciar el streamer en un hilo separado
+            def start_streamer():
+                try:
+                    self.candle_streamer.start()
+                except Exception as e:
+                    self.log(f"Error en CandleStreamer: {str(e)}", color="red")
+            
+            # Iniciar el streamer en un hilo para no bloquear la interfaz
+            import threading
+            streamer_thread = threading.Thread(target=start_streamer, daemon=True)
+            streamer_thread.start()
+            
+            self.log("CandleStreamer conectado correctamente", color="green")
+            self.log(f"Símbolo: {self.candle_streamer.symbol} | Intervalo: {self.candle_streamer.interval} | Máx. velas: {self.candle_streamer.max_plot}", color="white")
+            self.menu_streamer.entryconfig("Conectar", state="disabled")
+            self.menu_streamer.entryconfig("Desconectar", state="normal")
+            self.menu_streamer.entryconfig("Cambiar símbolo/intervalo", state="normal")
+            
+        except Exception as e:
+            self.log(f"Error al iniciar CandleStreamer: {str(e)}", color="red")
+            import traceback
+            self.log(traceback.format_exc(), color="red")
+            if self.candle_streamer is not None:
+                self.candle_streamer.stop()
+                self.candle_streamer = None
+
+    def iniciar_streamer(self):
+        """Muestra el modal de configuración y luego inicia el CandleStreamer"""
+        print("DEBUG: iniciar_streamer method called")  # Debug log
+        try:
+            if self.candle_streamer is not None:
+                self.log("El streamer ya está en ejecución", color="orange")
+                return
+                
+            # Obtener símbolos disponibles sin inicializar el streamer completo
+            print("DEBUG: Fetching symbols...")  # Debug log
+            from trading_view.candle_streamer import CandleStreamer
+            symbols = CandleStreamer._load_or_fetch_symbols()
+            print(f"DEBUG: Fetched {len(symbols) if symbols else 0} symbols")  # Debug log
+            
+            if not symbols:
+                self.log("No se pudieron cargar los símbolos disponibles", color="red")
+                return
+                
+            # Mostrar el modal de configuración
+            print("DEBUG: About to show config modal")  # Debug log
+            from trading_view import CandleStreamerConfigModal
+            
+            def on_connect(config):
+                print(f"DEBUG: Config received: {config}")  # Debug log
+                self._start_streamer_with_config(config)
+            
+            print("DEBUG: Creating CandleStreamerConfigModal")  # Debug log
+            modal = CandleStreamerConfigModal(
+                parent=self.root,
+                symbols=symbols,
+                on_connect=on_connect
+            )
+            print("DEBUG: Modal created, should be visible now")  # Debug log
+            
+        except Exception as e:
+            self.log(f"Error al iniciar el streamer: {str(e)}", color="red")
+            import traceback
+            self.log(traceback.format_exc(), color="red")
+    
+    def detener_streamer(self):
+        """Detiene el CandleStreamer y limpia el frame del gráfico"""
+        try:
+            if self.candle_streamer is not None:
+                self.candle_streamer.stop()
+                self.candle_streamer = None
+                self.log("CandleStreamer detenido correctamente", color="green")
+                self.menu_streamer.entryconfig("Conectar", state="normal")
+                self.menu_streamer.entryconfig("Desconectar", state="disabled")
+                self.menu_streamer.entryconfig("Cambiar símbolo/intervalo", state="disabled")
+                
+                # Limpiar el frame del gráfico
+                for widget in self.frame_grafico.winfo_children():
+                    if widget != self.frame_grafico_header:  # Mantener el header
+                        widget.destroy()
+                
+                # Volver a crear el frame vacío para futuros gráficos
+                empty_frame = tk.Frame(self.frame_grafico, bg='#FFFFFF')
+                empty_frame.pack(fill='both', expand=True)
+            else:
+                self.log("No hay ningún streamer en ejecución", color="orange")
+        except Exception as e:
+            self.log(f"Error al detener el streamer: {str(e)}", color="red")
+            import traceback
+            self.log(traceback.format_exc(), color="red")
+            
+    def test_iniciar_streamer(self):
+        """Método de prueba para iniciar el streamer"""
+        print("DEBUG: Test button clicked")  # Debug log
+        self.iniciar_streamer()
+
+    def cambiar_config_streamer(self):
+        """Abre el modal para cambiar símbolo/intervalo y reinicia el streamer con la nueva configuración."""
+        try:
+            # Cargar símbolos disponibles
+            from trading_view.candle_streamer import CandleStreamer
+            symbols = CandleStreamer._load_or_fetch_symbols()
+            if not symbols:
+                self.log("No se pudieron cargar los símbolos disponibles", color="red")
+                return
+
+            # Valores iniciales desde el streamer actual si existe
+            initial = {}
+            if self.candle_streamer is not None:
+                try:
+                    initial = {
+                        "interval": getattr(self.candle_streamer, "interval", "1m"),
+                        "max_plot": int(getattr(self.candle_streamer, "max_plot", 500)),
+                        "symbol": getattr(self.candle_streamer, "symbol", "")
+                    }
+                except Exception:
+                    initial = {}
+
+            from trading_view import CandleStreamerConfigModal
+
+            def on_connect(config):
+                # Reiniciar con nueva configuración (internamente limpia el gráfico y detiene si está corriendo)
+                self._start_streamer_with_config(config)
+
+            CandleStreamerConfigModal(
+                parent=self.root,
+                symbols=symbols,
+                on_connect=on_connect,
+                initial_values=initial
+            )
+        except Exception as e:
+            self.log(f"Error al cambiar la configuración del streamer: {str(e)}", color="red")
+            import traceback
+            self.log(traceback.format_exc(), color="red")
 
     def _procesar_senal_rl(self, idx, timestamp, row):
         """Procesa una señal individual RL"""
         signal = self.rl_signals[idx] if idx < len(self.rl_signals) else 0
-        mensaje = f"{timestamp.strftime('%Y-%m-%d %H:%M')} | Close: {row['Close']:.5f}"
 
         if signal == 1:  # Señal de COMPRA
-            self._procesar_compra_rl(idx, row, timestamp, mensaje)
+            self._procesar_compra_rl(idx, row, timestamp)
         elif signal == 2:  # Señal de VENTA
-            self._procesar_venta_rl(idx, row, timestamp, mensaje)
-        else:  # Sin señal
-            self.log(mensaje, color="white")
+            self._procesar_venta_rl(idx, row, timestamp)
+        # No mostramos mensaje cuando no hay señal
 
-    def _procesar_compra_rl(self, idx, row, timestamp, mensaje_base):
+    def _procesar_compra_rl(self, idx, row, timestamp):
         """Procesa una señal de compra RL"""
         # Confirmación por patrones (si disponible): solo comprar si Final_Signal == 1
         if self._pattern_signals is not None:
