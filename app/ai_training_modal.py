@@ -8,7 +8,7 @@ import shutil
 import re
 
 from .progress_modal import centrar_ventana
-from strategies import ForexStrategies, CandleStrategies
+from strategies.strategy_utils import get_available_strategies, resolve_strategy_name
 from patterns.candlestickpatterns import CandlestickPatterns
 
 
@@ -425,15 +425,9 @@ class AITrainingModal(tk.Toplevel):
     
     def _load_strategies(self, parent_frame):
         """Carga las estrategias disponibles en el frame especificado"""
-        # Obtener métodos públicos por introspección (coincidir con modal de mostrar estrategias)
-        fx_methods = [
-            nombre for nombre in dir(ForexStrategies)
-            if callable(getattr(ForexStrategies, nombre)) and not nombre.startswith("_")
-        ]
-        candle_methods = [
-            nombre for nombre in dir(CandleStrategies)
-            if callable(getattr(CandleStrategies, nombre)) and not nombre.startswith("_")
-        ]
+        # Usar el registro centralizado de alias para Forex y Candle strategies
+        fx_methods, candle_methods = get_available_strategies()
+        # Patrones de velas via introspección (no usan alias centralizados por ahora)
         pattern_methods = [
             nombre for nombre in dir(CandlestickPatterns)
             if callable(getattr(CandlestickPatterns, nombre)) and not nombre.startswith("_")
@@ -487,7 +481,7 @@ class AITrainingModal(tk.Toplevel):
         self.candle_vars = {}    # Candle strategies
         self.pattern_vars = {}   # Candlestick patterns
         
-        # Estrategias Forex (todas las públicas)
+        # Estrategias Forex (alias desde el registro)
         for strategy in sorted(fx_methods):
             # Frame para cada estrategia
             strategy_frame = ttk.Frame(parent_frame)
@@ -513,10 +507,11 @@ class AITrainingModal(tk.Toplevel):
             risk_frame, risk_var, rr_var = self._create_risk_controls(controls_frame, show_labels=False)
             # Primero empaquetar los controles, luego la etiqueta para que quede a la derecha del RR
             risk_frame.pack(side="right", padx=(10, 0))
-            # Etiqueta de versión junto al RR según el nombre de la estrategia
+            # Etiqueta de versión junto al RR según el nombre real de la estrategia
             try:
+                real_name = resolve_strategy_name(strategy, "forex")
                 v1_names = {"adx_strategy", "trend_following", "breakout", "rsi_strategy"}
-                version_text = "(versión 1.0)" if strategy in v1_names else "(versión 2.0)"
+                version_text = "(versión 1.0)" if real_name in v1_names else "(versión 2.0)"
                 ttk.Label(controls_frame, text=version_text, font=("Arial", 8, "italic")).pack(side="right", padx=(8, 0))
             except Exception:
                 pass

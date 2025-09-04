@@ -35,6 +35,7 @@ from .ai_trainer import AITrainer
 from .processed_loader_modal import ProcessedDataModal
 
 from patterns.candlestickpatterns import CandlestickPatterns
+from patterns.pattern_utils import get_available_patterns
 
 # Añadir el directorio padre al path para importar el módulo trandig-view
 import sys
@@ -47,6 +48,7 @@ from trading_view.candle_streamer import CandleStreamer
 
 # Imports externos
 from strategies import ForexStrategies, CandleStrategies
+from strategies.strategy_utils import get_available_strategies, resolve_strategy_name
 from backtesting.backtester import ForexBacktester
 from rl.rl_agent import RLTradingAgent
 from strategies.risk_manager import RiskManager, RiskManagerIntegration, Operacion  
@@ -471,21 +473,11 @@ class GUIPrincipal:
         self.strategies_fx = ForexStrategies(self.df_actual)
         self.strategies_candle = CandleStrategies(self.df_actual)
 
-        # Obtener métodos públicos de cada clase
-        fx_methods = [
-            nombre for nombre in dir(ForexStrategies)
-            if callable(getattr(ForexStrategies, nombre)) and not nombre.startswith("_")
-        ]
-        candle_methods = [
-            nombre for nombre in dir(CandleStrategies)
-            if callable(getattr(CandleStrategies, nombre)) and not nombre.startswith("_")
-        ]
+        # Usar alias amigables del registro centralizado
+        fx_methods, candle_methods = get_available_strategies()
 
-        # Obtener métodos públicos de patrones de velas
-        pattern_methods = [
-            nombre for nombre in dir(CandlestickPatterns)
-            if callable(getattr(CandlestickPatterns, nombre)) and not nombre.startswith("_")
-        ]
+        # Obtener lista de patrones desde el util dinámico
+        pattern_methods = get_available_patterns()
 
         # Abrir modal con las estrategias y patrones
         EstrategiasModal(
@@ -533,7 +525,9 @@ class GUIPrincipal:
             try:
                 tipo_sel = params.get("tipo")
                 if tipo_sel == "forex":
-                    metodo = getattr(self.strategies_fx, nombre, None)
+                    # Resolver alias -> método real
+                    metodo_real = resolve_strategy_name(nombre, "forex")
+                    metodo = getattr(self.strategies_fx, metodo_real, None)
                     if not callable(metodo):
                         self.log(f"Estrategia Forex no encontrada: {nombre}", color='red')
                         continue
@@ -544,7 +538,7 @@ class GUIPrincipal:
                     }
 
                     # Argumentos por defecto
-                    if nombre == "carry_trade_strategy":
+                    if metodo_real == "carry_trade_strategy":
                         if 'rate_diff' not in params:
                             if 'InterestRate_Base' in df_new.columns and 'InterestRate_Quote' in df_new.columns:
                                 params['rate_diff'] = (df_new['InterestRate_Base'] - df_new['InterestRate_Quote']) / 100
@@ -552,7 +546,7 @@ class GUIPrincipal:
                                 params['rate_diff'] = pd.Series(0, index=df_new.index)
                         df_res = metodo(rate_diff=params['rate_diff'], **risk_kwargs)
 
-                    elif nombre in {"hedging_overlay", "martingale_overlay"}:
+                    elif metodo_real in {"hedging_overlay", "martingale_overlay"}:
                         if 'base_signal' not in params:
                             if 'TrendSignal' in df_new.columns:
                                 params['base_signal'] = df_new['TrendSignal'].fillna(0)
@@ -564,7 +558,8 @@ class GUIPrincipal:
                         df_res = metodo(**risk_kwargs)
 
                 elif tipo_sel == "candle":
-                    metodo = getattr(self.strategies_candle, nombre, None)
+                    metodo_real = resolve_strategy_name(nombre, "candle")
+                    metodo = getattr(self.strategies_candle, metodo_real, None)
                     if not callable(metodo):
                         self.log(f"Estrategia Candle no encontrada: {nombre}", color='red')
                         continue
@@ -573,7 +568,9 @@ class GUIPrincipal:
                 elif tipo_sel == "pattern":
                     if patterns_instance is None:
                         patterns_instance = CandlestickPatterns(self.df_actual)
-                    metodo = getattr(patterns_instance, nombre, None)
+                    # Permitir claves con namespace 'pattern::' para evitar colisiones
+                    metodo_name = nombre.split("::", 1)[1] if nombre.startswith("pattern::") else nombre
+                    metodo = getattr(patterns_instance, metodo_name, None)
                     if not callable(metodo):
                         self.log(f"Patrón no encontrado: {nombre}", color='red')
                         continue
@@ -1303,9 +1300,9 @@ class GUIPrincipal:
                         except Exception:
                             pass
                 
-            # Aplicar estrategias de Forex
-            from .strategies import apply_forex_strategies
-            from .patterns.candlestickpatterns import CandlestickPatterns
+            # Aplicar estrategias de Forex y Patrones (usar paquetes de nivel superior)
+            from strategies import ForexStrategies
+            from patterns.candlestickpatterns import CandlestickPatterns
             
             # Aplicar patrones de velas
             patterns = CandlestickPatterns(df)
@@ -1318,11 +1315,17 @@ class GUIPrincipal:
                     risk = strategy.get('risk', 0.01)
                     rr_ratio = strategy.get('rr_ratio', 2.0)
                     
-                    # Aplicar la estrategia
-                    signals = apply_forex_strategies(df, [strategy_name])
+                    # Instanciar y ejecutar el método de estrategia correspondiente
+                    fx = ForexStrategies(df)
+                    metodo = getattr(fx, strategy_name, None)
+                    if not callable(metodo):
+                        raise AttributeError(f"Estrategia no encontrada: {strategy_name}")
+                    df_res = metodo(risk_per_trade=risk, rr_ratio=rr_ratio)
+                    # Usar la señal actual (última fila)
+                    signals = df_res['Signal'] if 'Signal' in df_res.columns else None
                     
                     # Procesar señales
-                    if not signals.empty and signals.iloc[-1] == 1:  # Señal de compra
+                    if signals is not None and not signals.empty and signals.iloc[-1] == 1:  # Señal de compra
                         self._procesar_senal_compra(last_candle, strategy_name, risk, rr_ratio)
                         
                 except Exception as e:

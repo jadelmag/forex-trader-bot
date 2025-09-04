@@ -3,6 +3,7 @@
 import tkinter as tk
 from tkinter import ttk
 import re
+from strategies.strategy_utils import resolve_strategy_name
 
 class EstrategiasModal(tk.Toplevel):
     def __init__(self, parent, estrategias_fx, estrategias_candle, callback, patrones_list=None):
@@ -139,9 +140,10 @@ class EstrategiasModal(tk.Toplevel):
                     "range_trading_strategy": ("Bajo", "green")
                 }
                 
-                # Aplicar etiqueta de riesgo si la estrategia está en el diccionario
-                if nombre in risk_levels:
-                    level, color = risk_levels[nombre]
+                # Aplicar etiqueta de riesgo en función del método real
+                real_name = resolve_strategy_name(nombre, "forex")
+                if real_name in risk_levels:
+                    level, color = risk_levels[real_name]
                     ttk.Label(
                         self.scrollable_frame, 
                         text=f"[Riesgo {level}]", 
@@ -164,7 +166,7 @@ class EstrategiasModal(tk.Toplevel):
                 entry_rr.grid(row=idx, column=2, padx=5)
 
                 # Añadir etiqueta de versión al lado del último textbox (solo Forex)
-                if nombre in {"adx_strategy", "trend_following", "breakout", "rsi_strategy"}:
+                if real_name in {"adx_strategy", "trend_following", "breakout", "rsi_strategy"}:
                     version_text = "(versión 1.0)"
                 else:
                     version_text = "(versión 2.0)"

@@ -515,6 +515,28 @@ Commons Clause + Apache/MIT
 ## En proceso
 
 * Iniciar simulación con datos reales [DOING]
+
+Error aplicando estrategia bollinger_bands: Estrategia no encontrada: bollinger_bands
+Error aplicando estrategia carry_trade: Estrategia no encontrada: carry_trade
+Error aplicando estrategia carry_trade_strategy: ForexStrategies.carry_trade_strategy() missing 1 required positional argument: 'rate_diff'
+Error aplicando estrategia grid_trading: Estrategia no encontrada: grid_trading
+Error aplicando estrategia hedging: Estrategia no encontrada: hedging
+Error aplicando estrategia hedging_overlay: ForexStrategies.hedging_overlay() missing 1 required positional argument: 'base_signal'
+Error aplicando estrategia ichimoku_cloud: Estrategia no encontrada: ichimoku_cloud
+Error aplicando estrategia ma_crossover: Estrategia no encontrada: ma_crossover
+Error aplicando estrategia martingale: Estrategia no encontrada: martingale
+Error aplicando estrategia martingale_overlay: ForexStrategies.martingale_overlay() missing 1 required positional argument: 'base_signal'
+Error aplicando estrategia mean_reversion: Estrategia no encontrada: mean_reversion
+Error aplicando estrategia news_trading: Estrategia no encontrada: news_trading
+Error aplicando estrategia price_action: Estrategia no encontrada: price_action
+Error aplicando estrategia range_trading: Estrategia no encontrada: range_trading
+Error aplicando estrategia scalping_1m: Estrategia no encontrada: scalping_1m
+Error aplicando estrategia stochastic_oscillator: Estrategia no encontrada: stochastic_oscillator
+Error aplicando estrategia supply_demand: Estrategia no encontrada: supply_demand
+Error aplicando estrategia support_resistance: Estrategia no encontrada: support_resistance
+Error aplicando estrategia trendline: Estrategia no encontrada: trendline
+
+
 * Detener simulación [TODO]
 * Generar informe [TODO]
 * Configuración de la aplicacion [TODO]
