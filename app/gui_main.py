@@ -541,26 +541,6 @@ class GUIPrincipal:
                         'rr_ratio': params.get('rr', 2.0),
                     }
 
-                    # Argumentos por defecto
-                    if metodo_real == "carry_trade_strategy":
-                        if 'rate_diff' not in params:
-                            if 'InterestRate_Base' in df_new.columns and 'InterestRate_Quote' in df_new.columns:
-                                params['rate_diff'] = (df_new['InterestRate_Base'] - df_new['InterestRate_Quote']) / 100
-                            else:
-                                params['rate_diff'] = pd.Series(0, index=df_new.index)
-                        df_res = metodo(rate_diff=params['rate_diff'], **risk_kwargs)
-
-                    elif metodo_real in {"hedging_overlay", "martingale_overlay"}:
-                        if 'base_signal' not in params:
-                            if 'TrendSignal' in df_new.columns:
-                                params['base_signal'] = df_new['TrendSignal'].fillna(0)
-                            else:
-                                params['base_signal'] = pd.Series(0, index=df_new.index)
-                        df_res = metodo(base_signal=params['base_signal'], **risk_kwargs)
-
-                    else:
-                        df_res = metodo(**risk_kwargs)
-
                 elif tipo_sel == "candle":
                     metodo_real = resolve_strategy_name(nombre, "candle")
                     metodo = getattr(self.strategies_candle, metodo_real, None)
@@ -743,6 +723,8 @@ class GUIPrincipal:
                 op for op in self.risk_manager.operaciones_activas if op.estado == 'ACTIVA'
             ]
             self.grafico_manager.dibujar_operaciones(operaciones_totales)
+
+
 
     # ---------------- Funciones de Telegram ----------------
     def conectar_telegram(self):

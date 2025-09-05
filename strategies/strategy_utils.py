@@ -77,7 +77,12 @@ def get_available_strategies() -> Tuple[list[str], list[str]]:
     The returned names are UI-friendly aliases. Use `resolve_strategy_name`
     to map an alias to the real method name at runtime.
     """
-    forex_strategies = sorted(list(_FOREX_ALIAS_TO_METHOD.keys()))
+    # Excluir estrategias que no deben aparecer en la selección del modal
+    _forex_exclude = {"carry_trade_strategy", "hedging_overlay", "martingale_overlay"}
+    forex_strategies = sorted([
+        name for name in _FOREX_ALIAS_TO_METHOD.keys()
+        if name not in _forex_exclude
+    ])
     candle_strategies = sorted(list(_CANDLE_ALIAS_TO_METHOD.keys()))
     return forex_strategies, candle_strategies
 
