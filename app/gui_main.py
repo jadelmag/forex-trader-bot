@@ -503,7 +503,9 @@ class GUIPrincipal:
                 if getattr(op, 'estado', 'ACTIVA') != 'ACTIVA':
                     continue
                 if getattr(op, 'tipo', 'BUY') == 'BUY':
-                    total_valor_buys += float(precio_actual) * float(op.lote_size)
+                    # Para BUY, calcular P&L flotante en lugar del valor nocional
+                    pnl_flotante = (float(precio_actual) - float(op.precio_apertura)) * float(op.lote_size)
+                    total_valor_buys += pnl_flotante
                 else:
                     total_pnl_sells += (op.precio_apertura - float(precio_actual)) * float(op.lote_size)
         except Exception:
@@ -536,7 +538,9 @@ class GUIPrincipal:
                 if getattr(op, 'estado', 'ACTIVA') != 'ACTIVA':
                     continue
                 if getattr(op, 'tipo', 'BUY') == 'BUY':
-                    total_valor_buys += float(precio_actual) * float(op.lote_size)
+                    # Para BUY, calcular P&L flotante en lugar del valor nocional
+                    pnl_flotante = (float(precio_actual) - float(op.precio_apertura)) * float(op.lote_size)
+                    total_valor_buys += pnl_flotante
                 else:
                     total_pnl_sells += (op.precio_apertura - float(precio_actual)) * float(op.lote_size)
 

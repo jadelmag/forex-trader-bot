@@ -147,6 +147,10 @@ class RiskManager:
             return None
             
         riesgo_dinero = self.capital * riesgo_por_operacion
+        
+        # Calcular lote_size para que el riesgo máximo sea exactamente riesgo_dinero
+        # En forex: profit = (precio_cierre - precio_apertura) * lote_size
+        # Si el precio se mueve hasta el SL, la pérdida será: riesgo_por_pip * lote_size = riesgo_dinero
         lote_size = riesgo_dinero / riesgo_por_pip
         
         # Validar que el lote_size sea un número válido
@@ -154,20 +158,6 @@ class RiskManager:
             if (self.debug_mode):
                 self.last_error = "Tamaño de lote inválido"
             return None
-            
-        # Para BUY: limitar el lote_size para que el valor nocional no exceda el capital disponible
-        if tipo == 'BUY':
-            valor_posicion_calculado = float(precio) * float(lote_size)
-            if valor_posicion_calculado > self.capital:
-                # Ajustar lote_size para que quepa en el capital disponible
-                lote_size = self.capital / float(precio) * 0.95  # 95% del capital para dejar margen
-                if lote_size <= 0:
-                    self.last_error = f"Capital insuficiente para operación BUY: ${self.capital:,.2f}"
-                    return None
-            
-            # CORRECCIÓN: Para BUY, el lote_size debe representar solo el riesgo, no el valor nocional
-            # Recalcular lote_size basado en el riesgo real que queremos asumir
-            lote_size = riesgo_dinero / riesgo_por_pip
         
         # Crear nueva operación
         self.contador_operaciones += 1
