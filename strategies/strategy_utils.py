@@ -13,25 +13,6 @@ from typing import Dict, Tuple
 # Aliases for Forex strategies (left: alias shown in UI, right: real method name)
 # Only include methods that actually exist in ForexStrategies.
 _FOREX_ALIAS_TO_METHOD: Dict[str, str] = {
-    # Short aliases -> concrete method names
-    "ma_crossover": "moving_average_crossover",
-    "bollinger_bands": "bollinger_bands_strategy",
-    "stochastic_oscillator": "stochastic_strategy",
-    "ichimoku_cloud": "ichimoku_cloud_strategy",
-    "support_resistance": "support_resistance_strategy",
-    "price_action": "price_action_patterns",
-    "supply_demand": "supply_demand_zones",
-    "trendline": "trendline_strategy",
-    "scalping_1m": "scalping_1m_strategy",
-    "news_trading": "news_trading_strategy",
-    "range_trading": "range_trading_strategy",
-    "carry_trade": "carry_trade_strategy",
-    "hedging": "hedging_overlay",
-    "grid_trading": "grid_trading_strategy",
-    "mean_reversion": "mean_reversion_strategy",
-    "martingale": "martingale_overlay",
-
-    # Keep exact names also available as aliases to themselves
     "adx_strategy": "adx_strategy",
     "trend_following": "trend_following",
     "breakout": "breakout",
@@ -59,17 +40,20 @@ _FOREX_ALIAS_TO_METHOD: Dict[str, str] = {
 # Aliases for Candle strategies. If aliases are identical to implementation
 # names, we can keep them as identity mapping. Adjust here if names diverge.
 _CANDLE_ALIAS_TO_METHOD: Dict[str, str] = {
-    "engulfing": "engulfing",
-    "harami": "harami",
-    "morning_star": "morning_star",
-    "evening_star": "evening_star",
-    "hammer": "hammer",
-    "shooting_star": "shooting_star",
+    "hammer_reversal": "hammer_reversal",
+    "bullish_engulfing_reversal": "bullish_engulfing_reversal",
+    "morning_star_swing": "morning_star_swing",
+    "hanging_man_reversal": "hanging_man_reversal",
+    "bearish_engulfing_reversal": "bearish_engulfing_reversal",
+    "evening_star_swing": "evening_star_swing",
+    "doji_indecision": "doji_indecision",
+    "marubozu_trend": "marubozu_trend",
     "three_white_soldiers": "three_white_soldiers",
     "three_black_crows": "three_black_crows",
-    "doji": "doji",
-    "piercing_line": "piercing_line",
-    "dark_cloud_cover": "dark_cloud_cover",
+    "scalping_reversal": "scalping_reversal",
+    "swing_trading": "swing_trading",
+    "filter_with_trend": "filter_with_trend",
+    "stop_loss_take_profit": "stop_loss_take_profit"
 }
 
 
