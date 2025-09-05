@@ -515,12 +515,14 @@ Commons Clause + Apache/MIT
 ## En proceso
 
 * Iniciar simulación con datos reales [DOING]
+    - Arreglar errores de estrategia
+        - `Error aplicando estrategia carry_trade_strategy: ForexStrategies.carry_trade_strategy() missing 1 required positional argument: 'rate_diff'`
+        
+        - `Error aplicando estrategia hedging_overlay: ForexStrategies.hedging_overlay() missing 1 required positional argument: 'base_signal'`
+        
+        - `Error aplicando estrategia martingale_overlay: ForexStrategies.martingale_overlay() missing 1 required positional argument: 'base_signal'`
 
-Error aplicando estrategia carry_trade_strategy: ForexStrategies.carry_trade_strategy() missing 1 required positional argument: 'rate_diff'
-Error aplicando estrategia hedging_overlay: ForexStrategies.hedging_overlay() missing 1 required positional argument: 'base_signal'
-Error aplicando estrategia martingale_overlay: ForexStrategies.martingale_overlay() missing 1 required positional argument: 'base_signal'
-
-* Generar informe [DOING]
+* Generar informe [TODO]
 * Configuración de la aplicacion [TODO]
 * Conectar con Metatrader [TODO]
 

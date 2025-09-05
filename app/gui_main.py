@@ -1437,7 +1437,10 @@ class GUIPrincipal:
             # Verificar límite de órdenes activas
             max_orders = int(self.simulation_config.get('max_orders', 5))
             if len(self.active_orders) >= max_orders:
-                self.log(f"Límite de {max_orders} órdenes activas alcanzado", color="orange")
+                # Mostrar el mensaje solo la primera vez que se alcanza el límite
+                if not getattr(self, '_limit_orders_alerted', False):
+                    self.log(f"Límite de {max_orders} órdenes activas alcanzado", color="orange")
+                    self._limit_orders_alerted = True
                 return
                 
             # Calcular tamaño de posición basado en el riesgo
