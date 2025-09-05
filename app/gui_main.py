@@ -1364,13 +1364,20 @@ class GUIPrincipal:
 
             def on_connect(config):
                 print(f"DEBUG: Config received: {config}")  # Debug log
-                # Actualizar dinero ficticio si viene desde el modal
+                # Actualizar dinero ficticio y capital del risk manager si viene desde el modal
                 try:
                     if "initial_money" in config:
-                        self.dinero_ficticio = float(config["initial_money"])
+                        initial_money = float(config["initial_money"])
+                        self.dinero_ficticio = initial_money
+                        # Actualizar también el capital del risk manager
+                        if hasattr(self, 'risk_manager') and self.risk_manager is not None:
+                            self.risk_manager.capital_inicial = initial_money
+                            self.risk_manager.capital = initial_money
+                        # Actualizar labels para mostrar el nuevo dinero
                         self.actualizar_labels()
-                except Exception:
-                    pass
+                        self.log(f"Dinero inicial actualizado a: ${initial_money:,.2f}", color="green")
+                except Exception as e:
+                    print(f"Error actualizando dinero inicial: {e}")
                 self._start_streamer_with_config(config)
 
             CandleStreamerConfigModal(
