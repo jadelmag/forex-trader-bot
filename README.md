@@ -514,6 +514,7 @@ Commons Clause + Apache/MIT
 
 ## En proceso
 
+* Arreglar zoom, pan, scroll sobre las graficas [TODO]
 * Actualizar dinero cuando se abre una posición [TODO]
 * Generar informe [TODO]
 * Configuración de la aplicacion [TODO]

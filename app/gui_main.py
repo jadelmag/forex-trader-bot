@@ -57,7 +57,7 @@ class GUIPrincipal:
     def __init__(self, root):
         self.root = root
         self.root.title("Trading Bot - Forex Market")
-        self.root.geometry("1500x950")
+        self.root.geometry("1500x1000")
         self.root.configure(bg="#F0F0F0")
         self.root.attributes('-toolwindow', 1)
         self.root.resizable(True, True)
@@ -637,6 +637,19 @@ class GUIPrincipal:
         df_new = self.df_actual.copy()
         patterns_instance = None
 
+        # Mapa auxiliar: tipo de estrategia y un ID normalizado para unicidad
+        estrategia_tipo_map = {nombre: params.get("tipo") for nombre, params in seleccion.items()}
+        estrategia_id_map = {}
+        for nombre, params in seleccion.items():
+            tipo = params.get("tipo")
+            if tipo == 'forex':
+                try:
+                    estrategia_id_map[nombre] = resolve_strategy_name(nombre, 'forex')
+                except Exception:
+                    estrategia_id_map[nombre] = nombre
+            else:
+                estrategia_id_map[nombre] = nombre
+
         for nombre, params in seleccion.items():
             try:
                 tipo_sel = params.get("tipo")
@@ -744,7 +757,44 @@ class GUIPrincipal:
                     if col_name in df_new.columns and not np.isnan(df_new.loc[idx, col_name]) and df_new.loc[idx, col_name] != 0:
                         señales_del_dia.append({'estrategia': nombre, 'senal': df_new.loc[idx, col_name], 'precio': row['Close']})
 
+                # Control por vela:
+                # - No abrir más de una COMPRA por la misma estrategia FOREX
+                # - No abrir más de una COMPRA de ninguna estrategia FOREX en la misma vela
+                opened_buy_for_strategy = set()
+                opened_buy_any_forex = False
+
                 for señal_info in señales_del_dia:
+                    tipo_estrategia = estrategia_tipo_map.get(señal_info['estrategia'])
+                    estrategia_id = estrategia_id_map.get(señal_info['estrategia'], señal_info['estrategia'])
+                    if señal_info['senal'] == 1 and tipo_estrategia == 'forex' and estrategia_id in opened_buy_for_strategy:
+                        # Ya se abrió un BUY para esta estrategia en esta misma vela; saltamos
+                        continue
+                    # Bloqueo por vela: si ya abrimos un BUY de cualquier estrategia FOREX en esta vela
+                    if señal_info['senal'] == 1 and tipo_estrategia == 'forex' and opened_buy_any_forex:
+                        try:
+                            self.log(f"SKIP: Ya se abrió un BUY forex en esta vela, se omite {señal_info['estrategia']} en {idx}", color='yellow')
+                        except Exception:
+                            pass
+                        continue
+                    # Regla global: no permitir más de una BUY ACTIVA para la misma estrategia forex
+                    if señal_info['senal'] == 1 and tipo_estrategia == 'forex':
+                        try:
+                            ya_activa = any(
+                                (getattr(op, 'estado', 'ACTIVA') == 'ACTIVA') and 
+                                (getattr(op, 'tipo', '') == 'BUY') and 
+                                (getattr(op, 'estrategia', None) == estrategia_id)
+                                for op in getattr(self.risk_manager, 'operaciones_activas', [])
+                            )
+                        except Exception:
+                            ya_activa = False
+                        if ya_activa:
+                            # Ya existe una BUY activa para esta estrategia: saltamos apertura
+                            try:
+                                self.log(f"SKIP: BUY ya activa para estrategia {estrategia_id} en {idx}", color='yellow')
+                            except Exception:
+                                pass
+                            continue
+
                     if self.risk_manager.puede_abrir_operacion():
                         atr_value = row.get('ATR')
                         if np.isnan(atr_value) or atr_value <= 0:
@@ -755,13 +805,18 @@ class GUIPrincipal:
                             precio_actual=señal_info['precio'],
                             timestamp=idx,
                             atr_value=atr_value,
-                            rr_ratio=2.0
+                            rr_ratio=2.0,
+                            estrategia_nombre=estrategia_id
                         )
 
                         if operacion:
                             resultados.append({'timestamp': idx, 'operacion': operacion, 'tipo': 'APERTURA'})
                             self.log(f"APERTURA: {operacion} | Estrategia: {señal_info['estrategia']}", color='green')
                             operaciones_abiertas += 1
+                            # Marcar que ya se abrió BUY para esta estrategia en esta vela
+                            if señal_info['senal'] == 1 and tipo_estrategia == 'forex':
+                                opened_buy_for_strategy.add(estrategia_id)
+                                opened_buy_any_forex = True
 
                 ops_activas = self.risk_manager.get_operaciones_activas_count()
                 if ops_activas != operaciones_abiertas:

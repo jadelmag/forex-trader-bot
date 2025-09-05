@@ -6,7 +6,7 @@ from datetime import datetime
 
 class Operacion:
     """Clase para representar una operación de trading"""
-    def __init__(self, id_operacion, tipo, precio_apertura, timestamp, stop_loss, take_profit, lote_size):
+    def __init__(self, id_operacion, tipo, precio_apertura, timestamp, stop_loss, take_profit, lote_size, estrategia: str | None = None):
         self.id = id_operacion
         self.tipo = tipo  # 'BUY' o 'SELL'
         self.precio_apertura = precio_apertura
@@ -20,6 +20,8 @@ class Operacion:
         self.resultado = None  # 'GANANCIA', 'PERDIDA', None
         # Monto de riesgo reservado (dinero bloqueado) al abrir la operación
         self.riesgo_reservado = 0.0
+        # Nombre de la estrategia que abrió esta operación (para reglas de unicidad)
+        self.estrategia = estrategia
 
     def cerrar(self, precio_cierre, timestamp):
         """Cierra la operación y calcula el resultado"""
@@ -84,12 +86,22 @@ class RiskManager:
             return 1_000_000_000
         return self.max_operaciones_activas - self.get_operaciones_activas_count()
     
-    def abrir_operacion(self, tipo, precio, timestamp, stop_loss, take_profit, riesgo_por_operacion=0.01):
+    def abrir_operacion(self, tipo, precio, timestamp, stop_loss, take_profit, riesgo_por_operacion=0.01, estrategia: str | None = None):
         """
         Abre una nueva operación si hay slots disponibles
         """
         if not self.puede_abrir_operacion():
             return None
+
+        # Regla de unicidad: si es BUY y se especifica estrategia, no permitir más de una BUY activa por estrategia
+        if tipo == 'BUY' and estrategia is not None:
+            try:
+                for op in self.operaciones_activas:
+                    if getattr(op, 'estado', 'ACTIVA') == 'ACTIVA' and getattr(op, 'tipo', '') == 'BUY' and getattr(op, 'estrategia', None) == estrategia:
+                        # Ya existe BUY activa para esa estrategia
+                        return None
+            except Exception:
+                pass
             
         # Calcular tamaño de lote basado en el riesgo
         if tipo == 'BUY':
@@ -117,7 +129,8 @@ class RiskManager:
             timestamp=timestamp,
             stop_loss=stop_loss,
             take_profit=take_profit,
-            lote_size=lote_size
+            lote_size=lote_size,
+            estrategia=estrategia
         )
         # Registrar el riesgo reservado para que la UI pueda descontarlo del dinero visible
         operacion.riesgo_reservado = float(riesgo_dinero)
@@ -242,7 +255,7 @@ class RiskManagerIntegration:
         self.estrategias = estrategias
         self.senales_pendientes = []
 
-    def procesar_senal(self, senal, precio_actual, timestamp, atr_value, rr_ratio=2):
+    def procesar_senal(self, senal, precio_actual, timestamp, atr_value, rr_ratio=2, estrategia_nombre: str | None = None):
         """
         Procesa una señal de trading y abre operación si es posible
         """
@@ -275,7 +288,8 @@ class RiskManagerIntegration:
             timestamp=timestamp,
             stop_loss=stop_loss,
             take_profit=take_profit,
-            riesgo_por_operacion=0.01  # 1% de riesgo por operación
+            riesgo_por_operacion=0.01,  # 1% de riesgo por operación
+            estrategia=estrategia_nombre
         )    
 
     def procesar_dataframe(self, df, atr_period=14, rr_ratio=2):
