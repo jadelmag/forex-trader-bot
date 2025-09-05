@@ -540,14 +540,20 @@ class GUIPrincipal:
                         'rr_ratio': params.get('rr', 2.0),
                     }
 
-                    # Argumentos por defecto
+                    # CORRECCIÓN: Manejo especial para estrategias con parámetros posicionales
                     if metodo_real == "carry_trade_strategy":
                         if 'rate_diff' not in params:
                             if 'InterestRate_Base' in df_new.columns and 'InterestRate_Quote' in df_new.columns:
                                 params['rate_diff'] = (df_new['InterestRate_Base'] - df_new['InterestRate_Quote']) / 100
                             else:
                                 params['rate_diff'] = pd.Series(0, index=df_new.index)
-                        df_res = metodo(rate_diff=params['rate_diff'], **risk_kwargs)
+                        # Pasar threshold y exec_lag explícitamente
+                        df_res = metodo(
+                            rate_diff=params['rate_diff'],
+                            threshold=params.get('threshold', 0.25),
+                            exec_lag=params.get('exec_lag', 1),
+                            **risk_kwargs
+                        )
 
                     elif metodo_real in {"hedging_overlay", "martingale_overlay"}:
                         if 'base_signal' not in params:
@@ -555,8 +561,22 @@ class GUIPrincipal:
                                 params['base_signal'] = df_new['TrendSignal'].fillna(0)
                             else:
                                 params['base_signal'] = pd.Series(0, index=df_new.index)
-                        df_res = metodo(base_signal=params['base_signal'], **risk_kwargs)
-
+                        # Pasar los parámetros con valores por defecto explícitamente
+                        if metodo_real == "hedging_overlay":
+                            df_res = metodo(
+                                base_signal=params['base_signal'],
+                                atr_period=params.get('atr_period', 14),
+                                vol_pctl=params.get('vol_pctl', 0.8),
+                                exec_lag=params.get('exec_lag', 1),
+                                **risk_kwargs
+                            )
+                        else:  # martingale_overlay
+                            df_res = metodo(
+                                base_signal=params['base_signal'],
+                                max_mult=params.get('max_mult', 4),
+                                exec_lag=params.get('exec_lag', 1),
+                                **risk_kwargs
+                            )
                     else:
                         df_res = metodo(**risk_kwargs)
 
