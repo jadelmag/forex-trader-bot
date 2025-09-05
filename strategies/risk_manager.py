@@ -22,6 +22,8 @@ class Operacion:
         self.riesgo_reservado = 0.0
         # Nombre de la estrategia que abrió esta operación (para reglas de unicidad)
         self.estrategia = estrategia
+        # Valor nocional de la posición al abrir (para BUY)
+        self.valor_posicion = 0.0
 
     def cerrar(self, precio_cierre, timestamp):
         """Cierra la operación y calcula el resultado"""
@@ -66,6 +68,8 @@ class RiskManager:
         # Tracking adicional: dinero ganado/perdido por categoría
         self.ganancia_ganadoras_total = 0.0
         self.perdida_perdedoras_total = 0.0
+        # Último error al intentar abrir operación
+        self.last_error: str | None = None
         
     def puede_abrir_operacion(self):
         """Verifica si se puede abrir una nueva operación"""
@@ -91,6 +95,7 @@ class RiskManager:
         Abre una nueva operación si hay slots disponibles
         """
         if not self.puede_abrir_operacion():
+            self.last_error = "Sin slots disponibles para abrir nueva operación"
             return None
 
         # Regla de unicidad: si es BUY y se especifica estrategia, no permitir más de una BUY activa por estrategia
@@ -99,6 +104,7 @@ class RiskManager:
                 for op in self.operaciones_activas:
                     if getattr(op, 'estado', 'ACTIVA') == 'ACTIVA' and getattr(op, 'tipo', '') == 'BUY' and getattr(op, 'estrategia', None) == estrategia:
                         # Ya existe BUY activa para esa estrategia
+                        self.last_error = f"Ya existe BUY ACTIVA para la estrategia '{estrategia}'"
                         return None
             except Exception:
                 pass
@@ -111,6 +117,7 @@ class RiskManager:
             
         # Evitar división por cero y valores inválidos
         if riesgo_por_pip <= 0 or np.isnan(riesgo_por_pip) or np.isinf(riesgo_por_pip):
+            self.last_error = "Parámetros de riesgo inválidos (riesgo_por_pip <= 0)"
             return None
             
         riesgo_dinero = self.capital * riesgo_por_operacion
@@ -118,6 +125,7 @@ class RiskManager:
         
         # Validar que el lote_size sea un número válido
         if np.isnan(lote_size) or np.isinf(lote_size) or lote_size <= 0:
+            self.last_error = "Tamaño de lote inválido"
             return None
         
         # Crear nueva operación
@@ -135,7 +143,19 @@ class RiskManager:
         # Registrar el riesgo reservado para que la UI pueda descontarlo del dinero visible
         operacion.riesgo_reservado = float(riesgo_dinero)
         
+        # Para BUY: deducir el valor nocional del capital para reflejar dinero gastado
+        if tipo == 'BUY':
+            valor_posicion = float(precio) * float(lote_size)
+            operacion.valor_posicion = valor_posicion
+            # Verificar fondos suficientes
+            if self.capital < valor_posicion:
+                self.last_error = f"Fondos insuficientes: requiere ${valor_posicion:,.2f}, capital ${self.capital:,.2f}"
+                return None
+            self.capital -= valor_posicion
+        
         self.operaciones_activas.append(operacion)
+        # Limpia último error en apertura exitosa
+        self.last_error = None
         return operacion
 
     def verificar_cierre_operaciones(self, precio_actual, timestamp):
@@ -176,7 +196,12 @@ class RiskManager:
             
             if debe_cerrar and precio_cierre is not None:
                 profit = operacion.cerrar(precio_cierre, timestamp)
-                self.capital += profit
+                # Para BUY: devolver el valor de mercado al capital (principal + PnL)
+                if operacion.tipo == 'BUY':
+                    self.capital += float(precio_cierre) * float(operacion.lote_size)
+                else:
+                    # SELL mantiene la lógica previa (solo ajustar por profit)
+                    self.capital += profit
                 self.beneficio_total += profit
                 
                 if profit >= 0:
@@ -199,7 +224,11 @@ class RiskManager:
         for operacion in self.operaciones_activas:
             if operacion.id == id_operacion and operacion.estado == 'ACTIVA':
                 profit = operacion.cerrar(precio_cierre, timestamp)
-                self.capital += profit
+                # Para BUY: devolver el valor de mercado al capital; para SELL, sumar profit
+                if operacion.tipo == 'BUY':
+                    self.capital += float(precio_cierre) * float(operacion.lote_size)
+                else:
+                    self.capital += profit
                 self.beneficio_total += profit
                 
                 if profit >= 0:

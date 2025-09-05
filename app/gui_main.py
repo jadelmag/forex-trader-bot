@@ -305,13 +305,13 @@ class GUIPrincipal:
         # ---------------- Dinero/beneficios/pérdidas (centro) ----------------
         # Equity (dinero visible: capital - riesgo reservado + PnL flotante)
         self.label_dinero = tk.Label(
-            self.frame_center, text=f"Equity: ${self.dinero_ficticio:,.2f}", fg="black", bg="#F0F0F0"
+            self.frame_center, text=f"Equidad: ${self.dinero_ficticio:,.2f}", fg="black", bg="#F0F0F0"
         )
         self.label_dinero.pack(side="left", padx=10)
 
         # Cash (capital - riesgo reservado)
         self.label_cash = tk.Label(
-            self.frame_center, text=f"Cash: ${self.dinero_ficticio:,.2f}", fg="black", bg="#F0F0F0"
+            self.frame_center, text=f"Dinero: ${self.dinero_ficticio:,.2f}", fg="black", bg="#F0F0F0"
         )
         self.label_cash.pack(side="left", padx=10)
 
@@ -479,27 +479,13 @@ class GUIPrincipal:
     def actualizar_labels(self):
         print(f"DEBUG: actualizar labels: {self.dinero_ficticio}")
         # Por defecto, tratamos dinero_ficticio como equity inicial
-        self.label_dinero.config(text=f"Equity: {self.dinero_ficticio:,.2f}$")
+        self.label_dinero.config(text=f"Equidad: {self.dinero_ficticio:,.2f}$")
         # Cash inicial (sin reservado ni PnL en este punto)
         try:
             capital = float(self.risk_manager.capital)
-            # Si no hay operaciones activas y el capital del RM no coincide con el dinero ingresado,
-            # sincronizamos para evitar ver 10.000 por defecto.
-            try:
-                # Usar la lista directamente para mayor robustez
-                no_ops = (len(getattr(self.risk_manager, 'operaciones_activas', []) or []) == 0)
-            except Exception:
-                no_ops = True
-            if no_ops and abs(capital - float(self.dinero_ficticio)) > 1e-6:
-                capital = float(self.dinero_ficticio)
-                try:
-                    self.risk_manager.capital = capital
-                    self.risk_manager.capital_inicial = capital
-                except Exception:
-                    pass
         except Exception:
             capital = float(self.dinero_ficticio)
-        self.label_cash.config(text=f"Cash: {capital:,.2f}$")
+        self.label_cash.config(text=f"Dinero: {capital:,.2f}$")
         self.label_beneficios.config(text=f"Beneficios: {self.beneficios:,.2f}$")
         self.label_perdidas.config(text=f"Pérdidas: {self.perdidas:,.2f}$")
 
@@ -510,57 +496,52 @@ class GUIPrincipal:
         except Exception:
             capital = float(self.dinero_ficticio)
 
-        reservado = 0.0
-        pnl_flotante = 0.0
-
+        total_valor_buys = 0.0
+        total_pnl_sells = 0.0
         try:
             for op in getattr(self.risk_manager, 'operaciones_activas', []):
                 if getattr(op, 'estado', 'ACTIVA') != 'ACTIVA':
                     continue
-                # Riesgo reservado (bloqueado) al abrir
-                reservado += float(getattr(op, 'riesgo_reservado', 0.0) or 0.0)
-                # PnL no realizado
                 if getattr(op, 'tipo', 'BUY') == 'BUY':
-                    pnl_flotante += (precio_actual - op.precio_apertura) * op.lote_size
+                    total_valor_buys += float(precio_actual) * float(op.lote_size)
                 else:
-                    pnl_flotante += (op.precio_apertura - precio_actual) * op.lote_size
+                    total_pnl_sells += (op.precio_apertura - float(precio_actual)) * float(op.lote_size)
         except Exception:
             pass
 
         try:
-            # Proteger contra NaNs
-            if np.isnan(reservado) or np.isinf(reservado):
-                reservado = 0.0
-            if np.isnan(pnl_flotante) or np.isinf(pnl_flotante):
-                pnl_flotante = 0.0
+            if np.isnan(total_valor_buys) or np.isinf(total_valor_buys):
+                total_valor_buys = 0.0
+            if np.isnan(total_pnl_sells) or np.isinf(total_pnl_sells):
+                total_pnl_sells = 0.0
         except Exception:
             pass
 
-        return capital - reservado + pnl_flotante
+        # Cash ya está neto del valor nocional de BUY en RiskManager.capital
+        # Equity = cash + valor de BUY abiertos + PnL de SELL abiertos
+        equity = capital + total_valor_buys + total_pnl_sells
+        return equity
 
     def _actualizar_dinero_visible(self, precio_actual: float):
         try:
-            # Capital realizado (efectivo base)
+            # Cash = capital actual (ya neto de compras)
             try:
                 capital = float(self.risk_manager.capital)
             except Exception:
                 capital = float(self.dinero_ficticio)
 
-            # Calcular reservado y PnL flotante
-            reservado = 0.0
-            pnl_flotante = 0.0
+            total_valor_buys = 0.0
+            total_pnl_sells = 0.0
             for op in getattr(self.risk_manager, 'operaciones_activas', []):
                 if getattr(op, 'estado', 'ACTIVA') != 'ACTIVA':
                     continue
-                reservado += float(getattr(op, 'riesgo_reservado', 0.0) or 0.0)
                 if getattr(op, 'tipo', 'BUY') == 'BUY':
-                    pnl_flotante += (precio_actual - op.precio_apertura) * op.lote_size
+                    total_valor_buys += float(precio_actual) * float(op.lote_size)
                 else:
-                    pnl_flotante += (op.precio_apertura - precio_actual) * op.lote_size
+                    total_pnl_sells += (op.precio_apertura - float(precio_actual)) * float(op.lote_size)
 
-            # Cash y Equity
-            cash = capital - reservado
-            equity = cash + pnl_flotante
+            cash = capital
+            equity = capital + total_valor_buys + total_pnl_sells
 
             # Proteger NaNs
             if np.isnan(cash) or np.isinf(cash):
@@ -570,8 +551,8 @@ class GUIPrincipal:
 
             # Actualizar estado interno y labels
             self.dinero_ficticio = float(equity)
-            self.label_dinero.config(text=f"Equity: {equity:,.2f}$")
-            self.label_cash.config(text=f"Cash: {cash:,.2f}$")
+            self.label_dinero.config(text=f"Equidad: {equity:,.2f}$")
+            self.label_cash.config(text=f"Dinero: {cash:,.2f}$")
 
             # Beneficios y pérdidas (cerradas) se actualizan donde corresponde
             self.root.update_idletasks()
@@ -835,6 +816,41 @@ class GUIPrincipal:
                             if señal_info['senal'] == 1 and tipo_estrategia == 'forex':
                                 opened_buy_for_strategy.add(estrategia_id)
                                 opened_buy_any_forex = True
+                            # Refrescar dinero visible inmediatamente tras abrir
+                            try:
+                                self._actualizar_dinero_visible(row['Close'])
+                            except Exception:
+                                pass
+                            # Refresco directo de Cash como respaldo
+                            try:
+                                cash_now = float(getattr(self.risk_manager, 'capital', self.dinero_ficticio))
+                                self.label_cash.config(text=f"Dinero: {cash_now:,.2f}$")
+                                try:
+                                    self.root.update_idletasks()
+                                except Exception:
+                                    pass
+                                # Log de verificación de cash y nocional
+                                try:
+                                    if getattr(operacion, 'tipo', '') == 'BUY':
+                                        self.log(f"Dinero tras apertura BUY: ${cash_now:,.2f} (Nocional: ${operacion.valor_posicion:,.2f})", color='cyan')
+                                    else:
+                                        self.log(f"Dinero tras apertura {operacion.tipo}: ${cash_now:,.2f}", color='cyan')
+                                except Exception:
+                                    pass
+                            except Exception:
+                                pass
+                        else:
+                            # Si falló la apertura, reportar el motivo si existe
+                            if señal_info['senal'] == 1 and tipo_estrategia == 'forex':
+                                try:
+                                    err = getattr(self.risk_manager, 'last_error', None)
+                                    if err:
+                                        if 'Fondos insuficientes' in err:
+                                            self.log(f"OPERACIÓN SALTADA ({estrategia_id}) -> {err}", color='yellow')
+                                        else:
+                                            self.log(f"OPEN BUY FALLÓ ({estrategia_id}) -> {err}", color='red')
+                                except Exception:
+                                    pass
 
                 ops_activas = self.risk_manager.get_operaciones_activas_count()
                 if ops_activas != operaciones_abiertas:
@@ -1519,11 +1535,6 @@ class GUIPrincipal:
             # Aplicar estrategias de Forex y Patrones (usar paquetes de nivel superior)
             from strategies import ForexStrategies
             from patterns.candlestickpatterns import CandlestickPatterns
-            
-            # Aplicar patrones de velas
-            patterns = CandlestickPatterns(df)
-            df_patterns = patterns.combined_signal_optimized()
-            
             # Aplicar estrategias de Forex
             for strategy in self.simulation_config.get('forex_strategies', []):
                 try:
@@ -1533,7 +1544,9 @@ class GUIPrincipal:
                     
                     # Instanciar y ejecutar el método de estrategia correspondiente
                     fx = ForexStrategies(df)
-                    metodo = getattr(fx, strategy_name, None)
+                    # Resolver nombre real por si hay alias
+                    metodo_real = resolve_strategy_name(strategy_name, 'forex') if 'resolve_strategy_name' in globals() or 'resolve_strategy_name' in dir() else strategy_name
+                    metodo = getattr(fx, metodo_real, None)
                     if not callable(metodo):
                         raise AttributeError(f"Estrategia no encontrada: {strategy_name}")
                     df_res = metodo(risk_per_trade=risk, rr_ratio=rr_ratio)
@@ -1542,8 +1555,8 @@ class GUIPrincipal:
                     
                     # Procesar señales
                     if signals is not None and not signals.empty and signals.iloc[-1] == 1:  # Señal de compra
-                        self._procesar_senal_compra(last_candle, strategy_name, risk, rr_ratio)
-                        
+                        self._procesar_senal_compra(last_candle, metodo_real, risk, rr_ratio)
+                
                 except Exception as e:
                     self.log(f"Error aplicando estrategia {strategy_name}: {str(e)}", color="red")
             
@@ -1563,106 +1576,121 @@ class GUIPrincipal:
             import traceback
             self.log(traceback.format_exc(), color="red")
 
-    def _update_sim_status_color(self):
-        """Actualiza el color del label de estado de simulación según el PnL.
-        Verde si profit, rojo si drawdown, azul si neutro o no determinable."""
-        try:
-            if not hasattr(self, 'label_sim_status'):
-                return
-            # Intentar usar PnL no realizado de posiciones activas si hay
-            if hasattr(self, 'posiciones_activas') and self.posiciones_activas and getattr(self, '_last_close', None) is not None:
-                pnl = 0.0
-                for pos in self.posiciones_activas:
-                    try:
-                        entry = float(pos.get('precio', 0.0))
-                        pnl += (self._last_close - entry)
-                    except Exception:
-                        continue
-                if pnl > 1e-12:
-                    self.label_sim_status.configure(fg="green")
-                    return
-                elif pnl < -1e-12:
-                    self.label_sim_status.configure(fg="red")
-                    return
-                else:
-                    self.label_sim_status.configure(fg="blue")
-                    return
-
-            # Si no hay posiciones, usar totales realizados si existen
-            if hasattr(self, 'beneficios') and hasattr(self, 'perdidas'):
-                neto = float(self.beneficios) - float(self.perdidas)
-                if neto > 1e-12:
-                    self.label_sim_status.configure(fg="green")
-                elif neto < -1e-12:
-                    self.label_sim_status.configure(fg="red")
-                else:
-                    self.label_sim_status.configure(fg="blue")
-                return
-
-            # Fallback
-            self.label_sim_status.configure(fg="blue")
-        except Exception:
-            pass
-    
     def _procesar_senal_compra(self, candle, strategy_name, risk, rr_ratio):
-        """Procesa una señal de compra de la estrategia"""
+        """Procesa una señal de compra de la estrategia mediante RiskManager"""
         try:
-            # Verificar límite de órdenes activas
-            max_orders = int(self.simulation_config.get('max_orders', 5))
-            if len(self.active_orders) >= max_orders:
-                # Mostrar el mensaje solo la primera vez que se alcanza el límite
-                if not getattr(self, '_limit_orders_alerted', False):
-                    self.log(f"Límite de {max_orders} órdenes activas alcanzado", color="orange")
-                    self._limit_orders_alerted = True
+            # Regla por vela: una BUY por estrategia forex
+            if strategy_name in getattr(self, '_stream_opened_buy_for_strategy', set()):
                 return
-                
-            # Calcular tamaño de posición basado en el riesgo
-            # (esto es un ejemplo simplificado)
-            entry_price = candle['Close']
-            stop_loss = entry_price * (1 - risk)
-            take_profit = entry_price * (1 + (risk * rr_ratio))
-            
-            # Crear orden
-            order = {
-                'type': 'buy',
-                'entry_price': entry_price,
-                'stop_loss': stop_loss,
-                'take_profit': take_profit,
-                'size': 1.0,  # Tamaño fijo por simplicidad
-                'strategy': strategy_name,
-                'timestamp': candle.name if hasattr(candle, 'name') else None
-            }
-            
-            self.active_orders.append(order)
-            self.log(f"Orden de COMPRA abierta {strategy_name}: {entry_price:.5f} (TP: {take_profit:.5f}, SL: {stop_loss:.5f})", 
-                    color="green")
-                    
+            # Regla por vela: solo una BUY forex total
+            if getattr(self, '_stream_opened_buy_any_forex', False):
+                try:
+                    ts = candle.name if hasattr(candle, 'name') else 'now'
+                    self.log(f"SKIP: Ya se abrió un BUY forex en esta vela, se omite {strategy_name} en {ts}", color='yellow')
+                except Exception:
+                    pass
+                return
+
+            # Regla global por estrategia: no más de una BUY ACTIVA
+            try:
+                ya_activa = any(
+                    (getattr(op, 'estado', 'ACTIVA') == 'ACTIVA') and 
+                    (getattr(op, 'tipo', '') == 'BUY') and 
+                    (getattr(op, 'estrategia', None) == strategy_name)
+                    for op in getattr(self.risk_manager, 'operaciones_activas', [])
+                )
+            except Exception:
+                ya_activa = False
+            if ya_activa:
+                try:
+                    ts = candle.name if hasattr(candle, 'name') else 'now'
+                    self.log(f"SKIP: BUY ya activa para estrategia {strategy_name} en {ts}", color='yellow')
+                except Exception:
+                    pass
+                return
+
+            # ATR y apertura vía RiskManagerIntegration
+            price = float(candle['Close'])
+            # ATR simple: rolling 14 sobre df del streamer; fallback a rango * 0.1
+            try:
+                atr_series = (self.candle_streamer.df['High'] - self.candle_streamer.df['Low']).rolling(14).mean()
+                atr_value = float(atr_series.iloc[-1]) if not np.isnan(atr_series.iloc[-1]) else float((self.candle_streamer.df['High'] - self.candle_streamer.df['Low']).mean() * 0.1)
+            except Exception:
+                atr_value = float((self.candle_streamer.df['High'] - self.candle_streamer.df['Low']).mean() * 0.1) if hasattr(self, 'candle_streamer') else price * 0.001
+
+            operacion = self.risk_integration.procesar_senal(
+                senal=1,
+                precio_actual=price,
+                timestamp=candle.name if hasattr(candle, 'name') else datetime.now(),
+                atr_value=atr_value,
+                rr_ratio=rr_ratio,
+                estrategia_nombre=strategy_name
+            )
+
+            if operacion:
+                # Log consistente con mensajes existentes
+                self.log(f"Orden de COMPRA abierta {strategy_name}: {price:.5f} (TP: {operacion.take_profit:.5f}, SL: {operacion.stop_loss:.5f})", color='green')
+                # Marcar reglas por vela
+                self._stream_opened_buy_for_strategy.add(strategy_name)
+                self._stream_opened_buy_any_forex = True
+                # Refrescar dinero visible y label Dinero
+                try:
+                    self._actualizar_dinero_visible(price)
+                    cash_now = float(getattr(self.risk_manager, 'capital', self.dinero_ficticio))
+                    self.label_cash.config(text=f"Dinero: {cash_now:,.2f}$")
+                    self.root.update_idletasks()
+                except Exception:
+                    pass
+            else:
+                # Registrar motivo si hay error (fondos insuficientes -> amarillo)
+                try:
+                    err = getattr(self.risk_manager, 'last_error', None)
+                    if err:
+                        color = 'yellow' if 'Fondos insuficientes' in err else 'red'
+                        prefix = 'OPERACIÓN SALTADA' if color == 'yellow' else 'OPEN BUY FALLÓ'
+                        self.log(f"{prefix} ({strategy_name}) -> {err}", color=color)
+                except Exception:
+                    pass
         except Exception as e:
-            self.log(f"Error al procesar señal de compra: {str(e)}", color="red")
+            self.log(f"Error al procesar señal de compra: {str(e)}", color='red')
     
     def _verificar_cierre_ordenes(self, candle):
-        """Verifica si alguna orden activa necesita ser cerrada"""
-        if not hasattr(self, 'active_orders'):
-            self.active_orders = []
-            return
-            
-        current_price = candle['Close']
-        
-        for order in list(self.active_orders):
-            try:
-                if order['type'] == 'buy':
-                    # Verificar si se alcanzó el take profit o stop loss
-                    if current_price >= order['take_profit']:
-                        profit = (order['take_profit'] - order['entry_price']) * order['size']
-                        self.active_orders.remove(order)
-                        self.log(f"Take Profit alcanzado: +{profit:.5f} pips", color="green")
-                    elif current_price <= order['stop_loss']:
-                        loss = (order['entry_price'] - current_price) * order['size']
-                        self.active_orders.remove(order)
-                        self.log(f"Stop Loss alcanzado: -{loss:.5f} pips", color="red")
-                        
-            except Exception as e:
-                self.log(f"Error verificando cierre de orden: {str(e)}", color="red")
+        """Verifica cierres mediante RiskManager y actualiza UI"""
+        try:
+            current_price = float(candle['Close'])
+            ts = candle.name if hasattr(candle, 'name') else datetime.now()
+            operaciones_cerradas = self.risk_manager.verificar_cierre_operaciones(current_price, ts)
+
+            for op in operaciones_cerradas:
+                profit = (op.precio_cierre - op.precio_apertura) * op.lote_size if op.tipo == 'BUY' else (op.precio_apertura - op.precio_cierre) * op.lote_size
+                if np.isnan(profit) or np.isinf(profit):
+                    profit = 0.0
+                if profit >= 0:
+                    try:
+                        self.beneficios = float(getattr(self, 'beneficios', 0.0) or 0.0) + float(profit)
+                        self.label_beneficios.config(text=f"Beneficios: {self.beneficios:,.2f}$")
+                    except Exception:
+                        pass
+                else:
+                    try:
+                        self.perdidas = float(getattr(self, 'perdidas', 0.0) or 0.0) + float(abs(profit))
+                        self.label_perdidas.config(text=f"Pérdidas: {self.perdidas:,.2f}$")
+                    except Exception:
+                        pass
+                color = 'green' if profit >= 0 else 'red'
+                self.log(f"CIERRE: {op} | Profit: ${profit:+.2f}", color=color)
+
+            # Refrescar equity/cash tras cierres
+            if operaciones_cerradas:
+                try:
+                    self._actualizar_dinero_visible(current_price)
+                    cash_now = float(getattr(self.risk_manager, 'capital', self.dinero_ficticio))
+                    self.label_cash.config(text=f"Dinero: {cash_now:,.2f}$")
+                    self.root.update_idletasks()
+                except Exception:
+                    pass
+        except Exception as e:
+            self.log(f"Error verificando cierre de orden: {str(e)}", color='red')
     
     def detener_simulacion(self):
         """Detiene la simulación del mercado"""
