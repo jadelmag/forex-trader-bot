@@ -13,7 +13,8 @@ import numpy as np
 from matplotlib.patches import Rectangle
 import os
 import requests
-import tkinter as tk  # Añadido para el soporte de Tkinter
+import tkinter as tk
+import time
 
 URL = "wss://stream.binance.com:9443/ws"
 DEFAULT_INTERVAL = '1m'
@@ -27,17 +28,18 @@ class CandleStreamer:
                  base_folder: str = 'trading_view', parent_frame=None, log_callback=None):
         # Callback para logging
         self.log_callback = log_callback if callable(log_callback) else print
+        self.debug_mode = False  # Flag para modo debug
 
         # Validar interval
         if interval not in self.ALLOWED_INTERVALS:
-            print(f'Intervalo inválido. Se asigna por defecto: 1m')
+            self._log(f'Intervalo inválido. Se asigna por defecto: 1m', 'yellow')
             self.interval = DEFAULT_INTERVAL
         else:
             self.interval = interval
 
         # Validar max_plot
         if max_plot not in self.ALLOWED_MAX_PLOT:
-            print(f'max_plot inválido. Se asigna por defecto: 500')
+            self._log(f'max_plot inválido. Se asigna por defecto: 500', 'yellow')
             self.max_plot = DEFAULT_MAX_PLOT
         else:
             self.max_plot = max_plot
@@ -45,6 +47,7 @@ class CandleStreamer:
         self.url = URL
         self.ws = None
         self.thread = None
+        self.running = False
 
         # DataFrame inicial con DatetimeIndex
         self.df = pd.DataFrame(columns=["Open", "High", "Low", "Close", "Volume"])
@@ -68,6 +71,11 @@ class CandleStreamer:
         # Configuración de matplotlib
         self.parent_frame = parent_frame
         plt.ion()
+        
+        # Variables para refresco periódico
+        self._last_refresh_time = 0
+        self._refresh_interval = 1.0  # 1 segundo
+        self._pending_refresh = False
         
         # Si se proporciona un frame padre, usamos FigureCanvasTkAgg
         if self.parent_frame:
@@ -125,6 +133,11 @@ class CandleStreamer:
         self._rect_patch = None
         self._init_hover()
 
+    def set_debug_mode(self, debug: bool):
+        """Activa o desactiva el modo debug"""
+        self.debug_mode = debug
+        self._log(f"Modo debug {'activado' if debug else 'desactivado'}", 'blue')
+
     def on_candle_update(self, callback):
         """Permite registrar un callback que será llamado con el DataFrame
         de velas cada vez que haya una actualización (incluye la vela en curso).
@@ -132,8 +145,9 @@ class CandleStreamer:
         try:
             if callable(callback) and callback not in self._candle_update_callbacks:
                 self._candle_update_callbacks.append(callback)
-        except Exception:
-            pass
+        except Exception as e:
+            if self.debug_mode:
+                self._log(f"Error registrando callback: {e}", 'red')
 
     def _notify_candle_update(self):
         """Notifica a los suscriptores entregando un DataFrame que incluye la vela
@@ -148,11 +162,13 @@ class CandleStreamer:
             for cb in list(self._candle_update_callbacks):
                 try:
                     cb(df_current)
-                except Exception:
+                except Exception as e:
                     # No romper si un callback falla
-                    pass
-        except Exception:
-            pass
+                    if self.debug_mode:
+                        self._log(f"Error en callback de actualización: {e}", 'red')
+        except Exception as e:
+            if self.debug_mode:
+                self._log(f"Error en notificación de vela: {e}", 'red')
 
     @classmethod
     def _load_or_fetch_symbols(cls):
@@ -200,11 +216,13 @@ class CandleStreamer:
             interval_start = trade_time - timedelta(seconds=trade_time.second % interval_seconds,
                                                   microseconds=trade_time.microsecond)
 
-            print(f"Intervalo actual: {self.interval}, Inicio del intervalo: {interval_start}", 'gray')
+            if self.debug_mode:
+                self._log(f"Intervalo actual: {self.interval}, Inicio del intervalo: {interval_start}", 'gray')
             
             if self.current_candle is None or self.current_candle['Date'] != interval_start:
                 if self.current_candle is not None:
-                    print(f"Nueva vela creada: {self.current_candle}", 'green')
+                    if self.debug_mode:
+                        self._log(f"Nueva vela creada: {self.current_candle}", 'green')
                     new_candle = pd.DataFrame([self.current_candle])
                     new_candle.set_index('Date', inplace=True)
                     # Evitar FutureWarning: no concatenar con DataFrame vacío
@@ -212,7 +230,8 @@ class CandleStreamer:
                         self.df = new_candle.copy()
                     else:
                         self.df = pd.concat([self.df, new_candle])
-                    print(f"DataFrame actualizado. Total de velas: {len(self.df)}", 'gray')
+                    if self.debug_mode:
+                        self._log(f"DataFrame actualizado. Total de velas: {len(self.df)}", 'gray')
                     self._update_csv()
 
                 self.current_candle = {
@@ -223,9 +242,10 @@ class CandleStreamer:
                     'Close': trade_price,
                     'Volume': trade_volume
                 }
-                print(f"Nueva vela iniciada: {self.current_candle}", 'green')
-                # Refrescar gráfico con la nueva vela en curso
-                self._plot_last_candles()
+                if self.debug_mode:
+                    self._log(f"Nueva vela iniciada: {self.current_candle}", 'green')
+                # Programar refresco del gráfico en lugar de refrescar inmediatamente
+                self._schedule_refresh()
                 # Notificar actualización de vela
                 self._notify_candle_update()
             else:
@@ -238,17 +258,35 @@ class CandleStreamer:
                 self.current_candle['Close'] = trade_price
                 self.current_candle['Volume'] += trade_volume
                 
-                if (prev_high != self.current_candle['High'] or 
+                if self.debug_mode and (prev_high != self.current_candle['High'] or 
                     prev_low != self.current_candle['Low'] or 
                     prev_volume != self.current_candle['Volume']):
-                    # self._log(f"Vela actualizada: {self.current_candle}", 'gray')
-                    print(f"Vela actualizada: {self.current_candle}", 'gray')
-                # Refrescar gráfico en cada actualización intra-intervalo
-                self._plot_last_candles()
+                    self._log(f"Vela actualizada: {self.current_candle}", 'gray')
+                # Programar refresco del gráfico
+                self._schedule_refresh()
                 # Notificar actualización intra-intervalo
                 self._notify_candle_update()
         except Exception as e:
-            print(f"Error en _add_trade_to_candle: {e}", 'red')
+            self._log(f"Error en _add_trade_to_candle: {e}", 'red')
+
+    def _schedule_refresh(self):
+        """Programa un refresco del gráfico si no hay uno pendiente"""
+        if not self._pending_refresh:
+            self._pending_refresh = True
+            current_time = time.time()
+            if current_time - self._last_refresh_time >= self._refresh_interval:
+                self._refresh_plot()
+            elif self.parent_frame:
+                # Usar after() para refrescar en el futuro
+                delay = int((self._refresh_interval - (current_time - self._last_refresh_time)) * 1000)
+                self.parent_frame.after(max(10, delay), self._refresh_plot)
+
+    def _refresh_plot(self):
+        """Refresca el gráfico y reinicia el temporizador"""
+        if self._pending_refresh:
+            self._plot_last_candles()
+            self._pending_refresh = False
+            self._last_refresh_time = time.time()
 
     def _plot_last_candles(self):
         # Construir DataFrame a plotear incluyendo la vela en curso (si existe)
@@ -276,11 +314,14 @@ class CandleStreamer:
                     'Volume': [0.0]
                 }, index=[idx2])
                 last_df = pd.concat([last_df, dummy])
-                print("Añadido punto ficticio para visualizar la primera vela", 'gray')
+                if self.debug_mode:
+                    self._log("Añadido punto ficticio para visualizar la primera vela", 'gray')
             except Exception as e:
-                print(f"No se pudo añadir punto ficticio: {e}", 'red')
+                if self.debug_mode:
+                    self._log(f"No se pudo añadir punto ficticio: {e}", 'red')
 
-            print(f"Plotting {len(last_df)} filas", 'gray')
+            if self.debug_mode:
+                self._log(f"Plotting {len(last_df)} filas", 'gray')
 
         # Guardar el último DF para el manejo de hover
         self._last_df = last_df
@@ -327,7 +368,7 @@ class CandleStreamer:
                 else:
                     plt.pause(0.01)
             except Exception as e:
-                print(f"Error actualizando el gráfico: {e}", 'red')
+                self._log(f"Error actualizando el gráfico: {e}", 'red')
         
         # Asegurarse de que la actualización del gráfico se haga en el hilo principal
         if hasattr(self, 'parent_frame') and self.parent_frame:
@@ -341,7 +382,6 @@ class CandleStreamer:
             if not hasattr(self, 'fig'):
                 return
             # Conectar evento de movimiento del ratón una sola vez
-            canvas = self.canvas.get_tk_widget() if hasattr(self, 'canvas') else None
             if self._hover_cid is None:
                 self._hover_cid = self.fig.canvas.mpl_connect('motion_notify_event', self._on_motion)
             # Conectar scroll para zoom
@@ -355,7 +395,7 @@ class CandleStreamer:
             # Crear (o posponer) la anotación
             self._ensure_hover_annotation()
         except Exception as e:
-            print(f"Error inicializando hover: {e}")
+            self._log(f"Error inicializando hover: {e}", 'red')
 
     def _ensure_hover_annotation(self):
         """Asegura que la anotación y el marcador de hover existen y están adjuntos al eje.
@@ -423,7 +463,7 @@ class CandleStreamer:
                 )
                 self._hover_marker.set_visible(False)
         except Exception as e:
-            print(f"Error creando anotación de hover: {e}")
+            self._log(f"Error creando anotación de hover: {e}", 'red')
 
     def _on_motion(self, event):
         """Maneja hover, pan (botón derecho) y dibujo de recuadro para zoom (botón izquierdo)."""
@@ -459,7 +499,7 @@ class CandleStreamer:
                     self.fig.canvas.draw_idle()
                 except Exception as e:
                     if self.debug_hover:
-                        print(f"Pan error: {e}")
+                        self._log(f"Pan error: {e}", 'red')
                 finally:
                     # En modo pan, no mostrar tooltip para evitar parpadeo
                     if self._hover_annot is not None and self._hover_annot.get_visible():
@@ -490,7 +530,7 @@ class CandleStreamer:
                     self.fig.canvas.draw_idle()
                 except Exception as e:
                     if self.debug_hover:
-                        print(f"Rect draw error: {e}")
+                        self._log(f"Rect draw error: {e}", 'red')
                 finally:
                     # ocultar hover mientras se dibuja
                     if self._hover_annot is not None and self._hover_annot.get_visible():
@@ -565,7 +605,7 @@ class CandleStreamer:
             self.fig.canvas.draw_idle()
         except Exception as e:
             if self.debug_hover:
-                print(f"Hover error: {e}")
+                self._log(f"Hover error: {e}", 'red')
 
     def _on_button_press(self, event):
         """Inicia pan (botón derecho) o zoom por recuadro (botón izquierdo)."""
@@ -604,11 +644,11 @@ class CandleStreamer:
                         self.fig.canvas.draw_idle()
                 except Exception as e:
                     if self.debug_hover:
-                        print(f"Rect init error: {e}")
+                        self._log(f"Rect init error: {e}", 'red')
                 return
         except Exception as e:
             if self.debug_hover:
-                print(f"Button press error: {e}")
+                self._log(f"Button press error: {e}", 'red')
 
     def _reset_view(self):
         """Restaura el zoom/pan a la vista inicial (toda la serie visible y autoscale en Y)."""
@@ -656,7 +696,7 @@ class CandleStreamer:
                 self.fig.canvas.draw_idle()
         except Exception as e:
             if self.debug_hover:
-                print(f"Reset view error: {e}")
+                self._log(f"Reset view error: {e}", 'red')
 
     def _on_button_release(self, event):
         """Finaliza pan (botón derecho) o aplica zoom por recuadro (botón izquierdo)."""
@@ -693,7 +733,7 @@ class CandleStreamer:
                     self._user_xlim = (xmin, xmax)
                 except Exception as e:
                     if self.debug_hover:
-                        print(f"Rect apply error: {e}")
+                        self._log(f"Rect apply error: {e}", 'red')
                 finally:
                     try:
                         if self._rect_patch is not None:
@@ -708,7 +748,7 @@ class CandleStreamer:
                     self._rect_start = None
         except Exception as e:
             if self.debug_hover:
-                print(f"Button release error: {e}")
+                self._log(f"Button release error: {e}", 'red')
 
     def _on_scroll(self, event):
         """Zoom con la rueda del ratón centrado en el cursor. Sólo eje X, sincronizado entre subplots."""
@@ -746,7 +786,7 @@ class CandleStreamer:
                 self.fig.canvas.draw_idle()
         except Exception as e:
             if self.debug_hover:
-                print(f"Scroll zoom error: {e}")
+                self._log(f"Scroll zoom error: {e}", 'red')
 
     def _update_csv(self):
         self.df.to_csv(self.csv_file)
@@ -760,7 +800,8 @@ class CandleStreamer:
         if self.interval in supported:
             return self.interval
         # Fallback a 1m si el intervalo no está soportado
-        print(f"Intervalo {self.interval} no soportado por klines. Usando 1m para precarga.", 'yellow')
+        if self.debug_mode:
+            self._log(f"Intervalo {self.interval} no soportado por klines. Usando 1m para precarga.", 'yellow')
         return "1m"
 
     def _seed_historical(self, limit: int = 500):
@@ -768,7 +809,8 @@ class CandleStreamer:
         try:
             k_interval = self._binance_interval_for_klines()
             if not k_interval:
-                print("Precarga histórica omitida (intervalo en segundos no soportado por klines).", 'yellow')
+                if self.debug_mode:
+                    self._log("Precarga histórica omitida (intervalo en segundos no soportado por klines).", 'yellow')
                 return
 
             symbol = self.symbol.replace('/', '').replace('-', '')
@@ -777,7 +819,8 @@ class CandleStreamer:
             resp.raise_for_status()
             data = resp.json()
             if not isinstance(data, list) or len(data) == 0:
-                print("No se recibieron klines para precarga.", 'yellow')
+                if self.debug_mode:
+                    self._log("No se recibieron klines para precarga.", 'yellow')
                 return
 
             records = []
@@ -800,26 +843,28 @@ class CandleStreamer:
                 self.df = self.df[~self.df.index.duplicated(keep='last')]
                 self.df.sort_index(inplace=True)
 
-            print(f"Precargadas {len(hist_df)} velas históricas para {self.symbol} ({self.interval}).")
+            if self.debug_mode:
+                self._log(f"Precargadas {len(hist_df)} velas históricas para {self.symbol} ({self.interval}).")
             self._plot_last_candles()
             self._update_csv()
         except Exception as e:
-            print(f"Error en precarga histórica: {e}")
+            self._log(f"Error en precarga histórica: {e}", 'red')
 
     def _on_message(self, ws, message):
         try:
             data = json.loads(message)
-            print(f"Mensaje recibido: {message}")
+            if self.debug_mode:
+                self._log(f"Mensaje recibido: {message}")
             
             if 'p' in data and 'q' in data and 'T' in data:
                 trade_price = float(data['p'])
                 trade_volume = float(data['q'])
                 trade_time = datetime.fromtimestamp(data['T']/1000)
-                print(f"Procesando trade - Precio: {trade_price}, Volumen: {trade_volume}, Hora: {trade_time}")
-                # self._log(f"Procesando trade - Precio: {trade_price}, Volumen: {trade_volume}, Hora: {trade_time}")
+                if self.debug_mode:
+                    self._log(f"Procesando trade - Precio: {trade_price}, Volumen: {trade_volume}, Hora: {trade_time}")
                 self._add_trade_to_candle(trade_price, trade_volume, trade_time)
         except Exception as e:
-            print(f"Error procesando mensaje: {e}")
+            self._log(f"Error procesando mensaje: {e}", 'red')
 
     def _log(self, message, color='white'):
         """Método seguro para logging que puede ser llamado desde cualquier hilo"""
@@ -829,21 +874,23 @@ class CandleStreamer:
                 self.parent_frame.after(0, lambda: self.log_callback(message, color))
             else:
                 # Si no hay GUI, usar print
-                print(message)
+                if self.debug_mode or color in ['red', 'yellow']:  # Mostrar errores y warnings siempre
+                    print(f"{color.upper()}: {message}")
         except Exception as e:
             print(f"Error en _log: {e}")
 
     def _on_error(self, ws, error):
-        print(f"Error: {error}", 'red')
+        self._log(f"Error: {error}", 'red')
 
     def _on_close(self, ws, close_status_code, close_msg):
-        print("Conexión WebSocket cerrada")
+        self._log("Conexión WebSocket cerrada", 'yellow')
 
     def _on_open(self, ws):
-        print("Conexión WebSocket establecida", 'green')
+        self._log("Conexión WebSocket establecida", 'green')
         # Convert symbol to lowercase and remove any separators for Binance WebSocket
         binance_symbol = self.symbol.lower().replace('/', '').replace('-', '')
-        print(f"Suscribiéndose a: {binance_symbol}@trade", 'green')
+        if self.debug_mode:
+            self._log(f"Suscribiéndose a: {binance_symbol}@trade", 'green')
         payload = {
             "method": "SUBSCRIBE",
             "params": [f"{binance_symbol}@trade"],
@@ -852,11 +899,13 @@ class CandleStreamer:
         ws.send(json.dumps(payload))
 
     def start(self):
+        """Inicia el stream de velas"""
+        self.running = True
         # Precargar histórico antes de iniciar el stream en vivo
         try:
             self._seed_historical(limit=min(self.max_plot, 500))
         except Exception as e:
-            print(f"No se pudo precargar histórico: {e}", 'red')
+            self._log(f"No se pudo precargar histórico: {e}", 'red')
 
         self.ws = websocket.WebSocketApp(
             self.url,
@@ -875,6 +924,8 @@ class CandleStreamer:
     def stop(self):
         """Detiene el stream de velas y limpia los recursos"""
         self.running = False
+        self._pending_refresh = False
+        
         if hasattr(self, 'ws') and self.ws:
             self.ws.close()
             
@@ -885,8 +936,9 @@ class CandleStreamer:
         # Limpiar el canvas de Tkinter si existe
         if hasattr(self, 'canvas') and self.canvas:
             self.canvas.get_tk_widget().destroy()
+            
         if hasattr(self, 'thread') and self.thread:
-            self.thread.join()
+            self.thread.join(timeout=2.0)
 
     def set_symbol(self, symbol):
         """Cambia el símbolo activo y reinicia el stream"""
@@ -930,7 +982,7 @@ class CandleStreamer:
         if filename is None:
             filename = self.csv_file
         self.df.to_csv(filename)
-        print(f"Datos exportados a: {filename}")
+        self._log(f"Datos exportados a: {filename}", 'green')
 
     def clear_data(self):
         """Limpia todos los datos almacenados"""
