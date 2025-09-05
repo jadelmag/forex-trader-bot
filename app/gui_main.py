@@ -745,11 +745,29 @@ class GUIPrincipal:
                         profit = 0.0
                     if profit >= 0:
                         beneficios_totales += profit
+                        # Actualizar beneficios acumulados en la UI inmediatamente
+                        try:
+                            self.beneficios = float(getattr(self, 'beneficios', 0.0) or 0.0) + float(profit)
+                            self.label_beneficios.config(text=f"Beneficios: {self.beneficios:,.2f}$")
+                        except Exception:
+                            pass
                     else:
                         perdidas_totales += abs(profit)
+                        # Actualizar pérdidas acumuladas en la UI inmediatamente
+                        try:
+                            self.perdidas = float(getattr(self, 'perdidas', 0.0) or 0.0) + float(abs(profit))
+                            self.label_perdidas.config(text=f"Pérdidas: {self.perdidas:,.2f}$")
+                        except Exception:
+                            pass
                     resultados.append({'timestamp': idx, 'operacion': op, 'resultado': op.resultado, 'profit': profit})
                     color = 'green' if op.resultado == 'GANANCIA' else 'red'
                     self.log(f"CIERRE AUTOMÁTICO: {op} -> {op.resultado} | Profit: ${profit:+.2f}", color=color)
+
+                # Tras procesar cierres, refrescar dinero visible inmediatamente
+                try:
+                    self._actualizar_dinero_visible(row['Close'])
+                except Exception:
+                    pass
 
                 señales_del_dia = []
                 for nombre in seleccion.keys():

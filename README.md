@@ -514,8 +514,11 @@ Commons Clause + Apache/MIT
 
 ## En proceso
 
-* Arreglar zoom, pan, scroll sobre las graficas [TODO]
 * Actualizar dinero cuando se abre una posición [TODO]
+    - Cuando se realiza una compra se debe actualizar el dinero disponible tanto si sube como si baja más del valor desde que se compro
+    - Cuando la orden se cierra, esa operación deja de actualizar sobre el dinero disponible. Si es positiva se suma a beneficios y si es negativa se suma a pérdidas   
+* Arreglar hover sobre la grafica de candle streamer [TODO]
+* Arreglar hover, zoom, pan, scroll sobre la grafica de datos cargados por csv o pkl [TODO]
 * Generar informe [TODO]
 * Configuración de la aplicacion [TODO]
 * Conectar con Metatrader [TODO]
