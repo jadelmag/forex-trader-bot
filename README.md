@@ -526,8 +526,3 @@ Error aplicando estrategia martingale_overlay: ForexStrategies.martingale_overla
 * Conectar con Metatrader [TODO]
 
 
-Quiero que me prepares una versión optimizada del código donde:
-
-- se desactiven los print() excesivos mediante un flag debug que se puede activar/desactivar modo debug desde la UI que este entre iniciar simulación y detener simulación
-- se implemente un refresco periódico del gráfico cada 1 segundo en lugar de en cada trade
-- una versión optimizada para Tkinter, que evita hilos bloqueantes y utiliza after() para refrescar el gráfico cada 1 segundo, manteniendo todas las interacciones y anotaciones.
