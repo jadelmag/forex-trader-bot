@@ -18,6 +18,8 @@ class Operacion:
         self.lote_size = lote_size
         self.estado = 'ACTIVA'  # 'ACTIVA', 'CERRADA', 'CANCELADA'
         self.resultado = None  # 'GANANCIA', 'PERDIDA', None
+        # Monto de riesgo reservado (dinero bloqueado) al abrir la operación
+        self.riesgo_reservado = 0.0
 
     def cerrar(self, precio_cierre, timestamp):
         """Cierra la operación y calcula el resultado"""
@@ -117,6 +119,8 @@ class RiskManager:
             take_profit=take_profit,
             lote_size=lote_size
         )
+        # Registrar el riesgo reservado para que la UI pueda descontarlo del dinero visible
+        operacion.riesgo_reservado = float(riesgo_dinero)
         
         self.operaciones_activas.append(operacion)
         return operacion

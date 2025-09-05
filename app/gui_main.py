@@ -90,7 +90,8 @@ class GUIPrincipal:
         self.operaciones = []  # tracking de operaciones RL (aperturas y cierres)
         self._pattern_signals = None  # Serie con confirmación de patrones (+1/-1/0)
 
-        self.risk_manager = RiskManager(max_operaciones_activas=5)
+        # Iniciar RiskManager con el mismo capital ficticio inicial (0 al inicio)
+        self.risk_manager = RiskManager(capital_inicial=self.dinero_ficticio, max_operaciones_activas=5)
         self.risk_integration = RiskManagerIntegration(self.risk_manager, None)
 
         # Frames principales
@@ -302,10 +303,17 @@ class GUIPrincipal:
         self.test_btn.pack(side="left", padx=2)
 
         # ---------------- Dinero/beneficios/pérdidas (centro) ----------------
+        # Equity (dinero visible: capital - riesgo reservado + PnL flotante)
         self.label_dinero = tk.Label(
-            self.frame_center, text=f"Dinero: ${self.dinero_ficticio:,.2f}", fg="black", bg="#F0F0F0"
+            self.frame_center, text=f"Equity: ${self.dinero_ficticio:,.2f}", fg="black", bg="#F0F0F0"
         )
         self.label_dinero.pack(side="left", padx=10)
+
+        # Cash (capital - riesgo reservado)
+        self.label_cash = tk.Label(
+            self.frame_center, text=f"Cash: ${self.dinero_ficticio:,.2f}", fg="black", bg="#F0F0F0"
+        )
+        self.label_cash.pack(side="left", padx=10)
 
         self.label_beneficios = tk.Label(
             self.frame_center, text=f"Beneficios: ${self.beneficios:,.2f}", fg="green", bg="#F0F0F0"
@@ -455,6 +463,13 @@ class GUIPrincipal:
         try:
             cantidad = float(self.entry_dinero.get())
             self.dinero_ficticio += cantidad
+            # Sincronizar el RiskManager para que 'Cash' no muestre el default (10,000)
+            try:
+                if hasattr(self, 'risk_manager') and self.risk_manager is not None:
+                    self.risk_manager.capital_inicial = float(self.dinero_ficticio)
+                    self.risk_manager.capital = float(self.dinero_ficticio)
+            except Exception:
+                pass
             self.actualizar_labels()
             self._update_btn_aplicar_patrones()
             self._update_btn_cargar_estrategias()
@@ -463,9 +478,106 @@ class GUIPrincipal:
 
     def actualizar_labels(self):
         print(f"DEBUG: actualizar labels: {self.dinero_ficticio}")
-        self.label_dinero.config(text=f"Dinero: {self.dinero_ficticio:,.2f}$")
+        # Por defecto, tratamos dinero_ficticio como equity inicial
+        self.label_dinero.config(text=f"Equity: {self.dinero_ficticio:,.2f}$")
+        # Cash inicial (sin reservado ni PnL en este punto)
+        try:
+            capital = float(self.risk_manager.capital)
+            # Si no hay operaciones activas y el capital del RM no coincide con el dinero ingresado,
+            # sincronizamos para evitar ver 10.000 por defecto.
+            try:
+                # Usar la lista directamente para mayor robustez
+                no_ops = (len(getattr(self.risk_manager, 'operaciones_activas', []) or []) == 0)
+            except Exception:
+                no_ops = True
+            if no_ops and abs(capital - float(self.dinero_ficticio)) > 1e-6:
+                capital = float(self.dinero_ficticio)
+                try:
+                    self.risk_manager.capital = capital
+                    self.risk_manager.capital_inicial = capital
+                except Exception:
+                    pass
+        except Exception:
+            capital = float(self.dinero_ficticio)
+        self.label_cash.config(text=f"Cash: {capital:,.2f}$")
         self.label_beneficios.config(text=f"Beneficios: {self.beneficios:,.2f}$")
         self.label_perdidas.config(text=f"Pérdidas: {self.perdidas:,.2f}$")
+
+    # ---------------- Dinero en tiempo real (capital - riesgo reservado + PnL flotante) ----------------
+    def _calcular_dinero_visible(self, precio_actual: float) -> float:
+        try:
+            capital = float(self.risk_manager.capital) if hasattr(self, 'risk_manager') and self.risk_manager is not None else float(self.dinero_ficticio)
+        except Exception:
+            capital = float(self.dinero_ficticio)
+
+        reservado = 0.0
+        pnl_flotante = 0.0
+
+        try:
+            for op in getattr(self.risk_manager, 'operaciones_activas', []):
+                if getattr(op, 'estado', 'ACTIVA') != 'ACTIVA':
+                    continue
+                # Riesgo reservado (bloqueado) al abrir
+                reservado += float(getattr(op, 'riesgo_reservado', 0.0) or 0.0)
+                # PnL no realizado
+                if getattr(op, 'tipo', 'BUY') == 'BUY':
+                    pnl_flotante += (precio_actual - op.precio_apertura) * op.lote_size
+                else:
+                    pnl_flotante += (op.precio_apertura - precio_actual) * op.lote_size
+        except Exception:
+            pass
+
+        try:
+            # Proteger contra NaNs
+            if np.isnan(reservado) or np.isinf(reservado):
+                reservado = 0.0
+            if np.isnan(pnl_flotante) or np.isinf(pnl_flotante):
+                pnl_flotante = 0.0
+        except Exception:
+            pass
+
+        return capital - reservado + pnl_flotante
+
+    def _actualizar_dinero_visible(self, precio_actual: float):
+        try:
+            # Capital realizado (efectivo base)
+            try:
+                capital = float(self.risk_manager.capital)
+            except Exception:
+                capital = float(self.dinero_ficticio)
+
+            # Calcular reservado y PnL flotante
+            reservado = 0.0
+            pnl_flotante = 0.0
+            for op in getattr(self.risk_manager, 'operaciones_activas', []):
+                if getattr(op, 'estado', 'ACTIVA') != 'ACTIVA':
+                    continue
+                reservado += float(getattr(op, 'riesgo_reservado', 0.0) or 0.0)
+                if getattr(op, 'tipo', 'BUY') == 'BUY':
+                    pnl_flotante += (precio_actual - op.precio_apertura) * op.lote_size
+                else:
+                    pnl_flotante += (op.precio_apertura - precio_actual) * op.lote_size
+
+            # Cash y Equity
+            cash = capital - reservado
+            equity = cash + pnl_flotante
+
+            # Proteger NaNs
+            if np.isnan(cash) or np.isinf(cash):
+                cash = capital
+            if np.isnan(equity) or np.isinf(equity):
+                equity = capital
+
+            # Actualizar estado interno y labels
+            self.dinero_ficticio = float(equity)
+            self.label_dinero.config(text=f"Equity: {equity:,.2f}$")
+            self.label_cash.config(text=f"Cash: {cash:,.2f}$")
+
+            # Beneficios y pérdidas (cerradas) se actualizan donde corresponde
+            self.root.update_idletasks()
+        except Exception:
+            # fallback silencioso
+            pass
 
     # ---------------- Funciones Estrategias ----------------
     def cargar_estrategias(self):
@@ -657,6 +769,12 @@ class GUIPrincipal:
                     if operaciones_abiertas > 0:
                         den = '∞' if (isinstance(max_orders, int) and max_orders <= 0) else str(max_orders)
                         self.log(f"Operaciones activas: {operaciones_abiertas}/{den}", color='blue')
+
+                # Actualizar dinero visible en tiempo real (capital - riesgo reservado + PnL flotante)
+                try:
+                    self._actualizar_dinero_visible(row['Close'])
+                except Exception:
+                    pass
 
             # Cerrar operaciones pendientes
             precio_cierre_final = df_new['Close'].iloc[-1] if not np.isnan(df_new['Close'].iloc[-1]) else df_new['Close'].dropna().iloc[-1]
