@@ -1532,21 +1532,61 @@ class GUIPrincipal:
                         except Exception:
                             pass
                 
+            # Asegurar RiskManager inicializado para simulación en streaming
+            if not hasattr(self, 'risk_manager') or self.risk_manager is None:
+                try:
+                    capital_inicial = float(self.entry_dinero.get())
+                except Exception:
+                    capital_inicial = float(getattr(self, 'dinero_ficticio', 10000))
+                from strategies.risk_manager import RiskManager, RiskManagerIntegration
+                # Obtener modo debug del candle_streamer si existe
+                debug_mode = bool(getattr(getattr(self, 'candle_streamer', None), 'debug_mode', False))
+                self.risk_manager = RiskManager(max_operaciones_activas=int(self.simulation_config.get('max_orders', 5)), capital_inicial=capital_inicial, debug_mode=debug_mode)
+                self.risk_integration = RiskManagerIntegration(self.risk_manager, None)
+                try:
+                    self.risk_manager.reset()
+                except Exception:
+                    pass
+
             # Aplicar estrategias de Forex y Patrones (usar paquetes de nivel superior)
             from strategies import ForexStrategies
             from patterns.candlestickpatterns import CandlestickPatterns
-            # Aplicar estrategias de Forex
+            
+            # Control de distribución de órdenes por vela: 2/6 forex, 2/6 candle, 2/6 patterns
+            max_orders_per_type = 2
+            forex_orders_opened = 0
+            candle_orders_opened = 0
+            pattern_orders_opened = 0
+            
+            # Flags por vela para compras forex
+            self._stream_opened_buy_for_strategy = set()
+            
+            # Aplicar estrategias de Forex (máximo 2 por vela)
             for strategy in self.simulation_config.get('forex_strategies', []):
+                if forex_orders_opened >= max_orders_per_type:
+                    break
+                    
                 try:
                     strategy_name = strategy['name']
                     risk = strategy.get('risk', 0.01)
                     rr_ratio = strategy.get('rr_ratio', 2.0)
                     
+                    # Regla global por estrategia: no más de una BUY ACTIVA
+                    try:
+                        ya_activa = any(
+                            (getattr(op, 'estado', 'ACTIVA') == 'ACTIVA') and 
+                            (getattr(op, 'tipo', '') == 'BUY') and 
+                            (getattr(op, 'estrategia', None) == strategy_name)
+                            for op in getattr(self.risk_manager, 'operaciones_activas', [])
+                        )
+                    except Exception:
+                        ya_activa = False
+                    if ya_activa:
+                        continue
+                    
                     # Instanciar y ejecutar el método de estrategia correspondiente
                     fx = ForexStrategies(df)
-                    # Resolver nombre real por si hay alias
-                    metodo_real = resolve_strategy_name(strategy_name, 'forex') if 'resolve_strategy_name' in globals() or 'resolve_strategy_name' in dir() else strategy_name
-                    metodo = getattr(fx, metodo_real, None)
+                    metodo = getattr(fx, strategy_name, None)
                     if not callable(metodo):
                         raise AttributeError(f"Estrategia no encontrada: {strategy_name}")
                     df_res = metodo(risk_per_trade=risk, rr_ratio=rr_ratio)
@@ -1555,61 +1595,62 @@ class GUIPrincipal:
                     
                     # Procesar señales
                     if signals is not None and not signals.empty and signals.iloc[-1] == 1:  # Señal de compra
-                        self._procesar_senal_compra(last_candle, metodo_real, risk, rr_ratio)
-                
+                        if self._procesar_senal_compra_risk_manager(last_candle, strategy_name, risk, rr_ratio):
+                            forex_orders_opened += 1
+                        
                 except Exception as e:
                     self.log(f"Error aplicando estrategia {strategy_name}: {str(e)}", color="red")
             
-            # Aplicar estrategias de velas
+            # Aplicar estrategias de velas (máximo 2 por vela)
+            from strategies.candle_strategies import CandleStrategies
+            candle_strategies = CandleStrategies(df)
             for strategy_name in self.simulation_config.get('candle_strategies', []):
+                if candle_orders_opened >= max_orders_per_type:
+                    break
+                    
                 try:
-                    # Aquí iría la lógica para aplicar estrategias de velas
-                    pass
+                    metodo = getattr(candle_strategies, strategy_name, None)
+                    if callable(metodo):
+                        df_res = metodo()
+                        signals = df_res['Signal'] if 'Signal' in df_res.columns else None
+                        if signals is not None and not signals.empty and signals.iloc[-1] == 1:
+                            if self._procesar_senal_compra_risk_manager(last_candle, f"candle_{strategy_name}", 0.01, 2.0):
+                                candle_orders_opened += 1
                 except Exception as e:
                     self.log(f"Error aplicando estrategia de vela {strategy_name}: {str(e)}", color="red")
             
+            # Aplicar patrones (máximo 2 por vela)
+            try:
+                patterns = CandlestickPatterns(df)
+                df_patterns = patterns.combined_signal_optimized()
+                for pattern_name in self.simulation_config.get('patterns', []):
+                    if pattern_orders_opened >= max_orders_per_type:
+                        break
+                        
+                    try:
+                        metodo = getattr(patterns, pattern_name, None)
+                        if callable(metodo):
+                            df_res = metodo()
+                            signals = df_res['Signal'] if 'Signal' in df_res.columns else None
+                            if signals is not None and not signals.empty and signals.iloc[-1] == 1:
+                                if self._procesar_senal_compra_risk_manager(last_candle, f"pattern_{pattern_name}", 0.01, 2.0):
+                                    pattern_orders_opened += 1
+                    except Exception as e:
+                        self.log(f"Error aplicando patrón {pattern_name}: {str(e)}", color="red")
+            except Exception as e:
+                self.log(f"Error aplicando patrones: {str(e)}", color="red")
+            
             # Verificar si hay órdenes activas que necesiten ser cerradas
-            self._verificar_cierre_ordenes(last_candle)
+            self._verificar_cierre_ordenes_risk_manager(last_candle)
             
         except Exception as e:
             self.log(f"Error en _on_candle_update: {str(e)}", color="red")
             import traceback
             self.log(traceback.format_exc(), color="red")
 
-    def _procesar_senal_compra(self, candle, strategy_name, risk, rr_ratio):
-        """Procesa una señal de compra de la estrategia mediante RiskManager"""
+    def _procesar_senal_compra_risk_manager(self, candle, strategy_name, risk, rr_ratio):
+        """Procesa una señal de compra mediante RiskManager con reglas de unicidad"""
         try:
-            # Regla por vela: una BUY por estrategia forex
-            if strategy_name in getattr(self, '_stream_opened_buy_for_strategy', set()):
-                return
-            # Regla por vela: solo una BUY forex total
-            if getattr(self, '_stream_opened_buy_any_forex', False):
-                try:
-                    ts = candle.name if hasattr(candle, 'name') else 'now'
-                    self.log(f"SKIP: Ya se abrió un BUY forex en esta vela, se omite {strategy_name} en {ts}", color='yellow')
-                except Exception:
-                    pass
-                return
-
-            # Regla global por estrategia: no más de una BUY ACTIVA
-            try:
-                ya_activa = any(
-                    (getattr(op, 'estado', 'ACTIVA') == 'ACTIVA') and 
-                    (getattr(op, 'tipo', '') == 'BUY') and 
-                    (getattr(op, 'estrategia', None) == strategy_name)
-                    for op in getattr(self.risk_manager, 'operaciones_activas', [])
-                )
-            except Exception:
-                ya_activa = False
-            if ya_activa:
-                try:
-                    ts = candle.name if hasattr(candle, 'name') else 'now'
-                    self.log(f"SKIP: BUY ya activa para estrategia {strategy_name} en {ts}", color='yellow')
-                except Exception:
-                    pass
-                return
-
-            # ATR y apertura vía RiskManagerIntegration
             price = float(candle['Close'])
             # ATR simple: rolling 14 sobre df del streamer; fallback a rango * 0.1
             try:
@@ -1630,9 +1671,6 @@ class GUIPrincipal:
             if operacion:
                 # Log consistente con mensajes existentes
                 self.log(f"Orden de COMPRA abierta {strategy_name}: {price:.5f} (TP: {operacion.take_profit:.5f}, SL: {operacion.stop_loss:.5f})", color='green')
-                # Marcar reglas por vela
-                self._stream_opened_buy_for_strategy.add(strategy_name)
-                self._stream_opened_buy_any_forex = True
                 # Refrescar dinero visible y label Dinero
                 try:
                     self._actualizar_dinero_visible(price)
@@ -1641,20 +1679,33 @@ class GUIPrincipal:
                     self.root.update_idletasks()
                 except Exception:
                     pass
+                return True
             else:
                 # Registrar motivo si hay error (fondos insuficientes -> amarillo)
                 try:
                     err = getattr(self.risk_manager, 'last_error', None)
                     if err:
-                        color = 'yellow' if 'Fondos insuficientes' in err else 'red'
-                        prefix = 'OPERACIÓN SALTADA' if color == 'yellow' else 'OPEN BUY FALLÓ'
-                        self.log(f"{prefix} ({strategy_name}) -> {err}", color=color)
+                        # Mensajes que solo se muestran en modo debug
+                        only_debug_msgs = (
+                            'Parámetros de riesgo inválidos (riesgo_por_pip <= 0)',
+                            'Tamaño de lote inválido',
+                        )
+                        debug_on = bool(getattr(getattr(self, 'candle_streamer', None), 'debug_mode', False))
+                        if any(msg in err for msg in only_debug_msgs) and not debug_on:
+                            pass  # suprimir en no-debug
+                        else:
+                            if 'Fondos insuficientes' in err:
+                                self.log(f"OPERACIÓN SALTADA ({strategy_name}) -> {err}", color='yellow')
+                            else:
+                                self.log(f"OPEN BUY FALLÓ ({strategy_name}) -> {err}", color='red')
                 except Exception:
                     pass
+                return False
         except Exception as e:
             self.log(f"Error al procesar señal de compra: {str(e)}", color='red')
+            return False
     
-    def _verificar_cierre_ordenes(self, candle):
+    def _verificar_cierre_ordenes_risk_manager(self, candle):
         """Verifica cierres mediante RiskManager y actualiza UI"""
         try:
             current_price = float(candle['Close'])
@@ -1691,6 +1742,112 @@ class GUIPrincipal:
                     pass
         except Exception as e:
             self.log(f"Error verificando cierre de orden: {str(e)}", color='red')
+            
+        except Exception as e:
+            self.log(f"Error en _on_candle_update: {str(e)}", color="red")
+            import traceback
+            self.log(traceback.format_exc(), color="red")
+
+    def _update_sim_status_color(self):
+        """Actualiza el color del label de estado de simulación según el PnL.
+        Verde si profit, rojo si drawdown, azul si neutro o no determinable."""
+        try:
+            if not hasattr(self, 'label_sim_status'):
+                return
+            # Intentar usar PnL no realizado de posiciones activas si hay
+            if hasattr(self, 'posiciones_activas') and self.posiciones_activas and getattr(self, '_last_close', None) is not None:
+                pnl = 0.0
+                for pos in self.posiciones_activas:
+                    try:
+                        entry = float(pos.get('precio', 0.0))
+                        pnl += (self._last_close - entry)
+                    except Exception:
+                        continue
+                if pnl > 1e-12:
+                    self.label_sim_status.configure(fg="green")
+                    return
+                elif pnl < -1e-12:
+                    self.label_sim_status.configure(fg="red")
+                    return
+                else:
+                    self.label_sim_status.configure(fg="blue")
+                    return
+
+            # Si no hay posiciones, usar totales realizados si existen
+            if hasattr(self, 'beneficios') and hasattr(self, 'perdidas'):
+                neto = float(self.beneficios) - float(self.perdidas)
+                if neto > 1e-12:
+                    self.label_sim_status.configure(fg="green")
+                elif neto < -1e-12:
+                    self.label_sim_status.configure(fg="red")
+                else:
+                    self.label_sim_status.configure(fg="blue")
+                return
+
+            # Fallback
+            self.label_sim_status.configure(fg="blue")
+        except Exception:
+            pass
+    
+    def _procesar_senal_compra(self, candle, strategy_name, risk, rr_ratio):
+        """Procesa una señal de compra de la estrategia"""
+        try:
+            # Verificar límite de órdenes activas
+            max_orders = int(self.simulation_config.get('max_orders', 5))
+            if len(self.active_orders) >= max_orders:
+                # Mostrar el mensaje solo la primera vez que se alcanza el límite
+                if not getattr(self, '_limit_orders_alerted', False):
+                    self.log(f"Límite de {max_orders} órdenes activas alcanzado", color="orange")
+                    self._limit_orders_alerted = True
+                return
+                
+            # Calcular tamaño de posición basado en el riesgo
+            # (esto es un ejemplo simplificado)
+            entry_price = candle['Close']
+            stop_loss = entry_price * (1 - risk)
+            take_profit = entry_price * (1 + (risk * rr_ratio))
+            
+            # Crear orden
+            order = {
+                'type': 'buy',
+                'entry_price': entry_price,
+                'stop_loss': stop_loss,
+                'take_profit': take_profit,
+                'size': 1.0,  # Tamaño fijo por simplicidad
+                'strategy': strategy_name,
+                'timestamp': candle.name if hasattr(candle, 'name') else None
+            }
+            
+            self.active_orders.append(order)
+            self.log(f"Orden de COMPRA abierta {strategy_name}: {entry_price:.5f} (TP: {take_profit:.5f}, SL: {stop_loss:.5f})", 
+                    color="green")
+                    
+        except Exception as e:
+            self.log(f"Error al procesar señal de compra: {str(e)}", color="red")
+    
+    def _verificar_cierre_ordenes(self, candle):
+        """Verifica si alguna orden activa necesita ser cerrada"""
+        if not hasattr(self, 'active_orders'):
+            self.active_orders = []
+            return
+            
+        current_price = candle['Close']
+        
+        for order in list(self.active_orders):
+            try:
+                if order['type'] == 'buy':
+                    # Verificar si se alcanzó el take profit o stop loss
+                    if current_price >= order['take_profit']:
+                        profit = (order['take_profit'] - order['entry_price']) * order['size']
+                        self.active_orders.remove(order)
+                        self.log(f"Take Profit alcanzado: +{profit:.5f} pips", color="green")
+                    elif current_price <= order['stop_loss']:
+                        loss = (order['entry_price'] - current_price) * order['size']
+                        self.active_orders.remove(order)
+                        self.log(f"Stop Loss alcanzado: -{loss:.5f} pips", color="red")
+                        
+            except Exception as e:
+                self.log(f"Error verificando cierre de orden: {str(e)}", color="red")
     
     def detener_simulacion(self):
         """Detiene la simulación del mercado"""

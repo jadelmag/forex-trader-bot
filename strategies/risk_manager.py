@@ -55,7 +55,7 @@ class Operacion:
 class RiskManager:
     """Gestiona la apertura y cierre de operaciones con límite máximo"""
     
-    def __init__(self, capital_inicial=10000, max_operaciones_activas=5):
+    def __init__(self, capital_inicial=10000, max_operaciones_activas=5, debug_mode=False):
         self.capital_inicial = capital_inicial
         self.capital = capital_inicial
         self.max_operaciones_activas = max_operaciones_activas
@@ -70,6 +70,12 @@ class RiskManager:
         self.perdida_perdedoras_total = 0.0
         # Último error al intentar abrir operación
         self.last_error: str | None = None
+        # Modo debug para mostrar errores técnicos
+        self.debug_mode = debug_mode
+        # Set para rastrear estrategias que ya mostraron mensaje de BUY activa
+        self.estrategias_buy_activa_notificadas = set()
+        # Timestamp de la última vela donde se abrió una operación BUY
+        self.ultima_vela_buy = None
         
     def puede_abrir_operacion(self):
         """Verifica si se puede abrir una nueva operación"""
@@ -98,16 +104,28 @@ class RiskManager:
             self.last_error = "Sin slots disponibles para abrir nueva operación"
             return None
 
-        # Regla de unicidad: si es BUY y se especifica estrategia, no permitir más de una BUY activa por estrategia
-        if tipo == 'BUY' and estrategia is not None:
-            try:
-                for op in self.operaciones_activas:
-                    if getattr(op, 'estado', 'ACTIVA') == 'ACTIVA' and getattr(op, 'tipo', '') == 'BUY' and getattr(op, 'estrategia', None) == estrategia:
-                        # Ya existe BUY activa para esa estrategia
-                        self.last_error = f"Ya existe BUY ACTIVA para la estrategia '{estrategia}'"
-                        return None
-            except Exception:
-                pass
+        # Regla de unicidad por vela: no más de una BUY por vela (independiente de estrategia)
+        if tipo == 'BUY':
+            # Verificar si ya se abrió una BUY en esta vela
+            if self.ultima_vela_buy is not None and self.ultima_vela_buy == timestamp:
+                self.last_error = "Ya se abrió una operación BUY en esta vela"
+                return None
+            
+            # Regla de unicidad por estrategia: no más de una BUY activa por estrategia
+            if estrategia is not None:
+                try:
+                    for op in self.operaciones_activas:
+                        if getattr(op, 'estado', 'ACTIVA') == 'ACTIVA' and getattr(op, 'tipo', '') == 'BUY' and getattr(op, 'estrategia', None) == estrategia:
+                            # Ya existe BUY activa para esa estrategia
+                            # Solo mostrar error si no se ha notificado antes para esta estrategia
+                            if estrategia not in self.estrategias_buy_activa_notificadas:
+                                self.last_error = f"Ya existe BUY ACTIVA para la estrategia '{estrategia}'"
+                                self.estrategias_buy_activa_notificadas.add(estrategia)
+                            else:
+                                self.last_error = None  # Suprimir mensaje repetido
+                            return None
+                except Exception:
+                    pass
             
         # Calcular tamaño de lote basado en el riesgo
         if tipo == 'BUY':
@@ -117,7 +135,8 @@ class RiskManager:
             
         # Evitar división por cero y valores inválidos
         if riesgo_por_pip <= 0 or np.isnan(riesgo_por_pip) or np.isinf(riesgo_por_pip):
-            self.last_error = "Parámetros de riesgo inválidos (riesgo_por_pip <= 0)"
+            if (self.debug_mode):
+                self.last_error = "Parámetros de riesgo inválidos (riesgo_por_pip <= 0)"
             return None
             
         riesgo_dinero = self.capital * riesgo_por_operacion
@@ -125,8 +144,19 @@ class RiskManager:
         
         # Validar que el lote_size sea un número válido
         if np.isnan(lote_size) or np.isinf(lote_size) or lote_size <= 0:
-            self.last_error = "Tamaño de lote inválido"
+            if (self.debug_mode):
+                self.last_error = "Tamaño de lote inválido"
             return None
+            
+        # Para BUY: limitar el lote_size para que el valor nocional no exceda el capital disponible
+        if tipo == 'BUY':
+            valor_posicion_calculado = float(precio) * float(lote_size)
+            if valor_posicion_calculado > self.capital:
+                # Ajustar lote_size para que quepa en el capital disponible
+                lote_size = self.capital / float(precio) * 0.95  # 95% del capital para dejar margen
+                if lote_size <= 0:
+                    self.last_error = f"Capital insuficiente para operación BUY: ${self.capital:,.2f}"
+                    return None
         
         # Crear nueva operación
         self.contador_operaciones += 1
@@ -154,6 +184,11 @@ class RiskManager:
             self.capital -= valor_posicion
         
         self.operaciones_activas.append(operacion)
+        
+        # Registrar timestamp de la vela para operaciones BUY
+        if tipo == 'BUY':
+            self.ultima_vela_buy = timestamp
+        
         # Limpia último error en apertura exitosa
         self.last_error = None
         return operacion
@@ -211,6 +246,10 @@ class RiskManager:
                     self.operaciones_perdidas += 1
                     self.perdida_perdedoras_total += profit  # valor negativo acumulado
                 
+                # Limpiar notificación de BUY activa para esta estrategia al cerrar
+                if operacion.tipo == 'BUY' and operacion.estrategia is not None:
+                    self.estrategias_buy_activa_notificadas.discard(operacion.estrategia)
+                
                 operaciones_cerradas.append(operacion)
                 self.operaciones_cerradas.append(operacion)
         
@@ -237,6 +276,10 @@ class RiskManager:
                 else:
                     self.operaciones_perdidas += 1
                     self.perdida_perdedoras_total += profit  # valor negativo acumulado
+                
+                # Limpiar notificación de BUY activa para esta estrategia al cerrar manualmente
+                if operacion.tipo == 'BUY' and operacion.estrategia is not None:
+                    self.estrategias_buy_activa_notificadas.discard(operacion.estrategia)
                 
                 self.operaciones_cerradas.append(operacion)
                 self.operaciones_activas.remove(operacion)
@@ -274,6 +317,10 @@ class RiskManager:
         self.operaciones_perdidas = 0
         self.ganancia_ganadoras_total = 0.0
         self.perdida_perdedoras_total = 0.0
+        # Limpiar notificaciones de BUY activa al resetear
+        self.estrategias_buy_activa_notificadas.clear()
+        # Resetear timestamp de última vela BUY
+        self.ultima_vela_buy = None
 
 # Ejemplo de uso integrado con las estrategias
 class RiskManagerIntegration:
