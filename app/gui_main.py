@@ -1443,7 +1443,7 @@ class GUIPrincipal:
             }
             
             self.active_orders.append(order)
-            self.log(f"Orden de COMPRA abierta: {entry_price:.5f} (TP: {take_profit:.5f}, SL: {stop_loss:.5f})", 
+            self.log(f"Orden de COMPRA abierta {strategy_name}: {entry_price:.5f} (TP: {take_profit:.5f}, SL: {stop_loss:.5f})", 
                     color="green")
                     
         except Exception as e:

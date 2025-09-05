@@ -514,6 +514,7 @@ Commons Clause + Apache/MIT
 
 ## En proceso
 
+* Actualizar dinero cuando se abre una posición [TODO]
 * Generar informe [TODO]
 * Configuración de la aplicacion [TODO]
 * Conectar con Metatrader [TODO]
