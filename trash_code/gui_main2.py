@@ -462,10 +462,9 @@ class GUIPrincipal:
             messagebox.showerror("Error", "Ingrese un número válido")
 
     def actualizar_labels(self):
-        print(f"DEBUG: actualizar labels: {self.dinero_ficticio}")
-        self.label_dinero.config(text=f"Dinero: {self.dinero_ficticio:,.2f}$")
-        self.label_beneficios.config(text=f"Beneficios: {self.beneficios:,.2f}$")
-        self.label_perdidas.config(text=f"Pérdidas: {self.perdidas:,.2f}$")
+        self.label_dinero.config(text=f"Dinero: ${self.dinero_ficticio:,.2f}")
+        self.label_beneficios.config(text=f"Beneficios: ${self.beneficios:,.2f}")
+        self.label_perdidas.config(text=f"Pérdidas: ${self.perdidas:,.2f}")
 
     # ---------------- Funciones Estrategias ----------------
     def cargar_estrategias(self):
@@ -1122,6 +1121,11 @@ class GUIPrincipal:
                 self.candle_streamer.stop()
                 self.candle_streamer = None
 
+    def test_iniciar_streamer(self):
+        """Método de prueba para iniciar el streamer"""
+        print("DEBUG: Test button clicked")  # Debug log
+        self.iniciar_streamer()
+        
     def toggle_debug_mode(self, enabled: bool):
         """Activa o desactiva el modo debug del CandleStreamer y actualiza el menú."""
         try:
@@ -1150,6 +1154,190 @@ class GUIPrincipal:
                 pass
         except Exception as e:
             self.log(f"Error al cambiar el modo debug: {e}", color="red")
+
+    def iniciar_simulacion(self):
+        """Inicia la simulación del mercado"""
+        try:
+            # Get available strategies
+            import sys
+            import os
+            # Add the project root to the Python path
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            if project_root not in sys.path:
+                sys.path.append(project_root)
+                
+            from strategies import get_available_strategies
+            from patterns import get_available_patterns
+            
+            # Get available strategies and patterns
+            estrategias_fx, estrategias_candle = get_available_strategies()
+            patrones_list = get_available_patterns()
+            
+            # Create and show the simulation modal
+            from .binance_modal import BinanceSimulationModal
+            
+            def on_simulation_config(config):
+                # Store the simulation configuration
+                self.simulation_config = config
+                self.simulation_active = True
+                self.simulation_candles_elapsed = 0
+                self.active_orders = []
+                self._sim_started_logged = False  # flag to log start once when wait reaches 0
+                # Flag para mostrar el aviso de límite de órdenes solo una vez por evento
+                self._limit_orders_alerted = False
+                
+                # Update UI
+                self.menu_streamer.entryconfig("Iniciar simulación", state="disabled")
+                self.menu_streamer.entryconfig("Detener simulación", state="normal")
+                wait_candles = config.get('wait_candles', 10)
+                self.log(f"Simulación iniciada. Esperando {wait_candles} velas antes de operar...", color="green")
+                # Actualizar estado visual (azul durante la espera)
+                if hasattr(self, 'label_sim_status'):
+                    try:
+                        self.label_sim_status.configure(text=f"Esperando {wait_candles} velas...", fg="blue")
+                    except Exception:
+                        pass
+                
+                # If we have a candle streamer, connect to its update event
+                if hasattr(self, 'candle_streamer') and self.candle_streamer:
+                    if not hasattr(self, '_on_candle_update_connected'):
+                        self._on_candle_update_connected = True
+                        self.candle_streamer.on_candle_update(self._on_candle_update)
+            
+            # Show the modal
+            BinanceSimulationModal(
+                self.root,
+                estrategias_fx=estrategias_fx,
+                estrategias_candle=estrategias_candle,
+                patrones_list=patrones_list,
+                callback=on_simulation_config
+            )
+            
+        except Exception as e:
+            self.log(f"Error al iniciar la simulación: {str(e)}", color="red")
+            import traceback
+            self.log(traceback.format_exc(), color="red")
+
+    def detener_simulacion(self):
+        """Detiene la simulación del mercado"""
+        try:
+            if hasattr(self, 'simulation_active') and self.simulation_active:
+                self.simulation_active = False
+                self._on_candle_update_connected = False
+                
+                # Mostrar resumen de la simulación
+                if hasattr(self, 'simulation_candles_elapsed'):
+                    self.log(f"\n--- SIMULACIÓN FINALIZADA ---", color="blue")
+                    self.log(f"Velas procesadas: {self.simulation_candles_elapsed}", color="white")
+                    self.log(f"Órdenes abiertas al finalizar: {len(self.active_orders) if hasattr(self, 'active_orders') else 0}", 
+                            color="white")
+                
+                # Limpiar estado de simulación
+                if hasattr(self, 'active_orders'):
+                    del self.active_orders
+                if hasattr(self, 'simulation_candles_elapsed'):
+                    del self.simulation_candles_elapsed
+                if hasattr(self, 'simulation_config'):
+                    del self.simulation_config
+                if hasattr(self, '_limit_orders_alerted'):
+                    del self._limit_orders_alerted
+                
+                # Actualizar UI
+                # Rehabilitar inicio solo si el streamer sigue conectado
+                start_state = "normal" if getattr(self, 'candle_streamer', None) is not None else "disabled"
+                self.menu_streamer.entryconfig("Iniciar simulación", state=start_state)
+                self.menu_streamer.entryconfig("Detener simulación", state="disabled")
+                self.log("Simulación detenida correctamente", color="green")
+                # Resetear estado visual
+                if hasattr(self, 'label_sim_status'):
+                    try:
+                        self.label_sim_status.configure(text="Estado: Inactivo", fg="gray")
+                    except Exception:
+                        pass
+            else:
+                self.log("No hay ninguna simulación activa", color="orange")
+                
+        except Exception as e:
+            self.log(f"Error al detener la simulación: {str(e)}", color="red")
+            import traceback
+            self.log(traceback.format_exc(), color="red")
+
+    def _on_candle_update(self, df_current):
+        """Callback registrado en CandleStreamer.on_candle_update.
+        Se ejecuta potencialmente desde un hilo no principal; no tocar UI directamente.
+        """
+        try:
+            # Enrutar el manejo al hilo principal de Tkinter
+            if hasattr(self, 'root') and callable(getattr(self.root, 'after', None)):
+                self.root.after(0, lambda: self._handle_candle_update(df_current))
+        except Exception:
+            # Evitar romper el hilo del streamer por errores de UI
+            pass
+
+    def _handle_candle_update(self, df_current):
+        """Maneja la actualización de vela en el hilo principal.
+        - Lleva el conteo de velas únicas vistas.
+        - Actualiza el estado visual de la simulación (espera/operando).
+        """
+        try:
+            # Validaciones básicas de estado
+            if not getattr(self, 'simulation_active', False):
+                return
+            if df_current is None or len(df_current) == 0:
+                return
+
+            # Determinar el timestamp de la última fila (incluye la vela en curso)
+            try:
+                latest_ts = df_current.index[-1]
+            except Exception:
+                latest_ts = None
+
+            # Inicializar trackers si no existen
+            if not hasattr(self, '_last_seen_candle_ts'):
+                self._last_seen_candle_ts = None
+            if not hasattr(self, 'simulation_candles_elapsed'):
+                self.simulation_candles_elapsed = 0
+
+            # Incrementar contador solo cuando cambia el timestamp de la última vela
+            if latest_ts is not None and latest_ts != self._last_seen_candle_ts:
+                self._last_seen_candle_ts = latest_ts
+                try:
+                    self.simulation_candles_elapsed += 1
+                except Exception:
+                    self.simulation_candles_elapsed = 1
+
+            # Gestionar estado de espera y cambio a "operando"
+            wait_candles = 0
+            try:
+                wait_candles = int(getattr(self, 'simulation_config', {}).get('wait_candles', 10))
+                print(f"wait_candles: {wait_candles}")
+            except Exception:
+                wait_candles = 10
+
+            remaining = max(0, wait_candles - self.simulation_candles_elapsed)
+
+            # Actualizar etiqueta de estado si existe
+            if hasattr(self, 'label_sim_status'):
+                try:
+                    if remaining > 0:
+                        self.label_sim_status.configure(text=f"Esperando {remaining} velas...", fg="blue")
+                    else:
+                        self.label_sim_status.configure(text="Estado: Operando", fg="green")
+                except Exception:
+                    pass
+
+            # Loggear el inicio de operación una sola vez al terminar la espera
+            if remaining <= 0 and not getattr(self, '_sim_started_logged', False):
+                try:
+                    self.log("Periodo de espera finalizado. Comenzando a operar.", color="green")
+                except Exception:
+                    pass
+                self._sim_started_logged = True
+        except Exception as e:
+            try:
+                self.log(f"Error en manejo de actualización de vela: {e}", color="red")
+            except Exception:
+                pass
 
     def iniciar_streamer(self):
         """Muestra el modal de configuración y luego inicia el CandleStreamer"""
@@ -1200,9 +1388,10 @@ class GUIPrincipal:
         try:
             if self.candle_streamer is not None:
                 # Si hay una simulación activa, detenerla primero para limpiar estado correctamente
-                if getattr(self, 'simulation_active', False):
-                    self.detener_simulacion()
-
+                if hasattr(self, 'simulation_config'):
+                    del self.simulation_config
+                if hasattr(self, '_limit_orders_alerted'):
+                    del self._limit_orders_alerted
                 self.candle_streamer.stop()
                 self.candle_streamer = None
                 self.log("CandleStreamer detenido correctamente", color="green")
@@ -1227,309 +1416,7 @@ class GUIPrincipal:
             self.log(f"Error al detener el streamer: {str(e)}", color="red")
             import traceback
             self.log(traceback.format_exc(), color="red")
-            
-    def test_iniciar_streamer(self):
-        """Método de prueba para iniciar el streamer"""
-        print("DEBUG: Test button clicked")  # Debug log
-        self.iniciar_streamer()
-        
-    def iniciar_simulacion(self):
-        """Inicia la simulación del mercado"""
-        try:
-            # Get available strategies
-            import sys
-            import os
-            # Add the project root to the Python path
-            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            if project_root not in sys.path:
-                sys.path.append(project_root)
-                
-            from strategies import get_available_strategies
-            from patterns import get_available_patterns
-            
-            # Get available strategies and patterns
-            estrategias_fx, estrategias_candle = get_available_strategies()
-            patrones_list = get_available_patterns()
-            
-            # Create and show the simulation modal
-            from .binance_modal import BinanceSimulationModal
-            
-            def on_simulation_config(config):
-                # Store the simulation configuration
-                self.simulation_config = config
-                self.simulation_active = True
-                self.simulation_candles_elapsed = 0
-                self.active_orders = []
-                self._sim_started_logged = False  # flag to log start once when wait reaches 0
-                
-                # Update UI
-                self.menu_streamer.entryconfig("Iniciar simulación", state="disabled")
-                self.menu_streamer.entryconfig("Detener simulación", state="normal")
-                wait_candles = config.get('wait_candles', 20)
-                self.log(f"Simulación iniciada. Esperando {wait_candles} velas antes de operar...", color="green")
-                # Actualizar estado visual (azul durante la espera)
-                if hasattr(self, 'label_sim_status'):
-                    try:
-                        self.label_sim_status.configure(text=f"Esperando {wait_candles} velas...", fg="blue")
-                    except Exception:
-                        pass
-                
-                # If we have a candle streamer, connect to its update event
-                if hasattr(self, 'candle_streamer') and self.candle_streamer:
-                    if not hasattr(self, '_on_candle_update_connected'):
-                        self._on_candle_update_connected = True
-                        self.candle_streamer.on_candle_update(self._on_candle_update)
-            
-            # Show the modal
-            BinanceSimulationModal(
-                self.root,
-                estrategias_fx=estrategias_fx,
-                estrategias_candle=estrategias_candle,
-                patrones_list=patrones_list,
-                callback=on_simulation_config
-            )
-            
-        except Exception as e:
-            self.log(f"Error al iniciar la simulación: {str(e)}", color="red")
-            import traceback
-            self.log(traceback.format_exc(), color="red")
 
-    def _on_candle_update(self, df):
-        """Maneja la actualización de velas durante la simulación"""
-        if not hasattr(self, 'simulation_active') or not self.simulation_active:
-            return
-            
-        try:
-            # Incrementar el contador de velas
-            if not hasattr(self, 'simulation_candles_elapsed'):
-                self.simulation_candles_elapsed = 0
-            else:
-                self.simulation_candles_elapsed += 1
-            
-            # Obtener la última vela
-            last_candle = df.iloc[-1]
-            # Guardar último close para cálculo de PnL no realizado
-            try:
-                self._last_close = float(last_candle["Close"])
-            except Exception:
-                self._last_close = None
-            
-            # Actualizar el log con el progreso
-            if self.simulation_candles_elapsed % 10 == 0:  # Cada 10 velas
-                self.log(f"Simulación en progreso - Velas procesadas: {self.simulation_candles_elapsed}", color="blue")
-            
-            # Verificar si ya pasaron las velas de espera (usar el valor del modal)
-            wait_candles = int(self.simulation_config['wait_candles'])
-            remaining = wait_candles - self.simulation_candles_elapsed
-            if remaining > 0:
-                # Mostrar siempre el estado de espera en azul
-                self.log(f"Esperando {remaining} velas más antes de operar...", color="blue")
-                # Actualizar estado visual (azul durante la espera)
-                if hasattr(self, 'label_sim_status'):
-                    try:
-                        self.label_sim_status.configure(text=f"Esperando {remaining} velas...", fg="blue")
-                    except Exception:
-                        pass
-                return
-            else:
-                # Justo al alcanzar 0 velas de espera, anunciar inicio de la simulación en progreso
-                if not getattr(self, '_sim_started_logged', False):
-                    self.log("Simulación en progreso!!", color="blue")
-                    self._sim_started_logged = True
-                    # Actualizar estado visual (mantener azul como solicitado)
-                    if hasattr(self, 'label_sim_status'):
-                        try:
-                            self.label_sim_status.configure(text="Simulación en progreso!!", fg="blue")
-                        except Exception:
-                            pass
-                
-            # Aplicar estrategias de Forex y Patrones (usar paquetes de nivel superior)
-            from strategies import ForexStrategies
-            from patterns.candlestickpatterns import CandlestickPatterns
-            
-            # Aplicar patrones de velas
-            patterns = CandlestickPatterns(df)
-            df_patterns = patterns.combined_signal_optimized()
-            
-            # Aplicar estrategias de Forex
-            for strategy in self.simulation_config.get('forex_strategies', []):
-                try:
-                    strategy_name = strategy['name']
-                    risk = strategy.get('risk', 0.01)
-                    rr_ratio = strategy.get('rr_ratio', 2.0)
-                    
-                    # Instanciar y ejecutar el método de estrategia correspondiente
-                    fx = ForexStrategies(df)
-                    metodo = getattr(fx, strategy_name, None)
-                    if not callable(metodo):
-                        raise AttributeError(f"Estrategia no encontrada: {strategy_name}")
-                    df_res = metodo(risk_per_trade=risk, rr_ratio=rr_ratio)
-                    # Usar la señal actual (última fila)
-                    signals = df_res['Signal'] if 'Signal' in df_res.columns else None
-                    
-                    # Procesar señales
-                    if signals is not None and not signals.empty and signals.iloc[-1] == 1:  # Señal de compra
-                        self._procesar_senal_compra(last_candle, strategy_name, risk, rr_ratio)
-                        
-                except Exception as e:
-                    self.log(f"Error aplicando estrategia {strategy_name}: {str(e)}", color="red")
-            
-            # Aplicar estrategias de velas
-            for strategy_name in self.simulation_config.get('candle_strategies', []):
-                try:
-                    # Aquí iría la lógica para aplicar estrategias de velas
-                    pass
-                except Exception as e:
-                    self.log(f"Error aplicando estrategia de vela {strategy_name}: {str(e)}", color="red")
-            
-            # Verificar si hay órdenes activas que necesiten ser cerradas
-            self._verificar_cierre_ordenes(last_candle)
-            
-        except Exception as e:
-            self.log(f"Error en _on_candle_update: {str(e)}", color="red")
-            import traceback
-            self.log(traceback.format_exc(), color="red")
-
-    def _update_sim_status_color(self):
-        """Actualiza el color del label de estado de simulación según el PnL.
-        Verde si profit, rojo si drawdown, azul si neutro o no determinable."""
-        try:
-            if not hasattr(self, 'label_sim_status'):
-                return
-            # Intentar usar PnL no realizado de posiciones activas si hay
-            if hasattr(self, 'posiciones_activas') and self.posiciones_activas and getattr(self, '_last_close', None) is not None:
-                pnl = 0.0
-                for pos in self.posiciones_activas:
-                    try:
-                        entry = float(pos.get('precio', 0.0))
-                        pnl += (self._last_close - entry)
-                    except Exception:
-                        continue
-                if pnl > 1e-12:
-                    self.label_sim_status.configure(fg="green")
-                    return
-                elif pnl < -1e-12:
-                    self.label_sim_status.configure(fg="red")
-                    return
-                else:
-                    self.label_sim_status.configure(fg="blue")
-                    return
-
-            # Si no hay posiciones, usar totales realizados si existen
-            if hasattr(self, 'beneficios') and hasattr(self, 'perdidas'):
-                neto = float(self.beneficios) - float(self.perdidas)
-                if neto > 1e-12:
-                    self.label_sim_status.configure(fg="green")
-                elif neto < -1e-12:
-                    self.label_sim_status.configure(fg="red")
-                else:
-                    self.label_sim_status.configure(fg="blue")
-                return
-
-            # Fallback
-            self.label_sim_status.configure(fg="blue")
-        except Exception:
-            pass
-    
-    def _procesar_senal_compra(self, candle, strategy_name, risk, rr_ratio):
-        """Procesa una señal de compra de la estrategia"""
-        try:
-            # Verificar límite de órdenes activas
-            max_orders = int(self.simulation_config.get('max_orders', 5))
-            if len(self.active_orders) >= max_orders:
-                self.log(f"Límite de {max_orders} órdenes activas alcanzado", color="orange")
-                return
-                
-            # Calcular tamaño de posición basado en el riesgo
-            # (esto es un ejemplo simplificado)
-            entry_price = candle['Close']
-            stop_loss = entry_price * (1 - risk)
-            take_profit = entry_price * (1 + (risk * rr_ratio))
-            
-            # Crear orden
-            order = {
-                'type': 'buy',
-                'entry_price': entry_price,
-                'stop_loss': stop_loss,
-                'take_profit': take_profit,
-                'size': 1.0,  # Tamaño fijo por simplicidad
-                'strategy': strategy_name,
-                'timestamp': candle.name if hasattr(candle, 'name') else None
-            }
-            
-            self.active_orders.append(order)
-            self.log(f"Orden de COMPRA abierta: {entry_price:.5f} (TP: {take_profit:.5f}, SL: {stop_loss:.5f})", 
-                    color="green")
-                    
-        except Exception as e:
-            self.log(f"Error al procesar señal de compra: {str(e)}", color="red")
-    
-    def _verificar_cierre_ordenes(self, candle):
-        """Verifica si alguna orden activa necesita ser cerrada"""
-        if not hasattr(self, 'active_orders'):
-            self.active_orders = []
-            return
-            
-        current_price = candle['Close']
-        
-        for order in list(self.active_orders):
-            try:
-                if order['type'] == 'buy':
-                    # Verificar si se alcanzó el take profit o stop loss
-                    if current_price >= order['take_profit']:
-                        profit = (order['take_profit'] - order['entry_price']) * order['size']
-                        self.active_orders.remove(order)
-                        self.log(f"Take Profit alcanzado: +{profit:.5f} pips", color="green")
-                    elif current_price <= order['stop_loss']:
-                        loss = (order['entry_price'] - current_price) * order['size']
-                        self.active_orders.remove(order)
-                        self.log(f"Stop Loss alcanzado: -{loss:.5f} pips", color="red")
-                        
-            except Exception as e:
-                self.log(f"Error verificando cierre de orden: {str(e)}", color="red")
-    
-    def detener_simulacion(self):
-        """Detiene la simulación del mercado"""
-        try:
-            if hasattr(self, 'simulation_active') and self.simulation_active:
-                self.simulation_active = False
-                self._on_candle_update_connected = False
-                
-                # Mostrar resumen de la simulación
-                if hasattr(self, 'simulation_candles_elapsed'):
-                    self.log(f"\n--- SIMULACIÓN FINALIZADA ---", color="blue")
-                    self.log(f"Velas procesadas: {self.simulation_candles_elapsed}", color="white")
-                    self.log(f"Órdenes abiertas al finalizar: {len(self.active_orders) if hasattr(self, 'active_orders') else 0}", 
-                            color="white")
-                
-                # Limpiar estado de simulación
-                if hasattr(self, 'active_orders'):
-                    del self.active_orders
-                if hasattr(self, 'simulation_candles_elapsed'):
-                    del self.simulation_candles_elapsed
-                if hasattr(self, 'simulation_config'):
-                    del self.simulation_config
-                
-                # Actualizar UI
-                # Rehabilitar inicio solo si el streamer sigue conectado
-                start_state = "normal" if getattr(self, 'candle_streamer', None) is not None else "disabled"
-                self.menu_streamer.entryconfig("Iniciar simulación", state=start_state)
-                self.menu_streamer.entryconfig("Detener simulación", state="disabled")
-                self.log("Simulación detenida correctamente", color="green")
-                # Resetear estado visual
-                if hasattr(self, 'label_sim_status'):
-                    try:
-                        self.label_sim_status.configure(text="Estado: Inactivo", fg="gray")
-                    except Exception:
-                        pass
-            else:
-                self.log("No hay ninguna simulación activa", color="orange")
-                
-        except Exception as e:
-            self.log(f"Error al detener la simulación: {str(e)}", color="red")
-            import traceback
-            self.log(traceback.format_exc(), color="red")
-    
     def generar_informe(self):
         """Genera un informe con los datos actuales"""
         self.log("Generando informe...")

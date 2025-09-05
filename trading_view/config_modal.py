@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
 from typing import Optional, Callable, Dict, Any
 
 class CandleStreamerConfigModal:
@@ -16,7 +16,7 @@ class CandleStreamerConfigModal:
         # Configuración de la ventana modal
         self.window = tk.Toplevel(parent)
         self.window.title("Configuración de CandleStreamer")
-        self.window.geometry("300x200")
+        self.window.geometry("300x250")
         self.window.resizable(False, False)
         self.window.grab_set()  # Hace que la ventana sea modal
         
@@ -28,6 +28,7 @@ class CandleStreamerConfigModal:
         self.interval_var = tk.StringVar(value=initial_values.get("interval", "1m") if initial_values else "1m")
         self.max_candles_var = tk.StringVar(value=str(initial_values.get("max_plot", 500)) if initial_values else "500")
         self.symbol_var = tk.StringVar(value=initial_values.get("symbol", "") if initial_values and "symbol" in initial_values else (symbols[0] if symbols else ""))
+        self.initial_money_var = tk.StringVar(value=str(initial_values.get("initial_money", "1000")) if initial_values else "1000")
         
         # Estilo
         style = ttk.Style()
@@ -66,9 +67,18 @@ class CandleStreamerConfigModal:
         )
         self.symbol_combo.grid(row=2, column=1, sticky="w", pady=5, padx=5)
         
+        # Campo para el dinero inicial
+        ttk.Label(main_frame, text="Dinero inicial:").grid(row=3, column=0, sticky="w", pady=5)
+        initial_money_entry = ttk.Entry(
+            main_frame,
+            textvariable=self.initial_money_var,
+            width=15
+        )
+        initial_money_entry.grid(row=3, column=1, sticky="w", pady=5, padx=5)
+        
         # Frame para los botones
         button_frame = ttk.Frame(main_frame)
-        button_frame.grid(row=3, column=0, columnspan=2, pady=20)
+        button_frame.grid(row=4, column=0, columnspan=2, pady=20)
         
         # Botón Cancelar
         cancel_btn = ttk.Button(
@@ -115,10 +125,20 @@ class CandleStreamerConfigModal:
     
     def _on_connect(self):
         """Maneja el evento de clic en el botón Conectar"""
+        try:
+            initial_money = float(self.initial_money_var.get())
+            if initial_money <= 0:
+                messagebox.showerror("Error", "El dinero inicial debe ser un número positivo")
+                return
+        except ValueError:
+            messagebox.showerror("Error", "Por favor ingrese un valor numérico válido para el dinero inicial")
+            return
+            
         config = {
             "interval": self.interval_var.get(),
             "max_plot": int(self.max_candles_var.get()),
-            "symbol": self.symbol_var.get()
+            "symbol": self.symbol_var.get(),
+            "initial_money": initial_money
         }
         self.on_connect(config)
         self.window.destroy()
