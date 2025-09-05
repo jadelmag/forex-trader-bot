@@ -520,9 +520,7 @@ Error aplicando estrategia carry_trade_strategy: ForexStrategies.carry_trade_str
 Error aplicando estrategia hedging_overlay: ForexStrategies.hedging_overlay() missing 1 required positional argument: 'base_signal'
 Error aplicando estrategia martingale_overlay: ForexStrategies.martingale_overlay() missing 1 required positional argument: 'base_signal'
 
-* Detener simulación [TODO]
-* Generar informe [TODO]
+* Generar informe [DOING]
 * Configuración de la aplicacion [TODO]
 * Conectar con Metatrader [TODO]
-
 

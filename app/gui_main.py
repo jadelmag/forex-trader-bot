@@ -286,6 +286,9 @@ class GUIPrincipal:
         self.menu_streamer.add_command(label="Iniciar simulación", command=self.iniciar_simulacion, state="disabled")
         self.menu_streamer.add_command(label="Detener simulación", command=self.detener_simulacion, state="disabled")
         self.menu_streamer.add_separator()
+        self.menu_streamer.add_command(label="Activar Debug", command=lambda: self.toggle_debug_mode(True), state="disabled")
+        self.menu_streamer.add_command(label="Desactivar Debug", command=lambda: self.toggle_debug_mode(False), state="disabled")
+        self.menu_streamer.add_separator()
         self.menu_streamer.add_command(label="Generar informe", command=self.generar_informe, state="normal")
         self.menu_streamer.add_command(label="Configuración", command=self.configuracion, state="normal")
         
@@ -1106,6 +1109,9 @@ class GUIPrincipal:
             self.menu_streamer.entryconfig("Cambiar símbolo/intervalo", state="normal")
             # Al conectar el streamer, permitir iniciar simulación
             self.menu_streamer.entryconfig("Iniciar simulación", state="normal")
+            # Al conectar el streamer, permitir iniciar simulación
+            self.menu_streamer.entryconfig("Activar Debug", state="normal")
+            self.menu_streamer.entryconfig("Desactivar Debug", state="normal")
             
         except Exception as e:
             self.log(f"Error al iniciar CandleStreamer: {str(e)}", color="red")
@@ -1170,6 +1176,8 @@ class GUIPrincipal:
                 self.menu_streamer.entryconfig("Cambiar símbolo/intervalo", state="disabled")
                 self.menu_streamer.entryconfig("Iniciar simulación", state="disabled")
                 self.menu_streamer.entryconfig("Detener simulación", state="disabled")
+                self.menu_streamer.entryconfig("Activar Debug", state="disabled")
+                self.menu_streamer.entryconfig("Desactivar Debug", state="disabled")
                 
                 # Limpiar el frame del gráfico
                 for widget in self.frame_grafico.winfo_children():
