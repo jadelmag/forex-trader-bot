@@ -1698,6 +1698,33 @@ class GUIPrincipal:
                 self.active_orders = []
                 self._sim_started_logged = False  # flag to log start once when wait reaches 0
                 
+                # Configurar el sistema de reports con los parámetros de la simulación
+                try:
+                    from app.reports import set_simulation_config
+                    
+                    # Obtener capital inicial
+                    capital_inicial = float(config.get('capital', 1000.0))
+                    
+                    # Obtener estrategias seleccionadas
+                    estrategias_seleccionadas = []
+                    if config.get('forex_strategies'):
+                        estrategias_seleccionadas.extend(config['forex_strategies'])
+                    if config.get('candle_strategies'):
+                        estrategias_seleccionadas.extend(config['candle_strategies'])
+                    if config.get('patterns'):
+                        estrategias_seleccionadas.extend([f"Patrón: {p}" for p in config['patterns']])
+                    
+                    # Obtener máximo de operaciones simultáneas
+                    max_operaciones = int(config.get('max_orders', 5))
+                    
+                    # Configurar el sistema de reports
+                    set_simulation_config(capital_inicial, estrategias_seleccionadas, max_operaciones)
+                    
+                    self.log(f"📊 Sistema de reports configurado: Capital {capital_inicial}€, {len(estrategias_seleccionadas)} estrategias", color="blue")
+                    
+                except Exception as e:
+                    self.log(f"⚠️ Error configurando sistema de reports: {str(e)}", color="orange")
+                
                 # Update UI
                 self.menu_streamer.entryconfig("Iniciar simulación Binance", state="disabled")
                 self.menu_streamer.entryconfig("Detener simulación Binance", state="normal")
@@ -2120,6 +2147,14 @@ class GUIPrincipal:
                 if hasattr(self, 'simulation_config'):
                     del self.simulation_config
                 
+                # Limpiar sistema de reports para la próxima simulación
+                try:
+                    from app.reports import clear_all_operations
+                    clear_all_operations()
+                    self.log("📊 Sistema de reports limpiado", color="blue")
+                except Exception as e:
+                    self.log(f"⚠️ Error limpiando sistema de reports: {str(e)}", color="orange")
+                
                 # Actualizar UI
                 # Rehabilitar inicio solo si el streamer sigue conectado
                 start_state = "normal" if getattr(self, 'candle_streamer', None) is not None else "disabled"
@@ -2142,8 +2177,24 @@ class GUIPrincipal:
     
     def generar_informe(self):
         """Genera un informe con los datos actuales"""
-        self.log("Generando informe...")
+        try:
+            from app.reports import generate_trading_report
             
+            self.log("Generando informe de trading...")
+            
+            # Generar el informe
+            report_path = generate_trading_report()
+            
+            if report_path:
+                self.log(f"✅ Informe generado exitosamente: {report_path}", color="green")
+            else:
+                self.log("❌ Error al generar el informe", color="red")
+                
+        except Exception as e:
+            self.log(f"❌ Error generando informe: {str(e)}", color="red")
+            import traceback
+            self.log(traceback.format_exc(), color="red")
+
     def configuracion(self):
         """Envía la configuración actual del streamer"""
         self.log("Configuración")

@@ -4,6 +4,12 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
+# Importar sistema de reports
+try:
+    from app.reports import trading_reports
+except ImportError:
+    trading_reports = None
+
 # ---------------- Clase Operacion ----------------
 class Operacion:
     """Clase para representar una operación de trading"""
@@ -149,6 +155,19 @@ class RiskManager:
 
         self.operaciones_activas.append(operacion)
         self.last_error = None
+        
+        # Registrar apertura en el sistema de reports
+        if trading_reports is not None:
+            operation_type = "COMPRA" if tipo == "BUY" else "VENTA"
+            operacion.report_index = trading_reports.add_operation_open(
+                strategy_name=estrategia or "Sin estrategia",
+                operation_type=operation_type,
+                price=precio,
+                take_profit=take_profit,
+                stop_loss=stop_loss,
+                timestamp=timestamp
+            )
+        
         return operacion
 
     # ---------- Cerrar operaciones ----------
@@ -188,6 +207,17 @@ class RiskManager:
                 if operacion.tipo == 'BUY' and operacion.estrategia:
                     self.estrategias_buy_activa_notificadas.discard(operacion.estrategia)
 
+                # Registrar cierre en el sistema de reports
+                if trading_reports is not None and hasattr(operacion, 'report_index'):
+                    close_reason = "TAKE PROFIT" if precio_cierre == operacion.take_profit else "STOP LOSS"
+                    trading_reports.add_operation_close(
+                        operation_index=operacion.report_index,
+                        close_price=precio_cierre,
+                        close_reason=close_reason,
+                        profit_loss=profit,
+                        timestamp=timestamp
+                    )
+
                 operaciones_cerradas.append(operacion)
                 self.operaciones_cerradas.append(operacion)
 
@@ -215,6 +245,16 @@ class RiskManager:
                 if operacion.tipo == 'BUY' and operacion.estrategia:
                     self.estrategias_buy_activa_notificadas.discard(operacion.estrategia)
 
+                # Registrar cierre por estrategia en el sistema de reports
+                if trading_reports is not None and hasattr(operacion, 'report_index'):
+                    trading_reports.add_operation_close(
+                        operation_index=operacion.report_index,
+                        close_price=precio_cierre,
+                        close_reason=f"CIERRE POR ESTRATEGIA ({motivo})",
+                        profit_loss=profit,
+                        timestamp=timestamp
+                    )
+
                 operacion.motivo_cierre = motivo
                 operaciones_cerradas.append(operacion)
                 self.operaciones_cerradas.append(operacion)
@@ -240,6 +280,16 @@ class RiskManager:
 
                 if operacion.tipo == 'BUY' and operacion.estrategia:
                     self.estrategias_buy_activa_notificadas.discard(operacion.estrategia)
+
+                # Registrar cierre manual en el sistema de reports
+                if trading_reports is not None and hasattr(operacion, 'report_index'):
+                    trading_reports.add_operation_close(
+                        operation_index=operacion.report_index,
+                        close_price=precio_cierre,
+                        close_reason="CIERRE MANUAL",
+                        profit_loss=profit,
+                        timestamp=timestamp
+                    )
 
                 self.operaciones_cerradas.append(operacion)
                 self.operaciones_activas.remove(operacion)
