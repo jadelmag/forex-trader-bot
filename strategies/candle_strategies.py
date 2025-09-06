@@ -81,11 +81,11 @@ class CandleStrategies:
         trailing_stop = 0
         
         for i in range(len(df)):
-            current_signal = df.loc[df.index[i], 'Signal']
-            current_price = df.loc[df.index[i], 'Close']
-            current_high = df.loc[df.index[i], 'High']
-            current_low = df.loc[df.index[i], 'Low']
-            current_atr = df.loc[df.index[i], 'ATR']
+            current_signal = df.iloc[i]['Signal']
+            current_price = df.iloc[i]['Close']
+            current_high = df.iloc[i]['High']
+            current_low = df.iloc[i]['Low']
+            current_atr = df.iloc[i]['ATR']
             
             # Verificar cierres si hay posición abierta
             if position != 0:
@@ -132,8 +132,8 @@ class CandleStrategies:
                 
                 # Aplicar cierre
                 if exit_signal != 0:
-                    df.loc[df.index[i], 'ExecSignal'] = exit_signal
-                    df.loc[df.index[i], 'ExitReason'] = exit_reason
+                    df.iloc[i, df.columns.get_loc('ExecSignal')] = exit_signal
+                    df.iloc[i, df.columns.get_loc('ExitReason')] = exit_reason
                     position = 0
                     entry_price = 0
                     stop_loss = 0
@@ -142,7 +142,7 @@ class CandleStrategies:
             
             # Verificar nuevas entradas
             if position == 0 and current_signal != 0:
-                df.loc[df.index[i], 'ExecSignal'] = current_signal
+                df.iloc[i, df.columns.get_loc('ExecSignal')] = current_signal
                 position = current_signal
                 entry_price = current_price
                 
@@ -158,11 +158,11 @@ class CandleStrategies:
                     if config.use_trailing_stop:
                         trailing_stop = entry_price + (current_atr * config.atr_trailing_multiplier)
                 
-                df.loc[df.index[i], 'StopLoss'] = stop_loss
-                df.loc[df.index[i], 'TakeProfit'] = take_profit
+                df.iloc[i, df.columns.get_loc('StopLoss')] = stop_loss
+                df.iloc[i, df.columns.get_loc('TakeProfit')] = take_profit
             
             # Actualizar posición actual
-            df.loc[df.index[i], 'Position'] = position
+            df.iloc[i, df.columns.get_loc('Position')] = position
         
         return df
 
