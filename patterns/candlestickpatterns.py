@@ -13,7 +13,11 @@ class CandlestickPatterns:
     # ---------------- Single Candles ----------------
     def doji(self):
         df = self.data.copy()
-        df['Signal'] = np.where(abs(df['Close'] - df['Open']) <= (df['High'] - df['Low'])*0.1, 0, 0)
+        # Doji: body is very small relative to total range
+        body = abs(df['Close'] - df['Open'])
+        total_range = df['High'] - df['Low']
+        df['Signal'] = np.where(
+            (body <= total_range * 0.1) & (total_range > 0), 1, 0)
         return df
 
     def hammer(self):
@@ -41,7 +45,16 @@ class CandlestickPatterns:
 
     def spinning_top(self):
         df = self.data.copy()
-        df['Signal'] = np.where(abs(df['Close'] - df['Open']) <= (df['High'] - df['Low'])*0.3, 0, 0)
+        # Spinning top: small body with long shadows on both sides
+        body = abs(df['Close'] - df['Open'])
+        total_range = df['High'] - df['Low']
+        upper_shadow = df['High'] - df[['Open','Close']].max(axis=1)
+        lower_shadow = df[['Open','Close']].min(axis=1) - df['Low']
+        df['Signal'] = np.where(
+            (body <= total_range * 0.3) & 
+            (upper_shadow >= body) & 
+            (lower_shadow >= body) & 
+            (total_range > 0), 1, 0)
         return df
 
     def inverted_hammer(self):
@@ -75,46 +88,56 @@ class CandlestickPatterns:
     def piercing_line(self):
         df = self.data.copy()
         df['Signal'] = np.where(
-            (df['Close'].shift(1) < df['Open'].shift(1)) &
-            (df['Close'] > (df['Open'].shift(1) + df['Close'].shift(1))/2) &
-            (df['Open'] < df['Close'].shift(1)), 1, 0)
+            (df['Close'].shift(1) < df['Open'].shift(1)) &  # Previous candle bearish
+            (df['Close'] > df['Open']) &  # Current candle bullish
+            (df['Open'] < df['Close'].shift(1)) &  # Opens below previous close
+            (df['Close'] > (df['Open'].shift(1) + df['Close'].shift(1))/2), 1, 0)  # Closes above midpoint
         return df
 
     def dark_cloud_cover(self):
         df = self.data.copy()
         df['Signal'] = np.where(
-            (df['Close'].shift(1) > df['Open'].shift(1)) &
-            (df['Close'] < (df['Open'].shift(1) + df['Close'].shift(1))/2) &
-            (df['Open'] > df['Close'].shift(1)), -1, 0)
+            (df['Close'].shift(1) > df['Open'].shift(1)) &  # Previous candle bullish
+            (df['Close'] < df['Open']) &  # Current candle bearish
+            (df['Open'] > df['Close'].shift(1)) &  # Opens above previous close
+            (df['Close'] < (df['Open'].shift(1) + df['Close'].shift(1))/2), -1, 0)  # Closes below midpoint
         return df
 
     def tweezer_top(self):
         df = self.data.copy()
+        # Tweezer top: two candles with similar highs after uptrend
+        similar_highs = abs(df['High'] - df['High'].shift(1)) <= (df['High'] + df['High'].shift(1)) * 0.001
+        uptrend = df['Close'].shift(2) < df['Close'].shift(1)  # Simple uptrend check
         df['Signal'] = np.where(
-            (df['High'].shift(1).round(5) == df['High'].round(5)), -1, 0)
+            similar_highs & uptrend, -1, 0)
         return df
 
     def tweezer_bottom(self):
         df = self.data.copy()
+        # Tweezer bottom: two candles with similar lows after downtrend
+        similar_lows = abs(df['Low'] - df['Low'].shift(1)) <= (df['Low'] + df['Low'].shift(1)) * 0.001
+        downtrend = df['Close'].shift(2) > df['Close'].shift(1)  # Simple downtrend check
         df['Signal'] = np.where(
-            (df['Low'].shift(1).round(5) == df['Low'].round(5)), 1, 0)
+            similar_lows & downtrend, 1, 0)
         return df
 
     # ---------------- Triple Candles ----------------
     def morning_star(self):
         df = self.data.copy()
         df['Signal'] = np.where(
-            (df['Close'].shift(2) < df['Open'].shift(2)) &
-            (abs(df['Close'].shift(1) - df['Open'].shift(1)) < abs(df['Close'].shift(2) - df['Open'].shift(2))/2) &
-            (df['Close'] > df['Open'].shift(1)), 1, 0)
+            (df['Close'].shift(2) < df['Open'].shift(2)) &  # First candle bearish
+            (abs(df['Close'].shift(1) - df['Open'].shift(1)) < abs(df['Close'].shift(2) - df['Open'].shift(2))/2) &  # Middle candle small
+            (df['Close'] > df['Open']) &  # Current candle bullish
+            (df['Close'] > df['Open'].shift(1)), 1, 0)  # Closes above middle candle open
         return df
 
     def evening_star(self):
         df = self.data.copy()
         df['Signal'] = np.where(
-            (df['Close'].shift(2) > df['Open'].shift(2)) &
-            (abs(df['Close'].shift(1) - df['Open'].shift(1)) < abs(df['Close'].shift(2) - df['Open'].shift(2))/2) &
-            (df['Close'] < df['Open'].shift(1)), -1, 0)
+            (df['Close'].shift(2) > df['Open'].shift(2)) &  # First candle bullish
+            (abs(df['Close'].shift(1) - df['Open'].shift(1)) < abs(df['Close'].shift(2) - df['Open'].shift(2))/2) &  # Middle candle small
+            (df['Close'] < df['Open']) &  # Current candle bearish
+            (df['Close'] < df['Open'].shift(1)), -1, 0)  # Closes below middle candle open
         return df
 
     def three_white_soldiers(self):
@@ -176,10 +199,10 @@ class CandlestickPatterns:
     def three_black_crows(self):
         df = self.data.copy()
         cond = (
-            (df['Close'].shift(2) > df['Open'].shift(2)) &
-            (df['Close'].shift(1) < df['Open'].shift(1)) &
-            (df['Close'] < df['Open']) &
-            (df['Close'] < df['Close'].shift(1)) &
+            (df['Close'].shift(2) < df['Open'].shift(2)) &  # First candle bearish
+            (df['Close'].shift(1) < df['Open'].shift(1)) &  # Second candle bearish
+            (df['Close'] < df['Open']) &  # Third candle bearish
+            (df['Close'] < df['Close'].shift(1)) &  # Each closes lower
             (df['Close'].shift(1) < df['Close'].shift(2))
         )
         df['Signal'] = np.where(cond, -1, 0)
@@ -188,9 +211,12 @@ class CandlestickPatterns:
     def three_inside_up(self):
         df = self.data.copy()
         cond = (
-            (df['Close'].shift(2) < df['Open'].shift(2)) &
-            (df['Close'].shift(1) > df['Open'].shift(1)) &
-            (df['Close'] > df['Open'].shift(2))
+            (df['Close'].shift(2) < df['Open'].shift(2)) &  # First candle bearish
+            (df['Close'].shift(1) > df['Open'].shift(1)) &  # Second candle bullish
+            (df['Open'].shift(1) > df['Close'].shift(2)) &  # Second opens above first close
+            (df['Close'].shift(1) < df['Open'].shift(2)) &  # Second closes below first open (inside)
+            (df['Close'] > df['Open']) &  # Third candle bullish
+            (df['Close'] > df['Close'].shift(1))  # Third closes higher than second
         )
         df['Signal'] = np.where(cond, 1, 0)
         return df
@@ -198,33 +224,56 @@ class CandlestickPatterns:
     def three_inside_down(self):
         df = self.data.copy()
         cond = (
-            (df['Close'].shift(2) > df['Open'].shift(2)) &
-            (df['Close'].shift(1) < df['Open'].shift(1)) &
-            (df['Close'] < df['Open'].shift(2))
+            (df['Close'].shift(2) > df['Open'].shift(2)) &  # First candle bullish
+            (df['Close'].shift(1) < df['Open'].shift(1)) &  # Second candle bearish
+            (df['Open'].shift(1) < df['Close'].shift(2)) &  # Second opens below first close
+            (df['Close'].shift(1) > df['Open'].shift(2)) &  # Second closes above first open (inside)
+            (df['Close'] < df['Open']) &  # Third candle bearish
+            (df['Close'] < df['Close'].shift(1))  # Third closes lower than second
         )
         df['Signal'] = np.where(cond, -1, 0)
-        return df[['Open','High','Low','Close','Signal']]
+        return df
 
     def rising_three_methods(self):
         df = self.data.copy()
+        # Rising three methods: long bullish + 3 small bearish + long bullish
         cond = (
-            (df['Close'].shift(4) < df['Open'].shift(4)) &
-            (df['Close'].shift(3) < df['Open'].shift(3)) &
-            (df['Close'].shift(2) < df['Open'].shift(2)) &
-            (df['Close'].shift(1) < df['Open'].shift(1)) &
-            (df['Close'] > df['Open'].shift(4))
+            (df['Close'].shift(4) > df['Open'].shift(4)) &  # First: long bullish
+            (df['Close'].shift(3) < df['Open'].shift(3)) &  # Second: small bearish
+            (df['Close'].shift(2) < df['Open'].shift(2)) &  # Third: small bearish
+            (df['Close'].shift(1) < df['Open'].shift(1)) &  # Fourth: small bearish
+            (df['Close'] > df['Open']) &  # Fifth: bullish
+            # Small candles stay within first candle's range
+            (df['High'].shift(3) < df['High'].shift(4)) &
+            (df['High'].shift(2) < df['High'].shift(4)) &
+            (df['High'].shift(1) < df['High'].shift(4)) &
+            (df['Low'].shift(3) > df['Low'].shift(4)) &
+            (df['Low'].shift(2) > df['Low'].shift(4)) &
+            (df['Low'].shift(1) > df['Low'].shift(4)) &
+            # Final candle closes above first candle's high
+            (df['Close'] > df['High'].shift(4))
         )
         df['Signal'] = np.where(cond, 1, 0)
         return df
 
     def falling_three_methods(self):
         df = self.data.copy()
+        # Falling three methods: long bearish + 3 small bullish + long bearish
         cond = (
-            (df['Close'].shift(4) > df['Open'].shift(4)) &
-            (df['Close'].shift(3) > df['Open'].shift(3)) &
-            (df['Close'].shift(2) > df['Open'].shift(2)) &
-            (df['Close'].shift(1) > df['Open'].shift(1)) &
-            (df['Close'] < df['Open'].shift(4))
+            (df['Close'].shift(4) < df['Open'].shift(4)) &  # First: long bearish
+            (df['Close'].shift(3) > df['Open'].shift(3)) &  # Second: small bullish
+            (df['Close'].shift(2) > df['Open'].shift(2)) &  # Third: small bullish
+            (df['Close'].shift(1) > df['Open'].shift(1)) &  # Fourth: small bullish
+            (df['Close'] < df['Open']) &  # Fifth: bearish
+            # Small candles stay within first candle's range
+            (df['High'].shift(3) < df['High'].shift(4)) &
+            (df['High'].shift(2) < df['High'].shift(4)) &
+            (df['High'].shift(1) < df['High'].shift(4)) &
+            (df['Low'].shift(3) > df['Low'].shift(4)) &
+            (df['Low'].shift(2) > df['Low'].shift(4)) &
+            (df['Low'].shift(1) > df['Low'].shift(4)) &
+            # Final candle closes below first candle's low
+            (df['Close'] < df['Low'].shift(4))
         )
         df['Signal'] = np.where(cond, -1, 0)
         return df

@@ -26,7 +26,9 @@ forex-trader-bot/
 │
 |
 ├─ app/                     # Paquete principal
-│ ├─ __init__.py            # Inicializa el paquete, importa Window
+│ ├─ __init__.py            # Inicializa el paquete
+│ ├─ __main__.py            # Punto de entrada para python -m app
+│ ├─ test_runner.py         # PRunner que ejecuta todos los tests
 │ ├─ candlestick_chart.py   # Clase CandlestickChart, dibuja velas de CSV o yfinance
 │ ├─ ai_training_modal.py   # Clase AITrainingModal, permite entrenar IA
 │ ├─ csv_loader_modal.py    # Clase CSVLoaderModal, permite cargar CSVs
@@ -89,6 +91,11 @@ forex-trader-bot/
 │ │ └─ EURUSDT_data.csv     # Fichero CSV de Trading View
 │ ├─ candle_streamer.py     # Fichero de Trading View
 │ └─ config_modal.py        # Modal de configuración de CandleStreamer
+|
+├─ test/
+│ ├─ __init__.py                    # Inicializa el paquete
+│ ├─ test_candle_strategies.py      # Test simple de estrategias de velas
+│ └─ verify_candle_strategies.py    # Test de estrategias de velas
 |
 ├─ .gitignore               # Fichero .gitignore
 ├─ csv_parser.py            # Script para convertir CSV crudos de Dukascopy al formato estándar
@@ -197,7 +204,31 @@ python -m app.main
 
 > Esto abrirá la interfaz gráfica de Tkinter.
 
---
+---
+
+## Comandos
+
+#### Lanzar la aplicación principal
+```bash
+python -m app run
+```
+
+#### Lanzar la aplicación principal (alias)
+```bash
+python -m app start
+```
+
+#### Ejecutar todos los tests
+```bash
+python -m app test
+```
+
+#### Ver ayuda
+```bash
+python -m app help
+```
+
+---
 
 ## Uso básico
 
@@ -425,7 +456,6 @@ Estrategia basada en el oscilador estocástico que identifica condiciones de sob
 Variante avanzada que utiliza múltiples configuraciones del oscilador estocástico (rápido y lento) junto con divergencias para identificar posibles puntos de reversión del mercado.
 
 
-
 ---
 
 ## Ficheros CSV - FX-1-Minute-Data
@@ -515,6 +545,9 @@ Commons Clause + Apache/MIT
 ## En proceso
 
 * Abrir operacion cuando se cumplan las condiciones de una estrategia, se detecte el patron de velas (candlestick patterns) y se detecten las condiciones de lose patrones de velas 
+    - 1. se esta utilizando strategies/strategies.py para detectar estrategias forex y abrir operaciones de compra y de venta para estas estrategias? [NO]
+    - 2. se esta utilizando strategies/candle_strategies.py para detectar y aplicar dichas estrategias y abrir y cerrar operacion con esas estrategias? [YES]
+    - 3. se esta utilizando patterns/candlestickpatterns.py para detectar y aplicar dichas estrategias y abrir y cerrar operacion con esas estrategias? [YES]
 * Cerrar operacion cuando se cumplan las condiciones de una estrategia [DONE]
 * Implementar que como minimo puedas tener 100$
     - Si no tienes dinero suficiente para abrir una operación, no se debe abrir y se debe mostrar un mensaje de alerta en amarillo diciendo operacion saltada 
