@@ -48,6 +48,13 @@ class CandleStreamer:
         self.ws = None
         self.thread = None
         self.running = False
+        
+        # WebSocket reconnection parameters
+        self.reconnect_attempts = 0
+        self.max_reconnect_attempts = 10
+        self.reconnect_delay = 1  # Initial delay in seconds
+        self.max_reconnect_delay = 300  # Maximum delay (5 minutes)
+        self.reconnect_thread = None
 
         # DataFrame inicial con DatetimeIndex
         self.df = pd.DataFrame(columns=["Open", "High", "Low", "Close", "Volume"])
@@ -898,6 +905,13 @@ class CandleStreamer:
         }
         ws.send(json.dumps(payload))
 
+    def _reconnect(self):
+        self.reconnect_attempts += 1
+        delay = min(self.reconnect_delay * (2 ** (self.reconnect_attempts - 1)), self.max_reconnect_delay)
+        self._log(f"Intentando reconectar en {delay} segundos...", 'yellow')
+        self.reconnect_thread = threading.Timer(delay, self.start)
+        self.reconnect_thread.start()
+
     def start(self):
         """Inicia el stream de velas"""
         self.running = True
@@ -914,12 +928,13 @@ class CandleStreamer:
             on_close=self._on_close,
             on_open=self._on_open
         )
-        self.thread = threading.Thread(target=self.ws.run_forever)
-        self.thread.daemon = True
-        self.thread.start()
-        # Evitar bloquear la GUI Tkinter si estamos embebidos
-        if not (hasattr(self, 'parent_frame') and self.parent_frame):
-            plt.show(block=False)
+        self.ws.run_forever(ping_interval=20, ping_timeout=10)
+
+        if self.reconnect_attempts < self.max_reconnect_attempts:
+            self._reconnect()
+        else:
+            self._log("Máximo número de reintentos alcanzado. Deteniendo el stream.", 'red')
+            self.stop()
 
     def stop(self):
         """Detiene el stream de velas y limpia los recursos"""

@@ -563,25 +563,15 @@ Ve a 👉 https://my.telegram.org
 Commons Clause + Apache/MIT
 
 
-## En proceso
-
-<!-- * Abrir operacion cuando se cumplan las condiciones de una estrategia, se detecte el patron de velas (candlestick patterns) y se detecten las condiciones de lose patrones de velas 
-    - 1. se esta utilizando strategies/strategies.py para detectar estrategias forex y abrir operaciones de compra y de venta para estas estrategias? [NO]
-    - 2. se esta utilizando strategies/candle_strategies.py para detectar y aplicar dichas estrategias y abrir y cerrar operacion con esas estrategias? [YES]
-    - 3. se esta utilizando patterns/candlestickpatterns.py para detectar y aplicar dichas estrategias y abrir y cerrar operacion con esas estrategias? [YES]
-* Cerrar operacion cuando se cumplan las condiciones de una estrategia [DONE]
-* Implementar que como minimo puedas tener 100$
-    - Si no tienes dinero suficiente para abrir una operación, no se debe abrir y se debe mostrar un mensaje de alerta en amarillo diciendo operacion saltada 
-* Actualizar dinero cuando se abre una posición [DONE]
-    - Cuando se realiza una compra se debe actualizar el dinero disponible tanto si sube como si baja más del valor desde que se compro
-    - Cuando la orden se cierra, esa operación deja de actualizar sobre el dinero disponible. Si es positiva se suma a beneficios y si es negativa se suma a pérdidas 
-* Numero de operaciones abiertas: [TODO]
-    - 2/6 partes serán para operaciones de estrategias forex
-    - 2/6 partes serán para operaciones de candle strategies
-    - 2/6 partes serán para operaciones de candlestick patterns  -->
+## TODO
+----
+* Optimizar las estrategias [TODO]
+* Arreglar error de reconexion [TODO]
 * Arreglar hover sobre la grafica de candle streamer [TODO]
 * Arreglar hover, zoom, pan, scroll sobre la grafica de datos cargados por csv o pkl [TODO]
 * Generar informe [TODO]
 * Configuración de la aplicacion [TODO]
 * Conectar con Metatrader [TODO]
+
+
 
