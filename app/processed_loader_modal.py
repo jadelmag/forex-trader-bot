@@ -115,10 +115,10 @@ class ProcessedDataModal(tk.Toplevel):
         # Botones
         btns = ttk.Frame(container)
         btns.pack(fill="x", pady=(14, 0))
-        self.btn_cancel = ttk.Button(btns, text="Cancelar", command=self._on_cancel)
-        self.btn_cancel.pack(side="right")
         self.btn_accept = ttk.Button(btns, text="Aceptar", command=self._on_accept, state="disabled")
         self.btn_accept.pack(side="right", padx=(0,8))
+        self.btn_cancel = ttk.Button(btns, text="Cancelar", command=self._on_cancel)
+        self.btn_cancel.pack(side="right")
 
         centrar_ventana(self, parent)
 

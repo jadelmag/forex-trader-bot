@@ -584,7 +584,7 @@ class GUIPrincipal:
 
         # Abrir modal con las estrategias
         EstrategiasModal(
-            self.root,
+            self,
             estrategias_fx=sorted(fx_methods),
             estrategias_candle=sorted(candle_methods),
             callback=self._on_estrategias_seleccionadas
@@ -1729,7 +1729,7 @@ class GUIPrincipal:
             
             # Show the modal
             EstrategiasModal(
-                self.root,
+                self,
                 estrategias_fx=estrategias_fx,
                 estrategias_candle=estrategias_candle,
                 callback=on_simulation_config

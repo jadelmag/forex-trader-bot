@@ -544,7 +544,7 @@ Commons Clause + Apache/MIT
 
 ## En proceso
 
-* Abrir operacion cuando se cumplan las condiciones de una estrategia, se detecte el patron de velas (candlestick patterns) y se detecten las condiciones de lose patrones de velas 
+<!-- * Abrir operacion cuando se cumplan las condiciones de una estrategia, se detecte el patron de velas (candlestick patterns) y se detecten las condiciones de lose patrones de velas 
     - 1. se esta utilizando strategies/strategies.py para detectar estrategias forex y abrir operaciones de compra y de venta para estas estrategias? [NO]
     - 2. se esta utilizando strategies/candle_strategies.py para detectar y aplicar dichas estrategias y abrir y cerrar operacion con esas estrategias? [YES]
     - 3. se esta utilizando patterns/candlestickpatterns.py para detectar y aplicar dichas estrategias y abrir y cerrar operacion con esas estrategias? [YES]
@@ -557,7 +557,7 @@ Commons Clause + Apache/MIT
 * Numero de operaciones abiertas: [TODO]
     - 2/6 partes serán para operaciones de estrategias forex
     - 2/6 partes serán para operaciones de candle strategies
-    - 2/6 partes serán para operaciones de candlestick patterns 
+    - 2/6 partes serán para operaciones de candlestick patterns  -->
 * Arreglar hover sobre la grafica de candle streamer [TODO]
 * Arreglar hover, zoom, pan, scroll sobre la grafica de datos cargados por csv o pkl [TODO]
 * Generar informe [TODO]

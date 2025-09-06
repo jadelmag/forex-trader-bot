@@ -1,13 +1,24 @@
 # app/strategies_modal.py
 
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
 import re
+import threading
+import pandas as pd
 from strategies.strategy_utils import resolve_strategy_name
+from strategies.strategies import ForexStrategies
+from strategies.candle_strategies import CandleStrategies
+from strategies.risk_manager import RiskManager, RiskManagerIntegration
 
 class EstrategiasModal(tk.Toplevel):
     def __init__(self, parent, estrategias_fx, estrategias_candle, callback, patrones_list=None):
-        super().__init__(parent)
+        # Si parent es GUIPrincipal, usar su root como parent de Tkinter
+        if hasattr(parent, 'root'):
+            super().__init__(parent.root)
+            self.gui_parent = parent  # Referencia a GUIPrincipal para acceder a datos
+        else:
+            super().__init__(parent)
+            self.gui_parent = parent
         self.parent = parent
         self.callback = callback
         self.title("Seleccionar Estrategias")
@@ -22,8 +33,10 @@ class EstrategiasModal(tk.Toplevel):
         w = 550
         # Altura total del modal: área de lista (400) + controles inferiores
         h_total = 500
-        x = parent.winfo_rootx() + (parent.winfo_width() - w) // 2
-        y = parent.winfo_rooty() + (parent.winfo_height() - h_total) // 2
+        # Usar gui_parent.root para obtener coordenadas si es necesario
+        parent_widget = self.gui_parent.root if hasattr(self.gui_parent, 'root') else self.gui_parent
+        x = parent_widget.winfo_rootx() + (parent_widget.winfo_width() - w) // 2
+        y = parent_widget.winfo_rooty() + (parent_widget.winfo_height() - h_total) // 2
         self.geometry(f"{w}x{h_total}+{x}+{y}")
 
         # Frame principal con scrollbar
@@ -306,15 +319,38 @@ class EstrategiasModal(tk.Toplevel):
         self.entry_max_orders = tk.Entry(frame_max, textvariable=self.max_orders_var, width=5)
         self.entry_max_orders.pack(side="left")
 
+        # Barra de progreso (inicialmente oculta)
+        self.progress_frame = tk.Frame(self, bg="white", relief="solid", bd=1)
+        
+        # Título de la barra de progreso
+        self.progress_title = ttk.Label(self.progress_frame, text="Progreso de Simulación", 
+                                       font=("Arial", 10, "bold"))
+        self.progress_title.pack(pady=(10, 5))
+        
+        # Barra de progreso más visible
+        self.progress = ttk.Progressbar(self.progress_frame, orient="horizontal", 
+                                       mode="determinate", length=450, style="TProgressbar")
+        self.progress.pack(fill="x", padx=15, pady=5)
+        
+        # Etiqueta de porcentaje más prominente
+        self.progress_label = ttk.Label(self.progress_frame, text="0%", 
+                                       font=("Arial", 11, "bold"))
+        self.progress_label.pack(pady=(5, 10))
+        
         # Botones Cancelar y Aceptar
-        frame_btn = tk.Frame(self)
-        frame_btn.pack(pady=10)
-        btn_cancelar = ttk.Button(frame_btn, text="Cancelar", command=self.destroy)
-        btn_cancelar.pack(side="left", padx=10)
-        btn_aceptar = ttk.Button(frame_btn, text="Aceptar", command=self._aceptar)
-        btn_aceptar.pack(side="left", padx=10)
+        self.frame_btn = tk.Frame(self)
+        self.frame_btn.pack(pady=10)
+        self.btn_cancelar = ttk.Button(self.frame_btn, text="Cancelar", command=self.destroy)
+        self.btn_cancelar.pack(side="left", padx=10)
+        self.btn_aceptar = ttk.Button(self.frame_btn, text="Aceptar", command=self._aceptar)
+        self.btn_aceptar.pack(side="left", padx=10)
+        
+        # Variables para el threading
+        self.simulation_thread = None
+        self.is_running = False
 
     def _aceptar(self):
+        """Iniciar simulación continua de estrategias"""
         seleccion = {}
         for nombre, ctrl in self.controls.items():
             if ctrl["selected"].get():
@@ -330,6 +366,24 @@ class EstrategiasModal(tk.Toplevel):
                     # Para Candle Strategies: solo marcar como seleccionada
                     if ctrl["tipo"] == "candle":
                         seleccion[nombre] = {"tipo": "candle"}
+        
+        if not seleccion:
+            messagebox.showwarning("Atención", "Seleccione al menos una estrategia")
+            return
+        
+        # Obtener datos del gui_parent
+        if not hasattr(self.gui_parent, 'df_actual'):
+            messagebox.showerror("Error", "La GUI principal no tiene atributo df_actual")
+            return
+        
+        if self.gui_parent.df_actual is None:
+            messagebox.showerror("Error", "No hay datos cargados para simular. Cargue primero un archivo CSV.")
+            return
+        
+        if len(self.gui_parent.df_actual) == 0:
+            messagebox.showerror("Error", "Los datos están vacíos. Cargue un archivo CSV válido.")
+            return
+        
         # Añadir max_orders y opciones de visualización al resultado
         try:
             max_orders = int(self.max_orders_var.get())
@@ -341,9 +395,377 @@ class EstrategiasModal(tk.Toplevel):
             "mostrar_simulacion": bool(self.var_mostrar_simulacion.get())
         }
 
-        self.destroy()
-        if self.callback:
-            self.callback(seleccion, max_orders, opciones)
+        # Mostrar barra de progreso ANTES de los botones para mejor visibilidad
+        self.progress_frame.pack(before=self.frame_btn, pady=15, padx=10, fill="x")
+        self.progress.config(maximum=100, value=0)
+        self.progress_label.config(text="Iniciando simulación... (0.0%)", foreground="blue")
+        
+        # Deshabilitar botones
+        self.btn_aceptar.config(state="disabled")
+        self.btn_cancelar.config(text="Cancelar", command=self._cancel_simulation)
+        
+        # Forzar múltiples actualizaciones para garantizar visibilidad
+        self.progress_frame.update_idletasks()
+        self.progress_frame.update()
+        self.update_idletasks()
+        self.update()
+        
+        # Redimensionar ventana si es necesario
+        self.geometry("")
+        
+        # Pausa más larga para asegurar visibilidad completa
+        import time
+        time.sleep(0.2)
+        
+        # Iniciar simulación en hilo separado
+        self.is_running = True
+        self.simulation_thread = threading.Thread(
+            target=self._run_continuous_simulation,
+            args=(seleccion, max_orders, opciones),
+            daemon=True
+        )
+        self.simulation_thread.start()
+
+    def _cancel_simulation(self):
+        """Cancelar la simulación en curso"""
+        self.is_running = False
+        if self.simulation_thread and self.simulation_thread.is_alive():
+            # Esperar un poco para que el hilo termine
+            self.after(100, self._check_thread_finished)
+        else:
+            self.destroy()
+
+    def _check_thread_finished(self):
+        """Verificar si el hilo ha terminado"""
+        if self.simulation_thread and self.simulation_thread.is_alive():
+            self.after(100, self._check_thread_finished)
+        else:
+            self.destroy()
+
+    def _update_progress(self, value, text=""):
+        """Actualizar la barra de progreso desde el hilo de simulación"""
+        def update():
+            try:
+                if hasattr(self, 'progress') and self.progress.winfo_exists():
+                    # Asegurar que el frame esté visible
+                    if not self.progress_frame.winfo_viewable():
+                        self.progress_frame.pack(before=self.frame_btn, pady=15, padx=10, fill="x")
+                    
+                    self.progress['value'] = value
+                    
+                    # Formatear el texto con porcentaje más visible
+                    if text:
+                        display_text = f"{text} ({value:.1f}%)"
+                    else:
+                        display_text = f"Progreso: {value:.1f}%"
+                    
+                    # Cambiar color según el progreso
+                    if value < 30:
+                        color = "blue"
+                    elif value < 70:
+                        color = "orange"
+                    else:
+                        color = "green"
+                    
+                    self.progress_label.config(text=display_text, foreground=color)
+                    
+                    # Forzar actualización visual agresiva
+                    try:
+                        self.progress_frame.update_idletasks()
+                        self.progress_frame.update()
+                        self.update_idletasks()
+                        self.update()
+                        # Forzar repaint de la ventana
+                        self.wm_attributes('-topmost', True)
+                        self.wm_attributes('-topmost', False)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        
+        self.after(0, update)
+
+    def _run_continuous_simulation(self, seleccion, max_orders, opciones):
+        """Ejecutar simulación continua de estrategias en hilo separado"""
+        try:
+            # Obtener datos
+            df = self.gui_parent.df_actual.copy()
+            
+            # Configurar Risk Manager
+            capital_inicial = getattr(self.gui_parent, 'dinero_ficticio', 10000)
+            try:
+                capital_inicial = float(capital_inicial)
+            except (ValueError, TypeError):
+                capital_inicial = 10000
+            
+            if capital_inicial <= 100:
+                capital_inicial = 10000
+            
+            risk_manager = RiskManager(capital_inicial=capital_inicial, max_operaciones_activas=max_orders)
+            risk_integration = RiskManagerIntegration(risk_manager, None)
+            risk_manager.reset()
+
+            # Log inicio
+            self._log_to_parent("============================================================", 'cyan')
+            self._log_to_parent("INICIANDO SIMULACIÓN CONTINUA DE ESTRATEGIAS", 'cyan')
+            self._log_to_parent("============================================================", 'cyan')
+            self._log_to_parent(f"Capital inicial: ${capital_inicial:,.2f}", 'white')
+            self._log_to_parent(f"Estrategias seleccionadas: {len(seleccion)}", 'white')
+            self._log_to_parent(f"Máximo de operaciones simultáneas: {max_orders}", 'white')
+
+            # Mostrar progreso inicial inmediatamente
+            self._update_progress(5, "Iniciando simulación...")
+            
+            # Pre-calcular todas las estrategias
+            self._update_progress(10, "Pre-calculando estrategias...")
+            
+            forex_signals = {}
+            candle_signals = {}
+            
+            # Pre-calcular estrategias Forex
+            forex_strategies = ForexStrategies(df)
+            for i, (nombre, config) in enumerate([item for item in seleccion.items() if item[1]["tipo"] == "forex"]):
+                if not self.is_running:
+                    return
+                    
+                try:
+                    strategy_method = getattr(forex_strategies, nombre, None)
+                    if strategy_method and callable(strategy_method):
+                        df_result = strategy_method()
+                        if 'ExecSignal' in df_result.columns:
+                            forex_signals[nombre] = {
+                                'signals': df_result['ExecSignal'].fillna(0),
+                                'config': config
+                            }
+                        
+                        progress = 10 + (i + 1) / len([item for item in seleccion.items() if item[1]["tipo"] == "forex"]) * 10
+                        self._update_progress(progress, f"Pre-calculando Forex: {nombre}")
+                        
+                except Exception as e:
+                    self._log_to_parent(f"Error pre-calculando {nombre}: {str(e)}", 'red')
+                    continue
+
+            # Pre-calcular estrategias Candle
+            candle_strategies = CandleStrategies(df)
+            for i, (nombre, config) in enumerate([item for item in seleccion.items() if item[1]["tipo"] == "candle"]):
+                if not self.is_running:
+                    return
+                    
+                try:
+                    strategy_method = getattr(candle_strategies, nombre, None)
+                    if strategy_method and callable(strategy_method):
+                        df_result = strategy_method()
+                        if 'ExecSignal' in df_result.columns:
+                            candle_signals[nombre] = {
+                                'signals': df_result['ExecSignal'].fillna(0),
+                                'config': config
+                            }
+                        
+                        progress = 20 + (i + 1) / len([item for item in seleccion.items() if item[1]["tipo"] == "candle"]) * 10
+                        self._update_progress(progress, f"Pre-calculando Candle: {nombre}")
+                        
+                except Exception as e:
+                    self._log_to_parent(f"Error pre-calculando {nombre}: {str(e)}", 'red')
+                    continue
+
+            self._update_progress(30, "Iniciando análisis de velas...")
+
+            # Procesar cada vela
+            total_rows = len(df)
+            processed_rows = 0
+            
+            # Calcular ATR una sola vez
+            if 'High' in df.columns and 'Low' in df.columns:
+                atr_series = df['High'] - df['Low']
+            else:
+                atr_series = pd.Series([0.001] * len(df), index=df.index)
+            
+            for idx, row in df.iterrows():
+                if not self.is_running:
+                    return
+                    
+                processed_rows += 1
+                current_price = float(row['Close'])
+                current_atr = atr_series.loc[idx] if idx in atr_series.index else 0.001
+                
+                # Actualizar progreso cada 10 velas para máxima visibilidad
+                if processed_rows % 10 == 0 or processed_rows == 1:
+                    progress = 30 + (processed_rows / total_rows) * 65  # 30-95%
+                    self._update_progress(progress, f"Procesando vela {processed_rows}/{total_rows}")
+                
+                # Actualizar progreso adicional cada 50 velas para mostrar actividad
+                elif processed_rows % 50 == 0:
+                    progress = 30 + (processed_rows / total_rows) * 65
+                    self._update_progress(progress, f"Analizando estrategias... {processed_rows}/{total_rows}")
+                
+                # Verificar cierres automáticos (SL/TP)
+                operaciones_cerradas = risk_manager.verificar_cierre_operaciones(current_price, idx)
+                for op_cerrada in operaciones_cerradas:
+                    # Calcular el beneficio numérico de la operación cerrada
+                    if op_cerrada.tipo == 'BUY':
+                        beneficio = (op_cerrada.precio_cierre - op_cerrada.precio_apertura) * op_cerrada.lote_size
+                    else:  # SELL
+                        beneficio = (op_cerrada.precio_apertura - op_cerrada.precio_cierre) * op_cerrada.lote_size
+                    
+                    if beneficio > 0:
+                        self._log_to_parent(f"CIERRE AUTOMÁTICO (TP): +${beneficio:.2f} | {op_cerrada.estrategia}", 'green')
+                    else:
+                        self._log_to_parent(f"CIERRE AUTOMÁTICO (SL): ${beneficio:.2f} | {op_cerrada.estrategia}", 'red')
+
+                # Evaluar señales de estrategias Forex
+                for strategy_name, strategy_data in forex_signals.items():
+                    if idx not in strategy_data['signals'].index:
+                        continue
+                        
+                    signal = strategy_data['signals'].loc[idx]
+                    config = strategy_data['config']
+                    
+                    if signal == 1 and risk_manager.puede_abrir_operacion():
+                        # Calcular SL y TP basado en configuración
+                        rr_ratio = config.get('rr', 2)
+                        sl_distance = current_atr * 1.5
+                        tp_distance = sl_distance * rr_ratio
+                        
+                        operacion = risk_manager.abrir_operacion(
+                            tipo='BUY',
+                            precio=current_price,
+                            timestamp=idx,
+                            stop_loss=current_price - sl_distance,
+                            take_profit=current_price + tp_distance,
+                            riesgo_por_operacion=config.get('riesgo', 0.01),
+                            estrategia=strategy_name
+                        )
+                        if operacion:
+                            self._log_to_parent(f"FOREX BUY: ${current_price:.5f} | {strategy_name} | RR:{rr_ratio}", 'green')
+                    
+                    elif signal == -1 and risk_manager.puede_abrir_operacion():
+                        rr_ratio = config.get('rr', 2)
+                        sl_distance = current_atr * 1.5
+                        tp_distance = sl_distance * rr_ratio
+                        
+                        operacion = risk_manager.abrir_operacion(
+                            tipo='SELL',
+                            precio=current_price,
+                            timestamp=idx,
+                            stop_loss=current_price + sl_distance,
+                            take_profit=current_price - tp_distance,
+                            riesgo_por_operacion=config.get('riesgo', 0.01),
+                            estrategia=strategy_name
+                        )
+                        if operacion:
+                            self._log_to_parent(f"FOREX SELL: ${current_price:.5f} | {strategy_name} | RR:{rr_ratio}", 'red')
+
+                # Evaluar señales de estrategias Candle
+                for strategy_name, strategy_data in candle_signals.items():
+                    if idx not in strategy_data['signals'].index:
+                        continue
+                        
+                    signal = strategy_data['signals'].loc[idx]
+                    
+                    if signal == 1 and risk_manager.puede_abrir_operacion():
+                        operacion = risk_manager.abrir_operacion(
+                            tipo='BUY',
+                            precio=current_price,
+                            timestamp=idx,
+                            stop_loss=current_price - (current_atr * 1.5),
+                            take_profit=current_price + (current_atr * 3.0),
+                            riesgo_por_operacion=0.01,
+                            estrategia=strategy_name
+                        )
+                        if operacion:
+                            self._log_to_parent(f"CANDLE BUY: ${current_price:.5f} | {strategy_name}", 'green')
+                    
+                    elif signal == -1 and risk_manager.puede_abrir_operacion():
+                        operacion = risk_manager.abrir_operacion(
+                            tipo='SELL',
+                            precio=current_price,
+                            timestamp=idx,
+                            stop_loss=current_price + (current_atr * 1.5),
+                            take_profit=current_price - (current_atr * 3.0),
+                            riesgo_por_operacion=0.01,
+                            estrategia=strategy_name
+                        )
+                        if operacion:
+                            self._log_to_parent(f"CANDLE SELL: ${current_price:.5f} | {strategy_name}", 'red')
+
+            self._update_progress(95, "Cerrando operaciones finales...")
+
+            # Cerrar operaciones restantes
+            final_price = df.iloc[-1]['Close']
+            for operacion in risk_manager.operaciones_activas[:]:
+                if operacion.estado == 'ACTIVA':
+                    beneficio = operacion.cerrar(final_price, len(df) - 1)
+                    if beneficio > 0:
+                        self._log_to_parent(f"CIERRE FINAL: +${beneficio:.2f} | {operacion.estrategia}", 'green')
+                    else:
+                        self._log_to_parent(f"CIERRE FINAL: ${beneficio:.2f} | {operacion.estrategia}", 'red')
+                    
+                    risk_manager.operaciones_cerradas.append(operacion)
+                    risk_manager.operaciones_activas.remove(operacion)
+                    
+                    if beneficio > 0:
+                        risk_manager.operaciones_ganadas += 1
+                        risk_manager.ganancia_ganadoras_total += beneficio
+                    else:
+                        risk_manager.operaciones_perdidas += 1
+                        risk_manager.perdida_perdedoras_total += abs(beneficio)
+                    
+                    risk_manager.capital += beneficio
+
+            # Mostrar estadísticas finales
+            self._show_final_stats(risk_manager)
+            
+            # Actualizar interfaz principal
+            self._update_parent_interface(risk_manager)
+            
+            self._update_progress(100, "Simulación completada")
+            
+            # Mostrar progreso completado por más tiempo
+            self._update_progress(100, "¡Simulación completada exitosamente!")
+            
+            # Cerrar modal después de un delay más largo para ver el resultado
+            self.after(3000, self.destroy)
+
+        except Exception as e:
+            self._log_to_parent(f"Error en simulación: {str(e)}", 'red')
+            self._update_progress(100, f"Error: {str(e)}")
+            self.after(3000, self.destroy)
+
+    def _log_to_parent(self, message, color='white'):
+        """Enviar log al gui_parent de forma thread-safe"""
+        def log():
+            if hasattr(self.gui_parent, 'log'):
+                self.gui_parent.log(message, color=color)
+        
+        self.after(0, log)
+
+    def _show_final_stats(self, risk_manager):
+        """Mostrar estadísticas finales"""
+        stats = risk_manager.obtener_estadisticas()
+        
+        self._log_to_parent("============================================================", 'cyan')
+        self._log_to_parent("ESTADÍSTICAS FINALES DE SIMULACIÓN CONTINUA", 'cyan')
+        self._log_to_parent("============================================================", 'cyan')
+        self._log_to_parent(f"Capital final: ${stats['capital_final']:,.2f}", 'white')
+        self._log_to_parent(f"Beneficio total: ${stats['beneficio_total']:,.2f}", 'green' if stats['beneficio_total'] > 0 else 'red')
+        self._log_to_parent(f"Operaciones ganadas: {stats['operaciones_ganadas']} [${stats['ganancia_ganadoras_total']:,.2f}]", 'green')
+        self._log_to_parent(f"Operaciones perdidas: {stats['operaciones_perdidas']} [${stats['perdida_perdedoras_total']:,.2f}]", 'red')
+        self._log_to_parent(f"Win Rate: {stats['win_rate']:.1f}%", 'white')
+        self._log_to_parent("============================================================", 'cyan')
+
+    def _update_parent_interface(self, risk_manager):
+        """Actualizar la interfaz del gui_parent con los resultados"""
+        def update():
+            if hasattr(self.gui_parent, 'dinero_ficticio'):
+                self.gui_parent.dinero_ficticio = risk_manager.capital
+            if hasattr(self.gui_parent, 'beneficios'):
+                self.gui_parent.beneficios += risk_manager.ganancia_ganadoras_total
+            if hasattr(self.gui_parent, 'perdidas'):
+                self.gui_parent.perdidas += abs(risk_manager.perdida_perdedoras_total)
+            if hasattr(self.gui_parent, 'actualizar_labels'):
+                self.gui_parent.actualizar_labels()
+        
+        self.after(0, update)
 
     # --- Mouse wheel support for scrolling ---
     def _bind_mousewheel(self):
