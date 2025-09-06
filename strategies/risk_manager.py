@@ -146,6 +146,11 @@ class RiskManager:
                 self.last_error = "Parámetros de riesgo inválidos (riesgo_por_pip <= 0)"
             return None
             
+        # Verificar capital mínimo de $100
+        if self.capital < 100:
+            self.last_error = f"Capital insuficiente: ${self.capital:,.2f}. Mínimo requerido: $100.00"
+            return None
+        
         riesgo_dinero = self.capital * riesgo_por_operacion
         
         # Calcular lote_size para que el riesgo máximo sea exactamente riesgo_dinero

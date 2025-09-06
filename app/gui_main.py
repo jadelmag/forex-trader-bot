@@ -1705,7 +1705,7 @@ class GUIPrincipal:
                         if any(msg in err for msg in only_debug_msgs) and not debug_on:
                             pass  # suprimir en no-debug
                         else:
-                            if 'Fondos insuficientes' in err:
+                            if 'Fondos insuficientes' in err or 'Capital insuficiente' in err:
                                 self.log(f"OPERACIÓN SALTADA ({strategy_name}) -> {err}", color='yellow')
                             else:
                                 self.log(f"OPEN BUY FALLÓ ({strategy_name}) -> {err}", color='red')

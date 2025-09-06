@@ -516,11 +516,11 @@ Commons Clause + Apache/MIT
 
 * Abrir operacion cuando se cumplan las condiciones de una estrategia, se detecte el patron de velas (candlestick patterns) y se detecten las condiciones de lose patrones de velas 
 * Cerrar operacion cuando se cumplan las condiciones de una estrategia
+* Implementar que como minimo puedas tener 100$
+    - Si no tienes dinero suficiente para abrir una operación, no se debe abrir y se debe mostrar un mensaje de alerta en amarillo diciendo operacion saltada 
 * Actualizar dinero cuando se abre una posición [DONE]
     - Cuando se realiza una compra se debe actualizar el dinero disponible tanto si sube como si baja más del valor desde que se compro
     - Cuando la orden se cierra, esa operación deja de actualizar sobre el dinero disponible. Si es positiva se suma a beneficios y si es negativa se suma a pérdidas 
-* Implementar que como minimo puedas tener 100$ [TESTING]
-    - Si no tienes dinero suficiente para abrir una operación, no se debe abrir y se debe mostrar un mensaje de alerta en amarillo diciendo operacion saltada 
 * Numero de operaciones abiertas: [TODO]
     - 2/6 partes serán para operaciones de estrategias forex
     - 2/6 partes serán para operaciones de candle strategies
