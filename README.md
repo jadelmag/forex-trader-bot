@@ -25,23 +25,28 @@ Este proyecto permite:
 forex-trader-bot/
 │
 |
-├─ app/                     # Paquete principal
-│ ├─ __init__.py            # Inicializa el paquete
-│ ├─ __main__.py            # Punto de entrada para python -m app
-│ ├─ test_runner.py         # PRunner que ejecuta todos los tests
-│ ├─ candlestick_chart.py   # Clase CandlestickChart, dibuja velas de CSV o yfinance
-│ ├─ ai_training_modal.py   # Clase AITrainingModal, permite entrenar IA
-│ ├─ csv_loader_modal.py    # Clase CSVLoaderModal, permite cargar CSVs
-│ ├─ csv_manager.py         # Clase CSVManager para manejar archivos CSV
-│ ├─ grafico_manager.py     # Clase GraficoManager para manejar gráficos
-│ ├─ gui_main.py            # Clase GUIPrincipal que organiza frames y widgets
-│ ├─ main.py                # Función main() para ejecutar la app
-| ├─ patterns_modal.py      # Clase PatternsModal, permite cargar patrones de velas
-│ ├─ progress_modal.py      # Clase ProgressModal, muestra progreso de operaciones
-│ ├─ rl_training_modal.py   # Clase RLTrainingModal, permite entrenar RL
-│ ├─ strategies_modal.py    # Clase StrategiesModal, permite cargar estrategias de RL
-│ ├─ tooltip_zoom_pan.py    # Funciones para tooltip, zoom y pan
-│ └─ window.py              # Clase Window principal, coordina la GUI
+├─ app/                                 # Paquete principal
+│ ├─ __init__.py                        # Inicializa el paquete
+│ ├─ __main__.py                        # Punto de entrada para python -m app
+│ ├─ ai_trainer.py                      # Clase AITrainer, permite entrenar IA
+│ ├─ ai_training_modal.py               # Clase AITrainingModal, permite entrenar IA
+│ ├─ binance_modal.py                   # BinanceSimulationModal, permite simular trading en Binance
+│ ├─ candle_strategies_modal.py         # CandleStrategiesModal, permite simular trading en Binance
+│ ├─ candlestick_chart.py               # Clase CandlestickChart, dibuja velas de CSV o yfinance
+│ ├─ csv_loader_modal.py                # Clase CSVLoaderModal, permite cargar CSVs
+│ ├─ csv_manager.py                     # Clase CSVManager para manejar archivos CSV
+│ ├─ csv_to_pkl_modal.py                # Clase CSVToPklModal para convertir CSVs a PKLs
+│ ├─ grafico_manager.py                 # Clase GraficoManager para manejar gráficos
+│ ├─ gui_main.py                        # Clase GUIPrincipal que organiza frames y widgets
+│ ├─ main.py                            # Función main() para ejecutar la app
+│ ├─ patterns_modal.py                  # Clase PatternsModal, permite cargar patrones de velas
+│ ├─ processed_loader_modal.py          # Clase ProcessedLoaderModal, permite cargar archivos PKLs
+│ ├─ progress_modal.py                  # Clase ProgressModal, muestra progreso de operaciones
+│ ├─ rl_training_modal.py               # Clase RLTrainingModal, permite entrenar RL
+│ ├─ strategies_modal.py                # Clase StrategiesModal, permite cargar estrategias de RL
+│ ├─ test_runner.py                     # PRunner que ejecuta todos los tests
+│ ├─ tooltip_zoom_pan.py                # Funciones para tooltip, zoom y pan [TODO]
+│ └─ window.py                          # Clase Window principal, coordina la GUI
 |
 ├─ assets/                  # Archivos de assets
 │ └─ icon.png               # Icono de la aplicación
@@ -51,18 +56,25 @@ forex-trader-bot/
 │ └─ backtester.py          # Fichero de backtesting
 |
 ├─ csv/                     # Archivos CSV de velas
-│ ├─ DAT_ASCII_EURUSD_M1_2023.csv # Velas de EUR/USD
-│ └─ DAT_ASCII_EURUSD_M1_2024.csv # Velas de EUR/USD
+│ ├─ audusd/ DAT_ASCII_AUDUSD_M1_2023.csv # Velas de AUD/USD
+│ └─ eurusd/ DAT_ASCII_EURUSD_M1_2024.csv # Velas de EUR/USD
 |
 ├─ ia/                      # Carpeta donde se guardan los archivos de IA
 │ ├─ __init__.py            # ForexIA
-│ └─ trading_rl_agent.py    # Fichero de IA
+│ ├─ smart_order_analyzer.py # Nueva clase para análisis inteligente
+│ └─ trading_rl_agent.py    # Clases RL existentes (extensión corregida)
+|
+├─ logs/
+|├─ best_config_*.json
+|├─ log_*.txt
+|└─ best_model_*.zip
 |
 ├─ models_rl/               # Carpeta donde se guardan los archivos de modelos de RL
 │ └─ ppo_trading.zip        # Fichero de modelos de RL
 |
 ├─ patterns/                # Carpeta donde se guardan los archivos de patrones de velas
 | ├─ __init__.py            # CandlestickPatterns
+| ├─ patterns_utils.py      # Utilidades para patrones
 | └─ candlestickpatterns.py # Patrones de velas
 |
 ├─ processed/               # Carpeta donde se guardan los archivos procesados (.pkl)
@@ -74,9 +86,10 @@ forex-trader-bot/
 |
 ├─ strategies/              # Carpeta donde se guardan los archivos de estrategias
 │ ├─ __init__.py            # ForexStrategies
-│ ├─ strategies.py          # Estrategias de Forex
 │ ├─ candle_strategies.py   # Estrategias de velas
-│ └─ risk_manager.py        # Gestión de riesgo
+│ ├─ risk_manager.py        # Gestión de riesgo
+│ ├─ strategies.py          # Estrategias de Forex
+│ └─ strategies_utils.py    # Utilidades para estrategias
 |
 ├─ symbols/                 # Carpeta donde se guardan los archivos de símbolos
 │ └─ symbols.csv            # Símbolos de monedas
@@ -92,13 +105,21 @@ forex-trader-bot/
 │ ├─ candle_streamer.py     # Fichero de Trading View
 │ └─ config_modal.py        # Modal de configuración de CandleStreamer
 |
+├─ tensorboard_logs/        # Carpeta donde se guardan los archivos de TensorBoard
+|
 ├─ test/
 │ ├─ __init__.py                    # Inicializa el paquete
+│ ├─ quick_test.py                  # Test rápido de estrategias de velas
+│ ├─ simple_test.py                 # Test simple de estrategias de velas
+│ ├─ test_candle_strategies_comprehensive.py                 # Test completo de estrategias de velas
 │ ├─ test_candle_strategies.py      # Test simple de estrategias de velas
+│ ├─ test_candlestick_patterns.py   # Test simple de patrones de velas
+│ ├─ test_strategies.py             # Test simple de estrategias de velas
 │ └─ verify_candle_strategies.py    # Test de estrategias de velas
 |
 ├─ .gitignore               # Fichero .gitignore
 ├─ csv_parser.py            # Script para convertir CSV crudos de Dukascopy al formato estándar
+├─ LICENSE                  # Licencia del proyecto
 ├─ README.md                # Instrucciones de instalación y uso
 ├─ requirements.txt         # Dependencias necesarias
 └─ setup.py                 # Configuración del paquete y entry point

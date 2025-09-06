@@ -9,7 +9,6 @@ import re
 
 from .progress_modal import centrar_ventana
 from strategies.strategy_utils import get_available_strategies, resolve_strategy_name
-from patterns.candlestickpatterns import CandlestickPatterns
 
 
 class AITrainingModal(tk.Toplevel):
@@ -107,7 +106,7 @@ class AITrainingModal(tk.Toplevel):
         # Título del paso 2
         step2_label = ttk.Label(
             step2_frame,
-            text="Paso 2: Seleccionar estrategias y patrones para aplicar al modelo",
+            text="Paso 2: Seleccionar estrategias para aplicar al modelo",
             font=("Arial", 10, "bold")
         )
         step2_label.pack(anchor="w", pady=(0, 10))
@@ -427,11 +426,6 @@ class AITrainingModal(tk.Toplevel):
         """Carga las estrategias disponibles en el frame especificado"""
         # Usar el registro centralizado de alias para Forex y Candle strategies
         fx_methods, candle_methods = get_available_strategies()
-        # Patrones de velas via introspección (no usan alias centralizados por ahora)
-        pattern_methods = [
-            nombre for nombre in dir(CandlestickPatterns)
-            if callable(getattr(CandlestickPatterns, nombre)) and not nombre.startswith("_")
-        ]
         # Sección de estrategias Forex con cabecera alineada y botones de selección
         header_frame = ttk.Frame(parent_frame)
         header_frame.pack(fill="x", pady=(0, 5))
@@ -479,7 +473,6 @@ class AITrainingModal(tk.Toplevel):
         self.risk_vars = {}
         self.rr_vars = {}
         self.candle_vars = {}    # Candle strategies
-        self.pattern_vars = {}   # Candlestick patterns
         
         # Estrategias Forex (alias desde el registro)
         for strategy in sorted(fx_methods):
@@ -559,51 +552,12 @@ class AITrainingModal(tk.Toplevel):
             )
             cb.pack(anchor="w", padx=(20, 0), pady=2)
 
-        # Separador
-        ttk.Separator(parent_frame, orient='horizontal').pack(fill='x', pady=10)
-
-        # Sección de patrones de velas con botones de selección
-        patterns_header = ttk.Frame(parent_frame)
-        patterns_header.pack(fill='x', pady=(0, 5))
-        patterns_label = ttk.Label(
-            patterns_header,
-            text="Patrones de Velas:",
-            font=("Arial", 9, "bold")
-        )
-        patterns_label.pack(side='left', anchor='w')
-        buttons_frame_patterns = ttk.Frame(patterns_header)
-        buttons_frame_patterns.pack(side='right')
-        ttk.Button(
-            buttons_frame_patterns,
-            text="Seleccionar todos",
-            command=lambda: _set_all(self.pattern_vars, True),
-            width=16
-        ).pack(side='right', padx=(5, 10))
-        ttk.Button(
-            buttons_frame_patterns,
-            text="Deseleccionar todos",
-            command=lambda: _set_all(self.pattern_vars, False),
-            width=18
-        ).pack(side='right', padx=(5, 10))
-        
-        # Patrones de velas (todos los públicos)
-        for pattern in sorted(pattern_methods):
-            var = tk.BooleanVar()
-            self.pattern_vars[pattern] = var
-            cb = ttk.Checkbutton(
-                parent_frame,
-                text=pattern.replace('_', ' ').capitalize(),
-                variable=var,
-                onvalue=True,
-                offvalue=False
-            )
-            cb.pack(anchor="w", padx=(20, 0), pady=2)
 
         # Habilitar/deshabilitar botón Aceptar según condiciones completas
         def _vars_changed(*_):
             self._recompute_accept_state()
 
-        for v in list(self.strategy_vars.values()) + list(self.candle_vars.values()) + list(self.pattern_vars.values()):
+        for v in list(self.strategy_vars.values()) + list(self.candle_vars.values()):
             v.trace_add('write', _vars_changed)
 
         self._recompute_accept_state()
@@ -657,11 +611,10 @@ class AITrainingModal(tk.Toplevel):
     def _recompute_accept_state(self):
         # 1) Modelo cargado
         has_model = bool(self.selected_model)
-        # 2) Alguna estrategia o patrón seleccionado
+        # 2) Alguna estrategia seleccionada
         any_fx = any(v.get() for v in getattr(self, 'strategy_vars', {}).values()) if hasattr(self, 'strategy_vars') else False
         any_cd = any(v.get() for v in getattr(self, 'candle_vars', {}).values()) if hasattr(self, 'candle_vars') else False
-        any_pt = any(v.get() for v in getattr(self, 'pattern_vars', {}).values()) if hasattr(self, 'pattern_vars') else False
-        has_selection = any_fx or any_cd or any_pt
+        has_selection = any_fx or any_cd
         # 3) Máx. órdenes simultáneas >= 0 (0 = ilimitado)
         try:
             max_orders_val = int(str(getattr(self, 'max_orders', tk.StringVar(value='0')).get()).strip()) if hasattr(self, 'max_orders') else 0
@@ -688,7 +641,7 @@ class AITrainingModal(tk.Toplevel):
             if not has_model:
                 msgs.append("• Cargue un modelo")
             if not has_selection:
-                msgs.append("• Seleccione al menos una estrategia o un patrón")
+                msgs.append("• Seleccione al menos una estrategia Forex o Candle")
             if not max_ok:
                 msgs.append("• Máximo de órdenes simultáneas debe ser ≥ 0 (0 = ilimitado)")
             if not win_ok:
@@ -724,10 +677,8 @@ class AITrainingModal(tk.Toplevel):
             if var.get():
                 seleccion_candle.append(metodo)
 
+        # Los patrones de velas ahora están incluidos en CandleStrategies
         seleccion_patterns = []
-        for metodo, var in self.pattern_vars.items():
-            if var.get():
-                seleccion_patterns.append(metodo)
 
         max_orders = int(self.max_orders.get()) if hasattr(self, 'max_orders') else 5
         # Parám. de parada
@@ -746,13 +697,12 @@ class AITrainingModal(tk.Toplevel):
                 try:
                     self.on_accept_callback(
                         seleccion_fx=seleccion_fx,
-                        seleccion_patterns=seleccion_patterns,
+                        seleccion_candle=seleccion_candle,
                         max_orders=max_orders,
                         use_winrate=use_winrate,
                         winrate=winrate,
                         selected_model_path=selected_model_path,
                         save_best=save_best,
-                        seleccion_candle=seleccion_candle,
                         timesteps_per_attempt=int(self.timesteps_var.get() or 3000),
                     )
                 except TypeError:
@@ -760,7 +710,7 @@ class AITrainingModal(tk.Toplevel):
                     try:
                         self.on_accept_callback(
                             seleccion_fx=seleccion_fx,
-                            seleccion_patterns=seleccion_patterns,
+                            seleccion_candle=seleccion_candle,
                             max_orders=max_orders,
                             use_winrate=use_winrate,
                             winrate=winrate,
@@ -771,7 +721,7 @@ class AITrainingModal(tk.Toplevel):
                     except TypeError:
                         # Intento 3: última compatibilidad con 3 parámetros
                         try:
-                            self.on_accept_callback(seleccion_fx, seleccion_patterns, max_orders)
+                            self.on_accept_callback(seleccion_fx, seleccion_candle, max_orders)
                         except TypeError:
                             try:
                                 # Intento 4: sin parámetros

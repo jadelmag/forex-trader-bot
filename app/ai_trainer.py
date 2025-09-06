@@ -13,6 +13,7 @@ import pandas as pd
 from strategies import ForexStrategies, CandleStrategies
 from strategies.risk_manager import RiskManager, RiskManagerIntegration
 from rl.rl_agent import RLTradingAgent
+from ia.smart_order_analyzer import SmartOrderAnalyzer
 
 
 class AITrainer:
@@ -67,6 +68,9 @@ class AITrainer:
         # Estrategias auxiliares
         self.fx = ForexStrategies(self.df)
         self.candle = CandleStrategies(self.df)
+        
+        # Analizador inteligente de órdenes
+        self.smart_analyzer = SmartOrderAnalyzer(self.df, self._current_fx, self._current_candle)
 
         # Tracking del mejor resultado
         self._best_stats: Optional[Dict] = None
@@ -138,6 +142,9 @@ class AITrainer:
         self.rl_agent.estrategias_candle = self._current_candle
         self.rl_agent.patrones = self._current_patterns
         self.rl_agent.env = self.rl_agent._create_env()
+        
+        # Actualizar analizador inteligente
+        self.smart_analyzer = SmartOrderAnalyzer(self.df, self._current_fx, self._current_candle)
         
         # Entrenar modelo
         success = self.rl_agent.entrenar(timesteps=timesteps, progress_cb=lambda cur, total: self._emit_progress(cur, total))
@@ -296,7 +303,7 @@ class AITrainer:
                 dinero_ganado = 0.0
                 dinero_perdido = 0.0
 
-                # 3. EJECUTAR BACKTESTING
+                # 3. EJECUTAR BACKTESTING CON ANÁLISIS INTELIGENTE
                 for idx, row in df_work.iterrows():
                     if self._stop:
                         break
@@ -329,26 +336,50 @@ class AITrainer:
                             
                         self._emit_log(f"🔒 CIERRE {op.estrategia}: {op} | Profit: ${profit:+.2f}", color)
 
-                    # Apertura por señales RL
+                    # Análisis inteligente para apertura de órdenes
                     senal = row.get('RL_Signal')
                     if senal is not None and senal != 0 and not np.isnan(senal):
                         if not self.risk_manager.puede_abrir_operacion():
                             continue
                             
-                        atr_value = row.get('ATR')
-                        if np.isnan(atr_value) or atr_value <= 0:
-                            atr_value = (df_work['High'] - df_work['Low']).mean() * 0.1
-                            
-                        operacion = self.risk_integration.procesar_senal(
-                            senal=senal,
-                            precio_actual=row['Close'],
-                            timestamp=idx,
-                            atr_value=atr_value,
-                            rr_ratio=2.0,
-                        )
+                        # ANÁLISIS INTELIGENTE DE LA VELA
+                        analysis = self.smart_analyzer.analyze_candle_for_buy_opportunity(idx, row['Close'])
                         
-                        if operacion:
-                            self._emit_log(f"🔓 APERTURA: {operacion} | Señal RL: {senal}", 'cyan')
+                        if analysis['should_buy']:
+                            atr_value = row.get('ATR')
+                            if np.isnan(atr_value) or atr_value <= 0:
+                                atr_value = (df_work['High'] - df_work['Low']).mean() * 0.1
+                                
+                            # Usar estrategia recomendada por el análisis inteligente
+                            strategy_name = analysis['recommended_strategy']
+                            strategy_type = analysis.get('strategy_type', 'rl')
+                            
+                            # Determinar parámetros según tipo de estrategia
+                            if strategy_type == 'forex' and strategy_name in self._current_fx:
+                                rr_ratio = self._current_fx[strategy_name].get('rr', 2.0)
+                                riesgo = self._current_fx[strategy_name].get('riesgo', 0.01)
+                            else:
+                                rr_ratio = 2.0
+                                riesgo = 0.01
+                                
+                            operacion = self.risk_integration.procesar_senal(
+                                senal=senal,
+                                precio_actual=row['Close'],
+                                timestamp=idx,
+                                atr_value=atr_value,
+                                rr_ratio=rr_ratio,
+                                estrategia=f"AI_{strategy_name}" if strategy_name else "AI_RL"
+                            )
+                            
+                            if operacion:
+                                confidence = analysis['confidence_score']
+                                patterns = ', '.join(analysis['pattern_signals'][:2])  # Mostrar máximo 2 patrones
+                                self._emit_log(f"🧠 APERTURA INTELIGENTE: {operacion}", 'cyan')
+                                self._emit_log(f"   └─ Estrategia: {strategy_name} | Confianza: {confidence:.2f} | Patrones: {patterns}", 'white')
+                                self._emit_log(f"   └─ Razón: {analysis['reason'][:100]}...", 'white')
+                        else:
+                            # Log de por qué no se abrió la operación
+                            self._emit_log(f"⚠️ SEÑAL RL RECHAZADA en vela {idx}: {analysis['reason'][:80]}...", 'yellow')
 
                     # Verificar condición de WinRate
                     total_closed = closed_gains + closed_losses

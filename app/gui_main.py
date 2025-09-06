@@ -107,12 +107,6 @@ class GUIPrincipal:
         self.frame_grafico.pack(side="left", fill="both", expand=True)
         self.grafico_manager.frame = self.frame_grafico
 
-        # Header del área de gráfico con botón Reset Zoom en la esquina superior derecha
-        self.frame_grafico_header = tk.Frame(self.frame_grafico, bg="#FFFFFF")
-        self.frame_grafico_header.pack(fill="x", padx=8, pady=(6, 0))
-        self.btn_reset_zoom = ttk.Button(self.frame_grafico_header, text="Reset Zoom", command=self.reset_zoom, style='Small.TButton')
-        self.btn_reset_zoom.pack(side="right", padx=2, pady=1)
-
         # Panel lateral de Telegram
         self.frame_telegram_panel = tk.Frame(self.frame_middle, bg="#F8F8F8", relief="sunken", bd=1, width=360)
         self.frame_telegram_panel.pack(side="right", fill="y")
@@ -2332,9 +2326,6 @@ class GUIPrincipal:
     # ---------------- Funciones Gráficos ----------------
     def _dibujar_grafico(self, df):
         self.grafico_manager.dibujar_csv(df)
-
-    def reset_zoom(self):
-        pass
 
     def reiniciar_app(self):
         """Reinicia la aplicación reemplazando el proceso actual por `python -m app.main`."""
