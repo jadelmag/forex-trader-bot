@@ -1732,7 +1732,8 @@ class GUIPrincipal:
 
             if operacion:
                 # Log consistente con mensajes existentes
-                self.log(f"Orden de COMPRA abierta {strategy_name}: {price:.5f} (TP: {operacion.take_profit:.5f}, SL: {operacion.stop_loss:.5f})", color='green')
+                strategy_str = strategy_name.replace("_", " ").title()
+                self.log(f"Orden de COMPRA abierta {strategy_str}: {price:.5f} (TP: {operacion.take_profit:.5f}, SL: {operacion.stop_loss:.5f})", color='green')
                 # Refrescar dinero visible y label Dinero
                 try:
                     self._actualizar_dinero_visible(price)
@@ -1791,7 +1792,7 @@ class GUIPrincipal:
                     except Exception:
                         pass
                 color = 'green' if profit >= 0 else 'red'
-                self.log(f"CIERRE: {op} | Profit: ${profit:+.2f}", color=color)
+                self.log(f"CIERRE {op.estrategia}: {op} | Profit: ${profit:+.2f}", color=color)
 
             # Refrescar equity/cash tras cierres
             if operaciones_cerradas:
@@ -1881,7 +1882,8 @@ class GUIPrincipal:
             }
             
             self.active_orders.append(order)
-            self.log(f"Orden de COMPRA abierta {strategy_name}: {entry_price:.5f} (TP: {take_profit:.5f}, SL: {stop_loss:.5f})", 
+            strategy_str = strategy_name.replace("_", " ").title()
+            self.log(f"Orden de COMPRA abierta {strategy_str}: {entry_price:.5f} (TP: {take_profit:.5f}, SL: {stop_loss:.5f})", 
                     color="green")
                     
         except Exception as e:

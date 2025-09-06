@@ -327,7 +327,7 @@ class AITrainer:
                             closed_losses += 1
                             dinero_perdido += abs(profit)
                             
-                        self._emit_log(f"🔒 CIERRE: {op} | Profit: ${profit:+.2f}", color)
+                        self._emit_log(f"🔒 CIERRE {op.estrategia}: {op} | Profit: ${profit:+.2f}", color)
 
                     # Apertura por señales RL
                     senal = row.get('RL_Signal')
