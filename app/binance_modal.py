@@ -15,7 +15,6 @@ class BinanceSimulationModal(tk.Toplevel):
         self.grab_set()  # modal
 
 
-        print("BinanceSimulationModal")
         # Altura fija de la zona de estrategias (scrollable)
         list_area_height = 400
 

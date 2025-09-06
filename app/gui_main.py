@@ -1719,7 +1719,7 @@ class GUIPrincipal:
 
             # Show the modal
             BinanceSimulationModal(
-                self,
+                self.root,
                 estrategias_fx=estrategias_fx,
                 estrategias_candle=estrategias_candle,
                 patrones_list=patrones_list,
