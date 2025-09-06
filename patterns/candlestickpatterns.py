@@ -48,7 +48,7 @@ class CandlestickPatterns:
         # Llenar NaN values
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         for col in numeric_cols:
-            df[col] = df[col].fillna(method='bfill').fillna(method='ffill')
+            df[col] = df[col].bfill().ffill()
         
         self.data = df
 
