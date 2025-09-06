@@ -760,13 +760,63 @@ class GUIPrincipal:
                     if col_name in df_new.columns and not np.isnan(df_new.loc[idx, col_name]) and df_new.loc[idx, col_name] != 0:
                         señales_del_dia.append({'estrategia': nombre, 'senal': df_new.loc[idx, col_name], 'precio': row['Close']})
 
-                # Control por vela:
+                # Procesar señales de salida (-1) primero para cerrar operaciones
+                for señal_info in señales_del_dia:
+                    if señal_info['senal'] == -1:
+                        estrategia_id = estrategia_id_map.get(señal_info['estrategia'], señal_info['estrategia'])
+                        atr_value = row.get('ATR')
+                        if np.isnan(atr_value) or atr_value <= 0:
+                            atr_value = (df_new['High'] - df_new['Low']).mean() * 0.1
+
+                        # Procesar señal de salida
+                        operaciones_cerradas_estrategia = self.risk_integration.procesar_senal(
+                            senal=señal_info['senal'],
+                            precio_actual=señal_info['precio'],
+                            timestamp=idx,
+                            atr_value=atr_value,
+                            rr_ratio=2.0,
+                            estrategia_nombre=estrategia_id
+                        )
+
+                        if operaciones_cerradas_estrategia and isinstance(operaciones_cerradas_estrategia, list):
+                            for op in operaciones_cerradas_estrategia:
+                                profit = (op.precio_cierre - op.precio_apertura) * op.lote_size if op.tipo == 'BUY' else (op.precio_apertura - op.precio_cierre) * op.lote_size
+                                if np.isnan(profit) or np.isinf(profit):
+                                    profit = 0.0
+                                if profit >= 0:
+                                    beneficios_totales += profit
+                                    try:
+                                        self.beneficios = float(getattr(self, 'beneficios', 0.0) or 0.0) + float(profit)
+                                        self.label_beneficios.config(text=f"Beneficios: {self.beneficios:,.2f}$")
+                                    except Exception:
+                                        pass
+                                else:
+                                    perdidas_totales += abs(profit)
+                                    try:
+                                        self.perdidas = float(getattr(self, 'perdidas', 0.0) or 0.0) + float(abs(profit))
+                                        self.label_perdidas.config(text=f"Pérdidas: {self.perdidas:,.2f}$")
+                                    except Exception:
+                                        pass
+                                resultados.append({'timestamp': idx, 'operacion': op, 'resultado': op.resultado, 'profit': profit})
+                                color = 'green' if op.resultado == 'GANANCIA' else 'red'
+                                self.log(f"CIERRE POR ESTRATEGIA: {op} -> {op.resultado} | Profit: ${profit:+.2f} | Estrategia: {señal_info['estrategia']}", color=color)
+
+                        # Actualizar dinero visible tras cierre por estrategia
+                        try:
+                            self._actualizar_dinero_visible(row['Close'])
+                        except Exception:
+                            pass
+
+                # Control por vela para señales de entrada:
                 # - No abrir más de una COMPRA por la misma estrategia FOREX
                 # - No abrir más de una COMPRA de ninguna estrategia FOREX en la misma vela
                 opened_buy_for_strategy = set()
                 opened_buy_any_forex = False
 
+                # Procesar señales de entrada (1) después de las de salida
                 for señal_info in señales_del_dia:
+                    if señal_info['senal'] != 1:  # Solo procesar señales de entrada
+                        continue
                     tipo_estrategia = estrategia_tipo_map.get(señal_info['estrategia'])
                     estrategia_id = estrategia_id_map.get(señal_info['estrategia'], señal_info['estrategia'])
                     if señal_info['senal'] == 1 and tipo_estrategia == 'forex' and estrategia_id in opened_buy_for_strategy:
@@ -803,6 +853,7 @@ class GUIPrincipal:
                         if np.isnan(atr_value) or atr_value <= 0:
                             atr_value = (df_new['High'] - df_new['Low']).mean() * 0.1
 
+                        # Solo procesar señales de entrada (1) aquí
                         operacion = self.risk_integration.procesar_senal(
                             senal=señal_info['senal'],
                             precio_actual=señal_info['precio'],

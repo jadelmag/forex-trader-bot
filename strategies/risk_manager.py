@@ -264,6 +264,56 @@ class RiskManager:
         
         return operaciones_cerradas
     
+    def cerrar_operacion_por_estrategia(self, estrategia_nombre, precio_cierre, timestamp, motivo="EXIT_SIGNAL"):
+        """
+        Cierra operaciones activas de una estrategia específica cuando se recibe señal de salida
+        
+        Args:
+            estrategia_nombre: Nombre de la estrategia que genera la señal de salida
+            precio_cierre: Precio al que se cierra la operación
+            timestamp: Timestamp del cierre
+            motivo: Motivo del cierre (por defecto "EXIT_SIGNAL")
+        
+        Returns:
+            Lista de operaciones cerradas
+        """
+        operaciones_cerradas = []
+        
+        for operacion in self.operaciones_activas[:]:
+            if (operacion.estado == 'ACTIVA' and 
+                operacion.estrategia == estrategia_nombre):
+                
+                profit = operacion.cerrar(precio_cierre, timestamp)
+                
+                # Para BUY: devolver el riesgo reservado + profit/loss
+                if operacion.tipo == 'BUY':
+                    self.capital += operacion.riesgo_reservado + profit
+                else:
+                    # SELL mantiene la lógica previa (solo ajustar por profit)
+                    self.capital += profit
+                    
+                self.beneficio_total += profit
+                
+                if profit >= 0:
+                    self.operaciones_ganadas += 1
+                    self.ganancia_ganadoras_total += profit
+                else:
+                    self.operaciones_perdidas += 1
+                    self.perdida_perdedoras_total += profit
+                
+                # Limpiar notificación de BUY activa para esta estrategia
+                if operacion.tipo == 'BUY' and operacion.estrategia is not None:
+                    self.estrategias_buy_activa_notificadas.discard(operacion.estrategia)
+                
+                # Marcar el motivo del cierre en la operación
+                operacion.motivo_cierre = motivo
+                
+                operaciones_cerradas.append(operacion)
+                self.operaciones_cerradas.append(operacion)
+                self.operaciones_activas.remove(operacion)
+        
+        return operaciones_cerradas
+    
     def cerrar_operacion_manual(self, id_operacion, precio_cierre, timestamp):
         """Cierra manualmente una operación específica"""
         for operacion in self.operaciones_activas:
@@ -341,79 +391,106 @@ class RiskManagerIntegration:
 
     def procesar_senal(self, senal, precio_actual, timestamp, atr_value, rr_ratio=2, estrategia_nombre: str | None = None):
         """
-        Procesa una señal de trading y abre operación si es posible
+        Procesa una señal de trading:
+        - senal = 1: Abre operación BUY
+        - senal = -1: Cierra operaciones de la estrategia (señal de salida)
+        - senal = 0: No hace nada
         """
-        if senal == 0 or not self.risk_manager.puede_abrir_operacion():
+        if senal == 0:
             return None
-        
-        tipo = 'BUY' if senal == 1 else 'SELL'
-        
-        # Validar que atr_value sea un número válido
-        if np.isnan(atr_value) or np.isinf(atr_value) or atr_value <= 0:
-            # Usar un valor por defecto si ATR no es válido
-            atr_value = (precio_actual * 0.001)  # 0.1% del precio como fallback
-        
-        # Calcular SL y TP basado en ATR
-        if tipo == 'BUY':
+            
+        # Señal de salida (-1): cerrar operaciones de esta estrategia
+        if senal == -1:
+            if estrategia_nombre is not None:
+                operaciones_cerradas = self.risk_manager.cerrar_operacion_por_estrategia(
+                    estrategia_nombre=estrategia_nombre,
+                    precio_cierre=precio_actual,
+                    timestamp=timestamp,
+                    motivo="EXIT_SIGNAL"
+                )
+                return operaciones_cerradas
+            return None
+            
+        # Señal de entrada (1): abrir nueva operación
+        if senal == 1 and self.risk_manager.puede_abrir_operacion():
+            tipo = 'BUY'
+            
+            # Validar que atr_value sea un número válido
+            if np.isnan(atr_value) or np.isinf(atr_value) or atr_value <= 0:
+                # Usar un valor por defecto si ATR no es válido
+                atr_value = (precio_actual * 0.001)  # 0.1% del precio como fallback
+            
+            # Calcular SL y TP basado en ATR
             stop_loss = precio_actual - (atr_value * 2)  # 2x ATR
             take_profit = precio_actual + (atr_value * 2 * rr_ratio)
-        else:  # SELL
-            stop_loss = precio_actual + (atr_value * 2)
-            take_profit = precio_actual - (atr_value * 2 * rr_ratio)
-        
-        # Validar que SL y TP sean válidos
-        if (np.isnan(stop_loss) or np.isinf(stop_loss) or 
-            np.isnan(take_profit) or np.isinf(take_profit)):
-            return None
-        
-        return self.risk_manager.abrir_operacion(
-            tipo=tipo,
-            precio=precio_actual,
-            timestamp=timestamp,
-            stop_loss=stop_loss,
-            take_profit=take_profit,
-            riesgo_por_operacion=0.01,  # 1% de riesgo por operación
-            estrategia=estrategia_nombre
-        )    
+            
+            # Validar que SL y TP sean válidos
+            if (np.isnan(stop_loss) or np.isinf(stop_loss) or 
+                np.isnan(take_profit) or np.isinf(take_profit)):
+                return None
+            
+            return self.risk_manager.abrir_operacion(
+                tipo=tipo,
+                precio=precio_actual,
+                timestamp=timestamp,
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+                riesgo_por_operacion=0.01,  # 1% de riesgo por operación
+                estrategia=estrategia_nombre
+            )
+            
+        return None    
 
-    def procesar_dataframe(self, df, atr_period=14, rr_ratio=2):
+    def procesar_dataframe(self, df, atr_period=14, rr_ratio=2, estrategia_nombre=None):
         """
         Procesa un dataframe completo con señales de trading
+        Ahora soporta señales de salida (-1) para cerrar operaciones
         """
         resultados = []
         
         for idx, row in df.iterrows():
-            # Verificar cierre de operaciones existentes
-            operaciones_cerradas = self.risk_manager.verificar_cierre_operaciones(
+            # Verificar cierre de operaciones existentes por SL/TP
+            operaciones_cerradas_sltp = self.risk_manager.verificar_cierre_operaciones(
                 row['Close'], idx
             )
             
-            # Procesar nueva señal si existe
-            if 'Signal' in row and row['Signal'] != 0 and self.risk_manager.puede_abrir_operacion():
-                operacion = self.procesar_senal(
-                    senal=row['Signal'],
-                    precio_actual=row['Close'],
-                    timestamp=idx,
-                    atr_value=row.get('ATR', (row['High'] - row['Low']).rolling(atr_period).mean().iloc[-1]),
-                    rr_ratio=rr_ratio
-                )
-                
-                if operacion:
-                    resultados.append({
-                        'timestamp': idx,
-                        'tipo': 'APERTURA',
-                        'operacion': operacion,
-                        'precio': row['Close']
-                    })
-            
-            # Registrar operaciones cerradas
-            for op in operaciones_cerradas:
+            # Registrar operaciones cerradas por SL/TP
+            for op in operaciones_cerradas_sltp:
                 resultados.append({
                     'timestamp': idx,
-                    'tipo': 'CIERRE',
+                    'tipo': 'CIERRE_SL_TP',
                     'operacion': op,
                     'precio': row['Close'],
                     'resultado': op.resultado
                 })
+            
+            # Procesar señales de estrategia (entrada y salida)
+            if 'Signal' in row and row['Signal'] != 0:
+                resultado_senal = self.procesar_senal(
+                    senal=row['Signal'],
+                    precio_actual=row['Close'],
+                    timestamp=idx,
+                    atr_value=row.get('ATR', (row['High'] - row['Low']).rolling(atr_period).mean().iloc[-1]),
+                    rr_ratio=rr_ratio,
+                    estrategia_nombre=estrategia_nombre
+                )
+                
+                if resultado_senal is not None:
+                    if row['Signal'] == 1 and hasattr(resultado_senal, 'id'):  # Nueva operación abierta
+                        resultados.append({
+                            'timestamp': idx,
+                            'tipo': 'APERTURA',
+                            'operacion': resultado_senal,
+                            'precio': row['Close']
+                        })
+                    elif row['Signal'] == -1 and isinstance(resultado_senal, list):  # Operaciones cerradas por señal
+                        for op in resultado_senal:
+                            resultados.append({
+                                'timestamp': idx,
+                                'tipo': 'CIERRE_ESTRATEGIA',
+                                'operacion': op,
+                                'precio': row['Close'],
+                                'resultado': op.resultado
+                            })
         
         return resultados

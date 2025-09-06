@@ -515,7 +515,7 @@ Commons Clause + Apache/MIT
 ## En proceso
 
 * Abrir operacion cuando se cumplan las condiciones de una estrategia, se detecte el patron de velas (candlestick patterns) y se detecten las condiciones de lose patrones de velas 
-* Cerrar operacion cuando se cumplan las condiciones de una estrategia
+* Cerrar operacion cuando se cumplan las condiciones de una estrategia [DONE]
 * Implementar que como minimo puedas tener 100$
     - Si no tienes dinero suficiente para abrir una operación, no se debe abrir y se debe mostrar un mensaje de alerta en amarillo diciendo operacion saltada 
 * Actualizar dinero cuando se abre una posición [DONE]
