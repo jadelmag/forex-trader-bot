@@ -123,7 +123,7 @@ class CandleStreamer:
         self._last_x = None  # posiciones x (mdates float) del último DF
         self._hover_annot = None
         self._hover_cid = None
-        self.debug_hover = True  # activar para logs de eventos de hover
+        self.debug_hover = False  # activar para logs de eventos de hover
         self._hover_marker = None  # marcador visual en la vela
         # Zoom con scroll
         self._scroll_cid = None
