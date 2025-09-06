@@ -66,6 +66,23 @@ class CandlestickPatterns:
         df['Signal'] = np.where((upper_shadow >= 2*body) & (lower_shadow <= body), 1, 0)
         return df
 
+    def marubozu(self):
+        """Marubozu pattern: candle with very small or no shadows"""
+        df = self.data.copy()
+        body = abs(df['Close'] - df['Open'])
+        total_range = df['High'] - df['Low']
+        upper_shadow = df['High'] - df[['Open','Close']].max(axis=1)
+        lower_shadow = df[['Open','Close']].min(axis=1) - df['Low']
+        
+        # Marubozu: both shadows are very small relative to body
+        df['Signal'] = np.where(
+            (body > total_range * 0.8) & 
+            (upper_shadow <= body * 0.1) & 
+            (lower_shadow <= body * 0.1) & 
+            (total_range > 0), 
+            np.where(df['Close'] > df['Open'], 1, -1), 0)
+        return df
+
     # ---------------- Double Candles ----------------
     def bullish_engulfing(self):
         df = self.data.copy()
@@ -282,11 +299,11 @@ class CandlestickPatterns:
     def detect_all_patterns(self):
         df = self.data.copy()
         pattern_functions = [
-            'doji', 'hammer', 'hanging_man', 'shooting_star', 'spinning_top', 'inverted_hammer',
+            'doji', 'hammer', 'hanging_man', 'shooting_star', 'spinning_top', 'inverted_hammer', 'marubozu',
             'bullish_engulfing', 'bearish_engulfing', 'piercing_line', 'dark_cloud_cover',
-            'tweezer_top', 'tweezer_bottom',
-            'morning_star', 'evening_star', 'three_white_soldiers', 'three_black_crows',
-            'three_inside_up', 'three_inside_down', 'rising_three_methods', 'falling_three_methods'
+            'tweezer_top', 'tweezer_bottom', 'morning_star', 'evening_star',
+            'three_white_soldiers', 'three_black_crows', 'three_inside_up', 'three_inside_down',
+            'rising_three_methods', 'falling_three_methods'
         ]
         for func_name in pattern_functions:
             func = getattr(self, func_name)

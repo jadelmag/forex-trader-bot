@@ -267,98 +267,6 @@ class EstrategiasModal(tk.Toplevel):
                     "tipo": "candle"
                 }
 
-        # ---------------- SECCIÓN CANDLESTICK PATTERNS ----------------
-        if patrones_list:
-            start_row_patterns = (
-                (len(estrategias_fx) + 3 if estrategias_fx else 0) +
-                (len(estrategias_candle) + 2 if estrategias_candle else 0) + 2
-            )
-
-            lbl_patterns = ttk.Label(self.scrollable_frame, text="Candlestick Patterns", 
-                                     font=("Arial", 10, "bold"), anchor="w")
-            lbl_patterns.grid(row=start_row_patterns, column=0, columnspan=3, sticky="w", pady=(20, 10))
-
-            # Botones para seleccionar/deseleccionar todos los Patterns (centrados)
-            btn_patterns_frame = tk.Frame(self.scrollable_frame)
-            btn_patterns_frame.grid(row=start_row_patterns + 1, column=0, columnspan=7, pady=(0, 5))
-            btn_patterns_sel = ttk.Button(
-                btn_patterns_frame,
-                text="Seleccionar todos",
-                command=lambda: self._set_group("pattern", 1),
-                width=18
-            )
-            btn_patterns_desel = ttk.Button(
-                btn_patterns_frame,
-                text="Deseleccionar todos",
-                command=lambda: self._set_group("pattern", 0),
-                width=20
-            )
-            btn_patterns_sel.pack(side="left", padx=5)
-            btn_patterns_desel.pack(side="left", padx=5)
-
-            ttk.Label(self.scrollable_frame, text="Patrón", width=20, anchor="w").grid(row=start_row_patterns+2, column=0, padx=5)
-            ttk.Label(self.scrollable_frame, text="Sin parámetros", width=20).grid(row=start_row_patterns+2, column=1, columnspan=2, padx=5)
-
-            for idx, nombre in enumerate(sorted(patrones_list), start=start_row_patterns+3):
-                var_check = tk.IntVar()
-                display_name = nombre.replace('_', ' ').capitalize()
-                chk = tk.Checkbutton(self.scrollable_frame, text=display_name, variable=var_check, 
-                                    anchor="w", width=20)
-                chk.grid(row=idx, column=0, sticky="w", padx=5, pady=2)
-                
-                # Definir niveles de riesgo para cada estrategia
-                risk_levels = {
-                    # Alto riesgo
-                    "breakout": ("Alto", "red"),
-                    "scalping_1m_strategy": ("Alto", "red"),
-                    "news_trading_strategy": ("Alto", "red"),
-                    "grid_trading_strategy": ("Alto", "red"),
-                    "mean_reversion": ("Alto", "red"),
-                    "mean_reversion_strategy": ("Alto", "red"),
-                    "mean_reversion_overlay": ("Alto", "red"),
-                    # Medio riesgo
-                    "adx_strategy": ("Medio", "orange"),
-                    "trend_following": ("Medio", "orange"),
-                    "macd_strategy": ("Medio", "orange"),
-                    "ichimoku_cloud_strategy": ("Medio", "orange"),
-                    "carry_trade_strategy": ("Medio", "orange"),
-                    "hedging_overlay": ("Medio", "orange"),
-                    "martingale_overlay": ("Medio", "orange"),
-                    "price_action_patterns": ("Medio", "orange"),
-                    "stochastic_strategy": ("Medio", "orange"),
-                    "stochastic_oscillator_strategy": ("Medio", "orange"),
-                    # Bajo riesgo
-                    "rsi_strategy": ("Bajo", "green"),
-                    "moving_average_crossover": ("Bajo", "green"),
-                    "bollinger_bands_strategy": ("Bajo", "green"),
-                    "support_resistance_strategy": ("Bajo", "green"),
-                    "supply_demand_zones": ("Bajo", "green"),
-                    "trendline_strategy": ("Bajo", "green"),
-                    "range_trading_strategy": ("Bajo", "green")
-                }
-                
-                # Aplicar etiqueta de riesgo si la estrategia está en el diccionario
-                if nombre in risk_levels:
-                    level, color = risk_levels[nombre]
-                    ttk.Label(
-                        self.scrollable_frame, 
-                        text=f"[Riesgo {level}]", 
-                        foreground=color,
-                        font=('Arial', 8, 'bold')
-                    ).grid(row=idx, column=4, padx=5, sticky="w")
-                ttk.Label(self.scrollable_frame, text="").grid(row=idx, column=1, padx=5)
-                ttk.Label(self.scrollable_frame, text="").grid(row=idx, column=2, padx=5)
-
-                # IMPORTANTE: evitar colisión de nombres con CandleStrategies
-                # Algunos patrones (p.ej., three_white_soldiers, three_black_crows)
-                # también existen como estrategias de vela. Para evitar sobreescribir
-                # entradas de self.controls, se añade un prefijo de namespace.
-                pattern_key = f"pattern::{nombre}"
-                self.controls[pattern_key] = {
-                    "selected": var_check,
-                    "tipo": "pattern"
-                }
-
         # ---------------- CHECKBOXES DE OPCIONES ----------------
         # Calcular la fila donde colocar los checkboxes
         base_row = 0
@@ -368,13 +276,6 @@ class EstrategiasModal(tk.Toplevel):
         if estrategias_candle:
             # Inicio Candle en len_fx+3, usa: título, botones, header, items
             base_row = max(base_row, (len(estrategias_fx) + 3 if estrategias_fx else 0) + 3 + len(estrategias_candle))
-        if patrones_list:
-            # Inicio Patterns después de Candle, usa: título, botones, header, items
-            base_row = max(base_row, (
-                (len(estrategias_fx) + 3 if estrategias_fx else 0) +
-                (3 + len(estrategias_candle) if estrategias_candle else 0) +
-                3 + len(patrones_list)
-            ))
         options_row = base_row + 2
         
         # Checkbox para mostrar detección de patrones
@@ -429,10 +330,6 @@ class EstrategiasModal(tk.Toplevel):
                     # Para Candle Strategies: solo marcar como seleccionada
                     if ctrl["tipo"] == "candle":
                         seleccion[nombre] = {"tipo": "candle"}
-                    else:
-                        # ctrl["tipo"] == "pattern": quitar namespace 'pattern::' del nombre
-                        real_name = nombre.split("::", 1)[1] if nombre.startswith("pattern::") else nombre
-                        seleccion[real_name] = {"tipo": "pattern"}
         # Añadir max_orders y opciones de visualización al resultado
         try:
             max_orders = int(self.max_orders_var.get())

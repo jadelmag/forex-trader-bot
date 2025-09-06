@@ -352,3 +352,82 @@ class CandleStrategies:
         )
         
         return self._apply_exit_logic(df, 'conservative_swing', config)
+
+    # ---------------- Missing strategy methods ----------------
+    
+    def bearish_engulfing_reversal(self, config=None):
+        """Bearish engulfing reversal strategy"""
+        return self.bearish_engulfing_strategy(config)
+    
+    def bullish_engulfing_reversal(self, config=None):
+        """Bullish engulfing reversal strategy"""
+        return self.bullish_engulfing_strategy(config)
+    
+    def doji_indecision(self, config=None):
+        """Doji indecision strategy"""
+        return self.doji_reversal_strategy(config)
+    
+    def evening_star_swing(self, config=None):
+        """Evening star swing strategy"""
+        return self.evening_star_strategy(config)
+    
+    def filter_with_trend(self, config=None):
+        """Filter signals with trend"""
+        return self.multi_pattern_strategy(config)
+    
+    def hammer_reversal(self, config=None):
+        """Hammer reversal strategy"""
+        return self.hammer_reversal_strategy(config)
+    
+    def hanging_man_reversal(self, config=None):
+        """Hanging man reversal strategy"""
+        return self.hanging_man_strategy(config)
+    
+    def marubozu_trend(self, config=None):
+        """Marubozu trend following strategy"""
+        df = self.patterns.marubozu()
+        df['EMA20'] = self.data['Close'].ewm(span=20).mean()
+        
+        # Marubozu alcista en tendencia alcista
+        bullish_marubozu = (df['Signal'] == 1) & (df['Close'] > df['EMA20'])
+        # Marubozu bajista en tendencia bajista
+        bearish_marubozu = (df['Signal'] == -1) & (df['Close'] < df['EMA20'])
+        
+        df['Signal'] = np.where(bullish_marubozu, 1, 
+                       np.where(bearish_marubozu, -1, 0))
+        return self._apply_exit_logic(df, 'marubozu_trend', config)
+    
+    def morning_star_swing(self, config=None):
+        """Morning star swing strategy"""
+        return self.morning_star_strategy(config)
+    
+    def scalping_reversal(self, config=None):
+        """Scalping reversal strategy"""
+        return self.scalping_reversal_strategy(config)
+    
+    def stop_loss_take_profit(self, config=None):
+        """Strategy focused on SL/TP management"""
+        if config is None:
+            config = CandleExitConfig(
+                use_stop_loss=True,
+                use_take_profit=True,
+                atr_sl_multiplier=1.5,
+                atr_tp_multiplier=3.0
+            )
+        
+        # Use combined patterns for entries
+        df = self.patterns.combined_signal_optimized()
+        df['Signal'] = df['Final_Signal']
+        return self._apply_exit_logic(df, 'stop_loss_take_profit', config)
+    
+    def swing_trading(self, config=None):
+        """Swing trading strategy"""
+        return self.swing_trading_strategy(config)
+    
+    def three_black_crows(self, config=None):
+        """Three black crows strategy"""
+        return self.three_black_crows_strategy(config)
+    
+    def three_white_soldiers(self, config=None):
+        """Three white soldiers strategy"""
+        return self.three_white_soldiers_strategy(config)

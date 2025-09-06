@@ -62,7 +62,10 @@ def main():
     test_files = [
         ("simple_test.py", "Simple Test"),
         ("test_candle_strategies.py", "Candle Strategies Test"),
-        ("verify_candle_strategies.py", "Candle Strategies Verification")
+        ("verify_candle_strategies.py", "Candle Strategies Verification"),
+        ("test_strategies.py", "Strategies Module Test"),
+        ("test_candle_strategies_comprehensive.py", "Comprehensive Candle Strategies Test"),
+        ("test_candlestick_patterns.py", "Candlestick Patterns Test")
     ]
     
     results = {}

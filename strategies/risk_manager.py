@@ -349,17 +349,21 @@ class RiskManager:
         win_rate = (self.operaciones_ganadas / total_operaciones * 100) if total_operaciones > 0 else 0
         
         return {
-            'capital_actual': self.capital,
+            'capital_final': self.capital,
             'beneficio_total': self.beneficio_total,
             'operaciones_activas': self.get_operaciones_activas_count(),
             'operaciones_ganadas': self.operaciones_ganadas,
             'operaciones_perdidas': self.operaciones_perdidas,
             'win_rate': win_rate,
-            'slots_disponibles': self.get_slots_disponibles(),
-            'max_operaciones': self.max_operaciones_activas,
+            'slots_utilizados': self.get_operaciones_activas_count(),
+            'max_slots': self.max_operaciones_activas,
             'ganancia_ganadoras_total': self.ganancia_ganadoras_total,
             'perdida_perdedoras_total': self.perdida_perdedoras_total
         }
+    
+    def obtener_estadisticas(self):
+        """Alias para get_estadisticas - compatibilidad"""
+        return self.get_estadisticas()
     
     def reset(self):
         """Reinicia el risk manager"""

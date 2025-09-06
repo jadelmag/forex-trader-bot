@@ -28,6 +28,7 @@ from .csv_manager import CSVManager
 from .csv_loader_modal import CSVLoaderModal
 from .patterns_modal import PatternsModal
 from .strategies_modal import EstrategiasModal
+from .candle_strategies_modal import CandleStrategiesModal
 from .ai_training_modal import AITrainingModal
 from .rl_training_modal import RLTrainingModal
 from .csv_to_pkl_modal import CSVToPKLModal
@@ -57,7 +58,7 @@ class GUIPrincipal:
     def __init__(self, root):
         self.root = root
         self.root.title("Trading Bot - Forex Market")
-        self.root.geometry("1500x1000")
+        self.root.geometry("1600x1000")
         self.root.configure(bg="#F0F0F0")
         self.root.attributes('-toolwindow', 1)
         self.root.resizable(True, True)
@@ -350,6 +351,7 @@ class GUIPrincipal:
         # Etiquetas para controlar el estado por nombre
         self._menu_label_estrategias = "Mostrar Estrategias"
         self._menu_label_patrones = "Aplicar Patrones"
+        self._menu_label_candle_strategies = "Aplicar Estrategias de velas"
         self._menu_label_backtesting = "Iniciar Backtesting"
         self._menu_label_entrenar_ia = "Entrenar IA"
         self._menu_label_detener_ia = "Detener IA"
@@ -360,6 +362,9 @@ class GUIPrincipal:
         )
         self.menu_opciones.add_command(
             label=self._menu_label_patrones, command=self.abrir_modal_patrones, state="disabled"
+        )
+        self.menu_opciones.add_command(
+            label=self._menu_label_candle_strategies, command=self.abrir_modal_candle_strategies, state="disabled"
         )
         self.menu_opciones.add_command(
             label=self._menu_label_backtesting, command=self.abrir_modal_backtesting, state="disabled"
@@ -577,16 +582,12 @@ class GUIPrincipal:
         # Usar alias amigables del registro centralizado
         fx_methods, candle_methods = get_available_strategies()
 
-        # Obtener lista de patrones desde el util dinámico
-        pattern_methods = get_available_patterns()
-
-        # Abrir modal con las estrategias y patrones
+        # Abrir modal con las estrategias
         EstrategiasModal(
             self.root,
             estrategias_fx=sorted(fx_methods),
             estrategias_candle=sorted(candle_methods),
-            callback=self._on_estrategias_seleccionadas,
-            patrones_list=sorted(pattern_methods),
+            callback=self._on_estrategias_seleccionadas
         )
 
     def _on_estrategias_seleccionadas(self, seleccion, max_orders=5, opciones=None):
@@ -639,7 +640,6 @@ class GUIPrincipal:
             try:
                 tipo_sel = params.get("tipo")
                 if tipo_sel == "forex":
-                    # Resolver alias -> método real
                     metodo_real = resolve_strategy_name(nombre, "forex")
                     metodo = getattr(self.strategies_fx, metodo_real, None)
                     if not callable(metodo):
@@ -650,6 +650,7 @@ class GUIPrincipal:
                         'risk_per_trade': params.get('riesgo', 0.01),
                         'rr_ratio': params.get('rr', 2.0),
                     }
+                    df_res = metodo(**risk_kwargs)
 
                 elif tipo_sel == "candle":
                     metodo_real = resolve_strategy_name(nombre, "candle")
@@ -892,20 +893,18 @@ class GUIPrincipal:
                                         self.log(f"Dinero tras apertura {operacion.tipo}: ${cash_now:,.2f}", color='cyan')
                                 except Exception:
                                     pass
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                self.log(f"Error refrescando dinero visible: {str(e)}", color='red')
                         else:
                             # Si falló la apertura, reportar el motivo si existe
-                            if señal_info['senal'] == 1 and tipo_estrategia == 'forex':
-                                try:
-                                    err = getattr(self.risk_manager, 'last_error', None)
-                                    if err:
-                                        if 'Fondos insuficientes' in err:
-                                            self.log(f"OPERACIÓN SALTADA ({estrategia_id}) -> {err}", color='yellow')
-                                        else:
-                                            self.log(f"OPEN BUY FALLÓ ({estrategia_id}) -> {err}", color='red')
-                                except Exception:
-                                    pass
+                            try:
+                                err = getattr(operacion, 'error', 'Error desconocido')
+                                if 'Fondos insuficientes' in err:
+                                    self.log(f"OPERACIÓN SALTADA ({estrategia_id}) -> {err}", color='yellow')
+                                else:
+                                    self.log(f"OPEN BUY FALLÓ ({estrategia_id}) -> {err}", color='red')
+                            except Exception:
+                                pass
 
                 ops_activas = self.risk_manager.get_operaciones_activas_count()
                 if ops_activas != operaciones_abiertas:
@@ -971,6 +970,7 @@ class GUIPrincipal:
             self.log(f"Beneficios acumulados: ${beneficios_totales:,.2f}", color='green')
             self.log(f"Pérdidas acumuladas: ${perdidas_totales:,.2f}", color='red')
             self.log("="*60, color='white')
+
         else:
             self.log("="*60, color='white')
             self.log("SIMULACIÓN DESHABILITADA - Solo se muestran detecciones", color='yellow')
@@ -1175,11 +1175,207 @@ class GUIPrincipal:
         else:
             messagebox.showwarning("Atención", "No hay datos cargados para aplicar patrones")
 
+    # ---------------- Funciones Candle Estrategias ----------------
+    def abrir_modal_candle_strategies(self):
+        if self.df_actual is not None:
+            CandleStrategiesModal(self.root, self.df_actual, self)
+        else:
+            messagebox.showwarning("Atención", "No hay datos cargados para aplicar candle estrategias")
+
+    def simular_estrategias_velas(self, selected_strategies, max_operations, progress_callback=None):
+        """
+        Simula operaciones de compra y venta usando estrategias de velas seleccionadas
+        Optimizado para datos fijos con pre-cálculo de estrategias
+        """
+        try:
+            # Verificar capital inicial
+            if self.dinero_ficticio <= 100:
+                self.log("OPERACIÓN SALTADA: Capital insuficiente (mínimo $100)", color='yellow')
+                if progress_callback:
+                    progress_callback(100, "Simulación completada - Capital insuficiente")
+                return
+
+            # Configurar Risk Manager
+            capital_inicial = float(self.dinero_ficticio)
+            self.risk_manager = RiskManager(capital_inicial=capital_inicial, max_operaciones_activas=max_operations)
+            self.risk_integration = RiskManagerIntegration(self.risk_manager, None)
+            self.risk_manager.reset()
+
+            # Log inicio de simulación
+            self.log("============================================================", color='cyan')
+            self.log("INICIANDO SIMULACIÓN OPTIMIZADA DE ESTRATEGIAS DE VELAS", color='cyan')
+            self.log("============================================================", color='cyan')
+            self.log(f"Capital inicial: ${capital_inicial:,.2f}", color='white')
+            self.log(f"Estrategias seleccionadas: {len(selected_strategies)}", color='white')
+            self.log(f"Máximo de operaciones simultáneas: {max_operations}", color='white')
+
+            # OPTIMIZACIÓN: Pre-calcular todas las estrategias una sola vez
+            if progress_callback:
+                progress_callback(10, "Pre-calculando estrategias...")
+            
+            strategy_signals = {}
+            candle_strategies = CandleStrategies(self.df_actual)
+            
+            for i, strategy_name in enumerate(selected_strategies):
+                try:
+                    strategy_method = getattr(candle_strategies, strategy_name, None)
+                    if strategy_method and callable(strategy_method):
+                        # Ejecutar estrategia completa una sola vez
+                        df_result = strategy_method()
+                        if 'ExecSignal' in df_result.columns:
+                            strategy_signals[strategy_name] = df_result['ExecSignal'].fillna(0)
+                        
+                        # Actualizar progreso del pre-cálculo
+                        pre_progress = 10 + (i + 1) / len(selected_strategies) * 20
+                        if progress_callback:
+                            progress_callback(pre_progress, f"Pre-calculando {strategy_name}...")
+                            
+                except Exception as e:
+                    self.log(f"Error pre-calculando {strategy_name}: {str(e)}", color='red')
+                    continue
+
+            if progress_callback:
+                progress_callback(30, "Iniciando simulación...")
+
+            # Procesar cada vela con señales pre-calculadas
+            total_rows = len(self.df_actual)
+            processed_rows = 0
+            
+            # Calcular ATR una sola vez para todo el DataFrame
+            if 'High' in self.df_actual.columns and 'Low' in self.df_actual.columns:
+                atr_series = self.df_actual['High'] - self.df_actual['Low']
+            else:
+                atr_series = pd.Series([0.001] * len(self.df_actual), index=self.df_actual.index)
+            
+            for idx, row in self.df_actual.iterrows():
+                processed_rows += 1
+                
+                # Actualizar progreso cada 50 velas para mejor rendimiento
+                if progress_callback and processed_rows % 50 == 0:
+                    progress = 30 + (processed_rows / total_rows) * 65  # 30-95%
+                    progress_callback(progress, f"Procesando vela {processed_rows}/{total_rows}")
+                
+                current_price = float(row['Close'])
+                current_atr = atr_series.loc[idx] if idx in atr_series.index else 0.001
+                
+                # Verificar cierres automáticos (SL/TP)
+                operaciones_cerradas = self.risk_manager.verificar_cierre_operaciones(current_price, idx)
+                for op_cerrada in operaciones_cerradas:
+                    beneficio = op_cerrada.cerrar(current_price, idx)
+                    if beneficio > 0:
+                        self.beneficios += beneficio
+                        self.log(f"CIERRE AUTOMÁTICO (TP): +${beneficio:.2f} | {op_cerrada.estrategia}", color='green')
+                    else:
+                        self.perdidas += abs(beneficio)
+                        self.log(f"CIERRE AUTOMÁTICO (SL): ${beneficio:.2f} | {op_cerrada.estrategia}", color='red')
+
+                # Evaluar señales pre-calculadas para cada estrategia
+                for strategy_name, signals in strategy_signals.items():
+                    if idx not in signals.index:
+                        continue
+                        
+                    signal = signals.loc[idx]
+                    
+                    # Procesar señal de entrada (1 = BUY, -1 = SELL)
+                    if signal == 1 and self.risk_manager.puede_abrir_operacion():
+                        operacion = self.risk_manager.abrir_operacion(
+                            tipo='BUY',
+                            precio=current_price,
+                            timestamp=idx,
+                            stop_loss=current_price - (current_atr * 1.5),
+                            take_profit=current_price + (current_atr * 3.0),
+                            estrategia=strategy_name
+                        )
+                        if operacion:
+                            self.log(f"COMPRA ABIERTA: ${current_price:.5f} | {strategy_name}", color='green')
+                    
+                    elif signal == -1 and self.risk_manager.puede_abrir_operacion():
+                        operacion = self.risk_manager.abrir_operacion(
+                            tipo='SELL',
+                            precio=current_price,
+                            timestamp=idx,
+                            stop_loss=current_price + (current_atr * 1.5),
+                            take_profit=current_price - (current_atr * 3.0),
+                            estrategia=strategy_name
+                        )
+                        if operacion:
+                            self.log(f"VENTA ABIERTA: ${current_price:.5f} | {strategy_name}", color='red')
+
+                # Actualizar dinero visible cada 100 velas para mejor rendimiento
+                if processed_rows % 100 == 0:
+                    self._actualizar_dinero_visible(current_price)
+
+            if progress_callback:
+                progress_callback(95, "Cerrando operaciones finales...")
+
+            # Cerrar todas las operaciones restantes al final
+            final_price = self.df_actual.iloc[-1]['Close']
+            final_timestamp = len(self.df_actual) - 1
+            
+            for operacion in self.risk_manager.operaciones_activas[:]:
+                if operacion.estado == 'ACTIVA':
+                    beneficio = operacion.cerrar(final_price, final_timestamp)
+                    if beneficio > 0:
+                        self.beneficios += beneficio
+                        self.log(f"CIERRE FINAL: +${beneficio:.2f} | {operacion.estrategia}", color='green')
+                    else:
+                        self.perdidas += abs(beneficio)
+                        self.log(f"CIERRE FINAL: ${beneficio:.2f} | {operacion.estrategia}", color='red')
+                    
+                    # Mover a operaciones cerradas
+                    self.risk_manager.operaciones_cerradas.append(operacion)
+                    self.risk_manager.operaciones_activas.remove(operacion)
+                    
+                    # Actualizar estadísticas
+                    if beneficio > 0:
+                        self.risk_manager.operaciones_ganadas += 1
+                        self.risk_manager.ganancia_ganadoras_total += beneficio
+                    else:
+                        self.risk_manager.operaciones_perdidas += 1
+                        self.risk_manager.perdida_perdedoras_total += abs(beneficio)
+                    
+                    # Actualizar capital
+                    self.risk_manager.capital += beneficio
+
+            # Mostrar estadísticas finales
+            self._mostrar_estadisticas_finales()
+            
+            # Progreso completado
+            if progress_callback:
+                progress_callback(100, "Simulación completada")
+
+        except Exception as e:
+            self.log(f"Error en simulación: {str(e)}", color='red')
+            if progress_callback:
+                progress_callback(100, f"Error: {str(e)}")
+
+    def _mostrar_estadisticas_finales(self):
+        """Mostrar estadísticas finales del Risk Manager"""
+        stats = self.risk_manager.obtener_estadisticas()
+        
+        # Log de estadísticas
+        self.log("============================================================", color='cyan')
+        self.log("ESTADÍSTICAS FINALES DEL RISK MANAGER", color='cyan')
+        self.log("============================================================", color='cyan')
+        self.log(f"Capital final: ${stats['capital_final']:,.2f}", color='white')
+        self.log(f"Beneficio total: ${stats['beneficio_total']:,.2f}", color='green' if stats['beneficio_total'] > 0 else 'red')
+        self.log(f"Operaciones ganadas: {stats['operaciones_ganadas']}", color='green')
+        self.log(f"Operaciones perdidas: {stats['operaciones_perdidas']}", color='red')
+        self.log(f"Win Rate: {stats['win_rate']:.1f}%", color='white')
+        self.log(f"Slots utilizados: {stats['slots_utilizados']}/{stats['max_slots']}", color='white')
+        self.log("============================================================", color='cyan')
+        self.log("RESUMEN EN INTERFAZ", color='cyan')
+        self.log(f"Dinero total: ${stats['capital_final']:,.2f}", color='white')
+        self.log(f"Beneficios acumulados: ${self.beneficios:,.2f}", color='green')
+        self.log(f"Pérdidas acumuladas: ${self.perdidas:,.2f}", color='red')
+        self.log("============================================================", color='cyan')
+        
+        # Actualizar labels finales
+        self.dinero_ficticio = stats['capital_final']
+        self.actualizar_labels()
+
     # ---------------- Funciones RL ----------------
     def entrenar_rl(self):
-        if self.df_actual is None:
-            messagebox.showwarning("Atención", "Debe cargar un CSV primero")
-            return
         # Mostrar modal de entrenamiento
         def _start_training(iterations: int, on_complete, on_progress=None):
             try:
@@ -1532,11 +1728,10 @@ class GUIPrincipal:
                         self.candle_streamer.on_candle_update(self._on_candle_update)
             
             # Show the modal
-            BinanceSimulationModal(
+            EstrategiasModal(
                 self.root,
                 estrategias_fx=estrategias_fx,
                 estrategias_candle=estrategias_candle,
-                patrones_list=patrones_list,
                 callback=on_simulation_config
             )
             
@@ -2225,6 +2420,7 @@ class GUIPrincipal:
             try:
                 self.menu_opciones.entryconfig(self._menu_label_estrategias, state=state)
                 self.menu_opciones.entryconfig(self._menu_label_patrones, state=state)
+                self.menu_opciones.entryconfig(self._menu_label_candle_strategies, state=state)
                 self.menu_opciones.entryconfig(self._menu_label_backtesting, state=state)
                 self.menu_opciones.entryconfig(self._menu_label_entrenar_ia, state=state)
             except Exception:
@@ -2275,6 +2471,7 @@ class GUIPrincipal:
             try:
                 self.menu_opciones.entryconfig(self._menu_label_estrategias, state=state)
                 self.menu_opciones.entryconfig(self._menu_label_patrones, state=state)
+                self.menu_opciones.entryconfig(self._menu_label_candle_strategies, state=state)
                 self.menu_opciones.entryconfig(self._menu_label_backtesting, state=state)
                 self.menu_opciones.entryconfig(self._menu_label_entrenar_ia, state=state)
             except Exception:
