@@ -1546,7 +1546,7 @@ class GUIPrincipal:
             self.menu_streamer.entryconfig("Iniciar simulación", state="normal")
             # Al conectar el streamer, permitir iniciar simulación
             self.menu_streamer.entryconfig("Activar Debug", state="normal")
-            self.menu_streamer.entryconfig("Desactivar Debug", state="normal")
+            self.menu_streamer.entryconfig("Desactivar Debug", state="disabled")
             
         except Exception as e:
             self.log(f"Error al iniciar CandleStreamer: {str(e)}", color="red")
