@@ -89,10 +89,10 @@ class CandleStreamerConfigModal:
         )
         cancel_btn.pack(side=tk.LEFT, padx=2)
         
-        # Botón Conectar
+        # Botón Aceptar
         connect_btn = ttk.Button(
             button_frame,
-            text="Conectar",
+            text="Aceptar",
             command=self._on_connect,
             style='Small.TButton'
         )

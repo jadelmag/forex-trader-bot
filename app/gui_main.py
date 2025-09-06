@@ -980,8 +980,6 @@ class GUIPrincipal:
             ]
             self.grafico_manager.dibujar_operaciones(operaciones_totales)
 
-
-
     # ---------------- Funciones de Telegram ----------------
     def conectar_telegram(self):
         """Intenta conectar con el bot de Telegram"""
