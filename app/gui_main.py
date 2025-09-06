@@ -160,7 +160,7 @@ class GUIPrincipal:
         self.btn_clear_log = ttk.Button(self.frame_log_header, text="Limpiar", command=self._limpiar_log, style='Small.TButton')
         self.btn_clear_log.pack(side="right", padx=2, pady=1)
 
-        # Barra de progreso compacta en el header (a la izquierda de "Limpiar Log")
+        # Barra de progreso compacta en el header (a la derecha de "Limpiar Log")
         self.progress_var = tk.IntVar(value=0)
         self.header_progress_frame = tk.Frame(self.frame_log_header, bg="#F8F8F8")
         # Empaquetamos a la derecha para quedar a la izquierda del botón (que también está a la derecha)
@@ -279,8 +279,8 @@ class GUIPrincipal:
         self.menu_streamer.add_command(label="Desconectar", command=self.detener_streamer, state="disabled")
         self.menu_streamer.add_command(label="Cambiar símbolo/intervalo", command=self.cambiar_config_streamer, state="disabled")
         self.menu_streamer.add_separator()
-        self.menu_streamer.add_command(label="Iniciar simulación", command=self.iniciar_simulacion, state="disabled")
-        self.menu_streamer.add_command(label="Detener simulación", command=self.detener_simulacion, state="disabled")
+        self.menu_streamer.add_command(label="Iniciar simulación Binance", command=self.iniciar_simulacion_binance, state="disabled")
+        self.menu_streamer.add_command(label="Detener simulación Binance", command=self.detener_simulacion_binance, state="disabled")
         self.menu_streamer.add_separator()
         self.menu_streamer.add_command(label="Activar Debug", command=lambda: self.toggle_debug_mode(True), state="disabled")
         self.menu_streamer.add_command(label="Desactivar Debug", command=lambda: self.toggle_debug_mode(False), state="disabled")
@@ -291,7 +291,7 @@ class GUIPrincipal:
         # Inicializar estados de los botones
         self.menu_streamer.entryconfig("Desconectar", state="disabled")
         self.menu_streamer.entryconfig("Cambiar símbolo/intervalo", state="disabled")
-        self.menu_streamer.entryconfig("Detener simulación", state="disabled")
+        self.menu_streamer.entryconfig("Detener simulación Binance", state="disabled")
         
         # Botón de prueba temporal
         self.test_btn = ttk.Button(self.frame_left, text="Test", command=self.test_iniciar_streamer, style='Small.TButton')
@@ -639,7 +639,7 @@ class GUIPrincipal:
                     if not callable(metodo):
                         self.log(f"Estrategia Forex no encontrada: {nombre}", color='red')
                         continue
-
+                    
                     risk_kwargs = {
                         'risk_per_trade': params.get('riesgo', 0.01),
                         'rr_ratio': params.get('rr', 2.0),
@@ -757,7 +757,7 @@ class GUIPrincipal:
 
                 # Procesar señales de salida (-1) primero para cerrar operaciones
                 for señal_info in señales_del_dia:
-                    if señal_info['senal'] == -1:
+                    if señal_info['senal'] == -1:  # Solo procesar señales de salida
                         estrategia_id = estrategia_id_map.get(señal_info['estrategia'], señal_info['estrategia'])
                         atr_value = row.get('ATR')
                         if np.isnan(atr_value) or atr_value <= 0:
@@ -887,8 +887,8 @@ class GUIPrincipal:
                                         self.log(f"Dinero tras apertura {operacion.tipo}: ${cash_now:,.2f}", color='cyan')
                                 except Exception:
                                     pass
-                            except Exception as e:
-                                self.log(f"Error refrescando dinero visible: {str(e)}", color='red')
+                            except Exception:
+                                pass
                         else:
                             # Si falló la apertura, reportar el motivo si existe
                             try:
@@ -1541,7 +1541,7 @@ class GUIPrincipal:
             self.menu_streamer.entryconfig("Desconectar", state="normal")
             self.menu_streamer.entryconfig("Cambiar símbolo/intervalo", state="normal")
             # Al conectar el streamer, permitir iniciar simulación
-            self.menu_streamer.entryconfig("Iniciar simulación", state="normal")
+            self.menu_streamer.entryconfig("Iniciar simulación Binance", state="normal")
             # Al conectar el streamer, permitir iniciar simulación
             self.menu_streamer.entryconfig("Activar Debug", state="normal")
             self.menu_streamer.entryconfig("Desactivar Debug", state="disabled")
@@ -1550,9 +1550,6 @@ class GUIPrincipal:
             self.log(f"Error al iniciar CandleStreamer: {str(e)}", color="red")
             import traceback
             self.log(traceback.format_exc(), color="red")
-            if self.candle_streamer is not None:
-                self.candle_streamer.stop()
-                self.candle_streamer = None
 
     def toggle_debug_mode(self, enabled: bool):
         """Activa o desactiva el modo debug del CandleStreamer y actualiza el menú."""
@@ -1640,7 +1637,7 @@ class GUIPrincipal:
             if self.candle_streamer is not None:
                 # Si hay una simulación activa, detenerla primero para limpiar estado correctamente
                 if getattr(self, 'simulation_active', False):
-                    self.detener_simulacion()
+                    self.detener_simulacion_binance()
 
                 self.candle_streamer.stop()
                 self.candle_streamer = None
@@ -1648,8 +1645,8 @@ class GUIPrincipal:
                 self.menu_streamer.entryconfig("Conectar", state="normal")
                 self.menu_streamer.entryconfig("Desconectar", state="disabled")
                 self.menu_streamer.entryconfig("Cambiar símbolo/intervalo", state="disabled")
-                self.menu_streamer.entryconfig("Iniciar simulación", state="disabled")
-                self.menu_streamer.entryconfig("Detener simulación", state="disabled")
+                self.menu_streamer.entryconfig("Iniciar simulación Binance", state="disabled")
+                self.menu_streamer.entryconfig("Detener simulación Binance", state="disabled")
                 self.menu_streamer.entryconfig("Activar Debug", state="disabled")
                 self.menu_streamer.entryconfig("Desactivar Debug", state="disabled")
                 
@@ -1672,8 +1669,9 @@ class GUIPrincipal:
         print("DEBUG: Test button clicked")  # Debug log
         self.iniciar_streamer()
         
-    def iniciar_simulacion(self):
+    def iniciar_simulacion_binance(self):
         """Inicia la simulación del mercado"""
+        print("Iniciando simulación Binance")
         try:
             # Get available strategies
             import sys
@@ -1702,8 +1700,8 @@ class GUIPrincipal:
                 self._sim_started_logged = False  # flag to log start once when wait reaches 0
                 
                 # Update UI
-                self.menu_streamer.entryconfig("Iniciar simulación", state="disabled")
-                self.menu_streamer.entryconfig("Detener simulación", state="normal")
+                self.menu_streamer.entryconfig("Iniciar simulación Binance", state="disabled")
+                self.menu_streamer.entryconfig("Detener simulación Binance", state="normal")
                 wait_candles = config.get('wait_candles', 20)
                 self.log(f"Simulación iniciada. Esperando {wait_candles} velas antes de operar...", color="green")
                 # Actualizar estado visual (azul durante la espera)
@@ -1718,12 +1716,13 @@ class GUIPrincipal:
                     if not hasattr(self, '_on_candle_update_connected'):
                         self._on_candle_update_connected = True
                         self.candle_streamer.on_candle_update(self._on_candle_update)
-            
+
             # Show the modal
-            EstrategiasModal(
+            BinanceSimulationModal(
                 self,
                 estrategias_fx=estrategias_fx,
                 estrategias_candle=estrategias_candle,
+                patrones_list=patrones_list,
                 callback=on_simulation_config
             )
             
@@ -2100,7 +2099,7 @@ class GUIPrincipal:
             except Exception as e:
                 self.log(f"Error verificando cierre de orden: {str(e)}", color="red")
     
-    def detener_simulacion(self):
+    def detener_simulacion_binance(self):
         """Detiene la simulación del mercado"""
         try:
             if hasattr(self, 'simulation_active') and self.simulation_active:
@@ -2125,8 +2124,8 @@ class GUIPrincipal:
                 # Actualizar UI
                 # Rehabilitar inicio solo si el streamer sigue conectado
                 start_state = "normal" if getattr(self, 'candle_streamer', None) is not None else "disabled"
-                self.menu_streamer.entryconfig("Iniciar simulación", state=start_state)
-                self.menu_streamer.entryconfig("Detener simulación", state="disabled")
+                self.menu_streamer.entryconfig("Iniciar simulación Binance", state=start_state)
+                self.menu_streamer.entryconfig("Detener simulación Binance", state="disabled")
                 self.log("Simulación detenida correctamente", color="green")
                 # Resetear estado visual
                 if hasattr(self, 'label_sim_status'):
@@ -2503,14 +2502,14 @@ class GUIPrincipal:
             else:
                 default_title = getattr(self, "telegram_title", "")
                 default_desc = getattr(self, "telegram_description", "")
-        except Exception:
-            default_title = getattr(self, "telegram_title", "")
-            default_desc = getattr(self, "telegram_description", "")
 
-        if default_title:
-            entry_title.insert(0, default_title)
-        if default_desc:
-            text_desc.insert("1.0", default_desc)
+            if default_title:
+                entry_title.insert(0, default_title)
+            if default_desc:
+                text_desc.insert("1.0", default_desc)
+        except Exception:
+            # If loading defaults fails, just use empty values
+            pass
 
         frame.columnconfigure(0, weight=1)
 
@@ -2627,7 +2626,7 @@ class GUIPrincipal:
                 if capital_inicial <= 0:
                     raise ValueError
             except Exception:
-                messagebox.showerror("Entrenamiento IA", "Ingrese un capital válido en 'Dinero ficticio'")
+                messagebox.showerror("Entrenamiento IA", "Ingrese un capital válido en el campo 'Dinero ficticio'")
                 return
 
             # Callbacks seguros para UI
@@ -2814,7 +2813,7 @@ class GUIPrincipal:
                                 estrategias_fx=seleccion_fx,
                                 estrategias_candle=seleccion_candle,
                                 patrones=seleccion_patterns,
-                                log_fn=lambda m: ui_log(m, 'cyan'),
+                                log_fn=lambda m: ui_log(m, 'cyan')
                             )
                             new_dims = temp_agent.env.observation_space.shape[0]
                             
@@ -2961,7 +2960,7 @@ class GUIPrincipal:
     # ---- Utilidades barra de progreso ----
     def _show_progress_bar(self):
         try:
-            # Mostrar la barra en el header (a la izquierda de "Limpiar Log")
+            # Mostrar la barra en el header (a la derecha de "Limpiar Log")
             self.progress_var.set(0)
             self.header_progress_label.config(text="0%")
             self.header_progress_frame.pack(side="right", padx=(0, 8))

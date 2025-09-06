@@ -25,6 +25,7 @@ class EstrategiasModal(tk.Toplevel):
         self.resizable(False, False)
         self.grab_set()  # modal
 
+        print("EstrategiasModal")
         # Altura fija de la zona de estrategias (scrollable)
         list_area_height = 400
 
