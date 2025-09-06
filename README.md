@@ -565,7 +565,7 @@ Commons Clause + Apache/MIT
 
 ## TODO
 ----
-* Optimizar las estrategias [TODO]
+* Optimizar las estrategias [DOING]
 * Arreglar error de reconexion [TODO]
 * Arreglar hover sobre la grafica de candle streamer [TODO]
 * Arreglar hover, zoom, pan, scroll sobre la grafica de datos cargados por csv o pkl [TODO]
