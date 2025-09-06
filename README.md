@@ -565,13 +565,12 @@ Commons Clause + Apache/MIT
 
 ## TODO
 ----
-* Optimizar las estrategias [DOING]
-* Arreglar error de reconexion [TODO]
+* Optimizar las estrategias [ALWAYS DOING]
+* Arreglar error de reconexion [DOING]
 * Arreglar hover sobre la grafica de candle streamer [TODO]
-* Arreglar hover, zoom, pan, scroll sobre la grafica de datos cargados por csv o pkl [TODO]
 * Generar informe [TODO]
 * Configuración de la aplicacion [TODO]
-* Conectar con Metatrader [TODO]
+* Conectar con Metatrader [TODO VERSION FINAL]
 
 
 
