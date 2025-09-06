@@ -33,16 +33,20 @@ forex-trader-bot/
 │ ├─ binance_modal.py                   # BinanceSimulationModal, permite simular trading en Binance
 │ ├─ candle_strategies_modal.py         # CandleStrategiesModal, permite simular trading en Binance
 │ ├─ candlestick_chart.py               # Clase CandlestickChart, dibuja velas de CSV o yfinance
+│ ├─ config_app_modal.py                # ConfigAppModal, configuración de email y reportes automáticos
 │ ├─ csv_loader_modal.py                # Clase CSVLoaderModal, permite cargar CSVs
 │ ├─ csv_manager.py                     # Clase CSVManager para manejar archivos CSV
 │ ├─ csv_to_pkl_modal.py                # Clase CSVToPklModal para convertir CSVs a PKLs
+│ ├─ email_service.py                   # EmailService, envío automático de reportes por SMTP
 │ ├─ grafico_manager.py                 # Clase GraficoManager para manejar gráficos
 │ ├─ gui_main.py                        # Clase GUIPrincipal que organiza frames y widgets
 │ ├─ main.py                            # Función main() para ejecutar la app
 │ ├─ patterns_modal.py                  # Clase PatternsModal, permite cargar patrones de velas
 │ ├─ processed_loader_modal.py          # Clase ProcessedLoaderModal, permite cargar archivos PKLs
 │ ├─ progress_modal.py                  # Clase ProgressModal, muestra progreso de operaciones
+│ ├─ report_generator.py                # ReportGenerator, generación automática de reportes de trading
 │ ├─ rl_training_modal.py               # Clase RLTrainingModal, permite entrenar RL
+│ ├─ scheduler_service.py               # SchedulerService, temporizador automático para reportes
 │ ├─ strategies_modal.py                # Clase StrategiesModal, permite cargar estrategias de RL
 │ ├─ test_runner.py                     # PRunner que ejecuta todos los tests
 │ ├─ tooltip_zoom_pan.py                # Funciones para tooltip, zoom y pan [TODO]
@@ -54,6 +58,10 @@ forex-trader-bot/
 ├─ backtesting/             # Carpeta donde se guardan los archivos de backtesting
 │ ├─ __init__.py            # ForexBacktester
 │ └─ backtester.py          # Fichero de backtesting
+|
+├─ config/                  # Archivos de configuración
+│ ├─ app_config.json        # Configuración de email y reportes automáticos
+│ └─ scheduler_state.json   # Estado del scheduler de reportes
 |
 ├─ csv/                     # Archivos CSV de velas
 │ ├─ audusd/ DAT_ASCII_AUDUSD_M1_2023.csv # Velas de AUD/USD
@@ -78,6 +86,9 @@ forex-trader-bot/
 | └─ candlestickpatterns.py # Patrones de velas
 |
 ├─ processed/               # Carpeta donde se guardan los archivos procesados (.pkl)
+|
+├─ reports/                 # Reportes automáticos de trading
+│ └─ trading_report_*.txt   # Reportes generados automáticamente
 |
 ├─ rl/                      # Carpeta donde se guardan los archivos de RL
 │ ├─ __init__.py            # ForexRL
@@ -563,11 +574,45 @@ Ve a 👉 https://my.telegram.org
 Commons Clause + Apache/MIT
 
 
+## Funcionalidades Principales
+
+### 📧 Sistema de Reportes Automáticos por Email
+
+**Configuración:**
+- Accede al menú **Streamer → Configuración** para configurar el sistema de reportes
+- Configura tu email, contraseña y frecuencia de envío (en horas)
+- Soporta Gmail, Outlook, Yahoo y otros proveedores SMTP
+
+**Características:**
+- **Envío automático:** Reportes programados cada X horas según configuración
+- **Contenido completo:** Estado del capital, operaciones abiertas, P&L, estadísticas
+- **Archivos adjuntos:** Reportes en formato .txt para historial
+- **Detección automática:** Configuración SMTP automática según proveedor de email
+- **Gestión inteligente:** Limpieza automática de reportes antiguos (30 días)
+
+**Métodos principales:**
+- `SchedulerService._should_send_report()` - Detecta cuando han pasado las horas configuradas
+- `EmailService.send_report_email()` - Envía el reporte por correo electrónico
+- `ReportGenerator.generate_trading_report()` - Genera el contenido del reporte
+
+**Archivos de configuración:**
+- `config/app_config.json` - Configuración de email y frecuencia
+- `config/scheduler_state.json` - Estado del último envío
+- `reports/trading_report_*.txt` - Reportes generados
+
+### 🔄 Gestión Automática
+- El scheduler se inicia automáticamente al abrir la aplicación
+- Se reinicia automáticamente al cambiar la configuración
+- Se detiene correctamente al cerrar la aplicación
+- Manejo robusto de errores de conexión SMTP
+
+---
+
 ## TODO
 ----
 * Optimizar las estrategias [ALWAYS DOING]
-* Arreglar error de reconexion [DOING]
-* Configuración de la aplicacion [TODO]
+* Arreglar error de reconexion [DOING] 
+* Sistema de reportes automáticos por email [DONE] ✅
 * Conectar con Metatrader [TODO VERSION FINAL]
 
 

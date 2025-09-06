@@ -34,6 +34,8 @@ from .rl_training_modal import RLTrainingModal
 from .csv_to_pkl_modal import CSVToPKLModal
 from .ai_trainer import AITrainer
 from .processed_loader_modal import ProcessedDataModal
+from .config_app_modal import ConfigAppModal
+from .scheduler_service import get_scheduler_instance
 
 from patterns.candlestickpatterns import CandlestickPatterns
 from patterns.pattern_utils import get_available_patterns
@@ -94,6 +96,13 @@ class GUIPrincipal:
         # Iniciar RiskManager con el mismo capital ficticio inicial (0 al inicio)
         self.risk_manager = RiskManager(capital_inicial=self.dinero_ficticio, max_operaciones_activas=5)
         self.risk_integration = RiskManagerIntegration(self.risk_manager)
+        
+        # Inicializar el scheduler de reportes automáticos
+        self.scheduler = get_scheduler_instance(self.risk_manager)
+        self.scheduler.start()
+        
+        # Configurar limpieza al cerrar la aplicación
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
         # Frames principales
         self.frame_controls = tk.Frame(self.root, bg="#F0F0F0")
@@ -2196,8 +2205,22 @@ class GUIPrincipal:
             self.log(traceback.format_exc(), color="red")
 
     def configuracion(self):
-        """Envía la configuración actual del streamer"""
-        self.log("Configuración")
+        """Abre el modal de configuración de la aplicación"""
+        try:
+            modal = ConfigAppModal(self.root)
+            # Esperar a que se cierre el modal y reiniciar scheduler si es necesario
+            self.root.wait_window(modal)
+            
+            # Reiniciar scheduler con nueva configuración
+            if hasattr(self, 'scheduler'):
+                self.scheduler.restart_if_config_changed()
+                status = self.scheduler.get_status()
+                if status['running']:
+                    self.log(f"📧 Reportes automáticos activados (cada {status['report_hours']} horas)", color="green")
+                else:
+                    self.log("📧 Reportes automáticos desactivados", color="orange")
+        except Exception as e:
+            self.log(f"❌ Error abriendo configuración: {str(e)}", color="red")
 
     def cambiar_config_streamer(self):
         """Abre el modal para cambiar símbolo/intervalo y reinicia el streamer con la nueva configuración."""
@@ -3057,6 +3080,24 @@ class GUIPrincipal:
         except Exception:
             pass
 
+    def on_closing(self):
+        """Método llamado al cerrar la aplicación para limpiar recursos"""
+        try:
+            # Detener el scheduler de reportes
+            if hasattr(self, 'scheduler'):
+                self.scheduler.stop()
+                self.log("📧 Scheduler de reportes detenido", color="orange")
+            
+            # Detener candle streamer si está activo
+            if self.candle_streamer:
+                self.candle_streamer.stop()
+                self.log("🔌 Conexión Binance cerrada", color="orange")
+                
+        except Exception as e:
+            print(f"Error durante limpieza: {e}")
+        finally:
+            self.root.destroy()
+    
     # ---------------- Run ----------------
     def run(self):
         self.root.mainloop()
