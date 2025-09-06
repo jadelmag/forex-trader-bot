@@ -63,7 +63,7 @@ class AITrainer:
 
         # Risk Manager
         self.risk_manager = RiskManager(max_operaciones_activas=self.max_orders, capital_inicial=self.capital_inicial)
-        self.risk_integration = RiskManagerIntegration(self.risk_manager, None)
+        self.risk_integration = RiskManagerIntegration(self.risk_manager)
 
         # Estrategias auxiliares
         self.fx = ForexStrategies(self.df)

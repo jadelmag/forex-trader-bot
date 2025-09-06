@@ -502,7 +502,7 @@ class EstrategiasModal(tk.Toplevel):
                 capital_inicial = 10000
             
             risk_manager = RiskManager(capital_inicial=capital_inicial, max_operaciones_activas=max_orders)
-            risk_integration = RiskManagerIntegration(risk_manager, None)
+            risk_integration = RiskManagerIntegration(risk_manager)
             risk_manager.reset()
 
             # Log inicio

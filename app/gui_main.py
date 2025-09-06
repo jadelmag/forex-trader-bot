@@ -93,7 +93,7 @@ class GUIPrincipal:
 
         # Iniciar RiskManager con el mismo capital ficticio inicial (0 al inicio)
         self.risk_manager = RiskManager(capital_inicial=self.dinero_ficticio, max_operaciones_activas=5)
-        self.risk_integration = RiskManagerIntegration(self.risk_manager, None)
+        self.risk_integration = RiskManagerIntegration(self.risk_manager)
 
         # Frames principales
         self.frame_controls = tk.Frame(self.root, bg="#F0F0F0")
@@ -605,7 +605,7 @@ class GUIPrincipal:
 
         # Configurar Risk Manager
         self.risk_manager = RiskManager(max_operaciones_activas=max_orders, capital_inicial=capital_inicial)
-        self.risk_integration = RiskManagerIntegration(self.risk_manager, None)
+        self.risk_integration = RiskManagerIntegration(self.risk_manager)
         self.risk_manager.reset()
 
         # Asegurar que las instancias existen
@@ -1190,7 +1190,7 @@ class GUIPrincipal:
             # Configurar Risk Manager
             capital_inicial = float(self.dinero_ficticio)
             self.risk_manager = RiskManager(capital_inicial=capital_inicial, max_operaciones_activas=max_operations)
-            self.risk_integration = RiskManagerIntegration(self.risk_manager, None)
+            self.risk_integration = RiskManagerIntegration(self.risk_manager)
             self.risk_manager.reset()
 
             # Log inicio de simulación
@@ -1499,8 +1499,7 @@ class GUIPrincipal:
         try:
             # Limpiar el frame del gráfico actual
             for widget in self.frame_grafico.winfo_children():
-                if widget != self.frame_grafico_header:  # Mantener el header
-                    widget.destroy()
+                widget.destroy()
             
             # Crear un frame para el gráfico del streamer
             chart_frame = tk.Frame(self.frame_grafico, bg='#FFFFFF')
@@ -1790,7 +1789,7 @@ class GUIPrincipal:
                 # Obtener modo debug del candle_streamer si existe
                 debug_mode = bool(getattr(getattr(self, 'candle_streamer', None), 'debug_mode', False))
                 self.risk_manager = RiskManager(max_operaciones_activas=int(self.simulation_config.get('max_orders', 5)), capital_inicial=capital_inicial, debug_mode=debug_mode)
-                self.risk_integration = RiskManagerIntegration(self.risk_manager, None)
+                self.risk_integration = RiskManagerIntegration(self.risk_manager)
                 try:
                     self.risk_manager.reset()
                 except Exception:
