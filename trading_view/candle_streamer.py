@@ -123,7 +123,7 @@ class CandleStreamer:
         self._last_x = None  # posiciones x (mdates float) del último DF
         self._hover_annot = None
         self._hover_cid = None
-        self.debug_hover = False  # activar para logs de eventos de hover
+        self.debug_hover = True  # activar para logs de eventos de hover
         self._hover_marker = None  # marcador visual en la vela
         # Zoom con scroll
         self._scroll_cid = None
@@ -144,6 +144,84 @@ class CandleStreamer:
         """Activa o desactiva el modo debug"""
         self.debug_mode = debug
         self._log(f"Modo debug {'activado' if debug else 'desactivado'}", 'blue')
+    
+    def set_debug_hover(self, debug: bool):
+        """Activa o desactiva el debug específico para hover"""
+        self.debug_hover = debug
+        self._log(f"Debug hover {'activado' if debug else 'desactivado'}", 'blue')
+    
+    def test_tooltip_visibility(self):
+        """Método de prueba para verificar si el tooltip está funcionando"""
+        if not hasattr(self, '_hover_annot') or self._hover_annot is None:
+            self._log("ERROR: Tooltip annotation no existe", 'red')
+            return False
+        
+        if not hasattr(self, 'ax_price') or self.ax_price is None:
+            self._log("ERROR: ax_price no existe", 'red')
+            return False
+        
+        # Verificar si la anotación está adjunta al eje correcto
+        if self._hover_annot.axes != self.ax_price:
+            self._log("ERROR: Tooltip no está adjunto al eje de precio", 'red')
+            return False
+        
+        # Verificar z-order
+        zorder = getattr(self._hover_annot, 'zorder', 0)
+        self._log(f"Tooltip z-order: {zorder}", 'blue')
+        
+        # Verificar si hay datos para hover
+        if self._last_df is None or self._last_df.empty:
+            self._log("WARNING: No hay datos para hover (_last_df está vacío)", 'yellow')
+            return False
+        
+        if self._last_x is None or len(self._last_x) == 0:
+            self._log("WARNING: No hay coordenadas X para hover (_last_x está vacío)", 'yellow')
+            return False
+        
+        self._log(f"Tooltip OK - Datos: {len(self._last_df)} velas, Z-order: {zorder}", 'green')
+        return True
+    
+    def force_show_tooltip_test(self):
+        """Fuerza mostrar el tooltip en el centro del gráfico para pruebas"""
+        try:
+            if self._last_df is None or self._last_df.empty:
+                self._log("No hay datos para mostrar tooltip de prueba", 'red')
+                return
+            
+            self._ensure_hover_annotation()
+            
+            # Usar la vela del medio
+            mid_idx = len(self._last_df) // 2
+            row = self._last_df.iloc[mid_idx]
+            ts = self._last_df.index[mid_idx]
+            
+            # Obtener límites del eje
+            xlim = self.ax_price.get_xlim()
+            ylim = self.ax_price.get_ylim()
+            
+            # Posicionar en el centro
+            x = (xlim[0] + xlim[1]) / 2
+            y = (ylim[0] + ylim[1]) / 2
+            
+            # Crear texto de prueba
+            txt = f"TOOLTIP TEST\n{ts}\nOpen: {float(row['Open']):.5f}\nClose: {float(row['Close']):.5f}"
+            
+            # Mostrar tooltip
+            self._hover_annot.xy = (x, y)
+            self._hover_annot.set_position((20, 20))
+            self._hover_annot.set_text(txt)
+            self._hover_annot.set_visible(True)
+            
+            # Mostrar marcador
+            self._hover_marker.set_data([x], [y])
+            self._hover_marker.set_markerfacecolor('red')
+            self._hover_marker.set_visible(True)
+            
+            self._log(f"Tooltip de prueba mostrado en ({x:.2f}, {y:.2f})", 'green')
+            self._force_canvas_draw()
+            
+        except Exception as e:
+            self._log(f"Error en tooltip de prueba: {e}", 'red')
 
     def on_candle_update(self, callback):
         """Permite registrar un callback que será llamado con el DataFrame
@@ -442,8 +520,8 @@ class CandleStreamer:
                         patchB=None,
                         connectionstyle="arc3,rad=0.3"
                     ),
-                    fontsize=9,
-                    zorder=100,
+                    fontsize=10,
+                    zorder=1000,
                     ha='left',
                     va='bottom',
                     linespacing=1.4
@@ -465,29 +543,55 @@ class CandleStreamer:
                     markerfacecolor='#1f77b4',
                     markeredgecolor='white',
                     markeredgewidth=1.0,
-                    alpha=0.9,
-                    zorder=99
+                    alpha=0.95,
+                    zorder=999
                 )
                 self._hover_marker.set_visible(False)
         except Exception as e:
             self._log(f"Error creando anotación de hover: {e}", 'red')
+    def _force_canvas_draw(self):
+        """Fuerza el redibujado del canvas de manera robusta"""
+        try:
+            if hasattr(self, 'canvas') and self.canvas:
+                # Para TkAgg, usar tanto draw_idle como flush_events
+                self.canvas.draw_idle()
+                self.canvas.flush_events()
+                if self.debug_hover:
+                    self._log("Canvas draw_idle + flush_events executed", 'gray')
+            elif hasattr(self, 'fig') and self.fig:
+                self.fig.canvas.draw_idle()
+                if hasattr(self.fig.canvas, 'flush_events'):
+                    self.fig.canvas.flush_events()
+                if self.debug_hover:
+                    self._log("Fig canvas draw_idle executed", 'gray')
+        except Exception as e:
+            if self.debug_hover:
+                self._log(f"Error forcing canvas draw: {e}", 'red')
 
     def _on_motion(self, event):
         """Maneja hover, pan (botón derecho) y dibujo de recuadro para zoom (botón izquierdo)."""
         try:
+            if self.debug_hover:
+                self._log(f"Motion event: inaxes={event.inaxes}, xdata={event.xdata}, ydata={event.ydata}", 'gray')
+            
             # Requiere eje de precio y datos
             if not hasattr(self, 'ax_price') or self._last_df is None or self._last_df.empty:
+                if self.debug_hover:
+                    self._log("No ax_price or empty data", 'gray')
                 return
+            
             # Mostrar sólo si el ratón está sobre el eje de precio o volumen
             if (event.inaxes not in (self.ax_price, getattr(self, 'ax_volume', None)) or
                 event.xdata is None or event.ydata is None):
                 # Ocultar si estaba visible
                 if self._hover_annot is not None and self._hover_annot.get_visible():
+                    if self.debug_hover:
+                        self._log("Hiding tooltip - mouse outside axes", 'gray')
                     self._hover_annot.set_visible(False)
                     if self._hover_marker is not None and self._hover_marker.get_visible():
                         self._hover_marker.set_visible(False)
                     # Redibuja de forma ociosa usando el canvas de la figura (compatible con TkAgg)
-                    self.fig.canvas.draw_idle()
+                    self._force_canvas_draw()
                 return
 
             # Si estamos arrastrando con botón derecho, hacer pan en X
@@ -503,7 +607,7 @@ class CandleStreamer:
                         self.ax_volume.set_xlim(left, right)
                     self._user_xlim = (left, right)
                     # Redibuja de forma ociosa usando el canvas de la figura
-                    self.fig.canvas.draw_idle()
+                    self._force_canvas_draw()
                 except Exception as e:
                     if self.debug_hover:
                         self._log(f"Pan error: {e}", 'red')
@@ -534,7 +638,7 @@ class CandleStreamer:
                         self._rect_patch.set_height(max(ymax - ymin, 0))
                     self._rect_patch.set_visible(True)
                     # Redibuja de forma ociosa usando el canvas de la figura
-                    self.fig.canvas.draw_idle()
+                    self._force_canvas_draw()
                 except Exception as e:
                     if self.debug_hover:
                         self._log(f"Rect draw error: {e}", 'red')
@@ -548,15 +652,44 @@ class CandleStreamer:
 
             # Asegurar que existe la anotación
             self._ensure_hover_annotation()
+            
+            if self.debug_hover:
+                self._log(f"Processing hover - last_x length: {len(self._last_x) if self._last_x is not None else 0}", 'gray')
+                if self._last_x is not None and len(self._last_x) > 0:
+                    self._log(f"_last_x range: {min(self._last_x):.2f} to {max(self._last_x):.2f}", 'gray')
+                    self._log(f"event.xdata: {event.xdata:.2f}", 'gray')
 
             # Buscar índice de vela más cercano usando coordenadas x numéricas (evita problemas de tz)
             if self._last_x is None or len(self._last_x) == 0:
+                if self.debug_hover:
+                    self._log("No _last_x data available", 'gray')
                 return
-            loc = int(np.argmin(np.abs(self._last_x - event.xdata)))
+            
+            # Verificar si event.xdata está en el rango de _last_x
+            x_min, x_max = min(self._last_x), max(self._last_x)
+            if event.xdata < x_min or event.xdata > x_max:
+                if self.debug_hover:
+                    self._log(f"event.xdata {event.xdata:.2f} fuera del rango [{x_min:.2f}, {x_max:.2f}]", 'yellow')
+                # Intentar mapear a coordenadas del eje
+                xlim = self.ax_price.get_xlim()
+                if xlim[0] <= event.xdata <= xlim[1]:
+                    # Mapear desde coordenadas del eje a índice de datos
+                    ratio = (event.xdata - xlim[0]) / (xlim[1] - xlim[0])
+                    loc = int(ratio * (len(self._last_x) - 1))
+                    loc = max(0, min(loc, len(self._last_df) - 1))
+                    if self.debug_hover:
+                        self._log(f"Mapeado a índice {loc} usando ratio {ratio:.3f}", 'blue')
+                else:
+                    return
+            else:
+                loc = int(np.argmin(np.abs(self._last_x - event.xdata)))
+                loc = max(0, min(loc, len(self._last_df) - 1))
 
-            loc = max(0, min(loc, len(self._last_df) - 1))
             ts = self._last_df.index[loc]
             row = self._last_df.iloc[loc]
+            
+            if self.debug_hover:
+                self._log(f"Found candle at index {loc}: {ts}", 'gray')
 
             # Calcular cambio y color
             open_price = float(row['Open'])
@@ -581,20 +714,19 @@ class CandleStreamer:
                 f"Volume: {float(row['Volume']):.4f}\n"
             )
 
-            # Posicionar anotación inteligentemente
-            xnum = mdates.date2num(ts)
-            yval = float(row['High'])
-            
-            # Determinar posición óptima para no salir de la pantalla
-            x, y = xnum, yval
+            # Posicionar anotación usando coordenadas del evento en lugar de mdates
+            # Esto evita problemas de conversión de coordenadas
+            x, y = event.xdata, float(row['High'])
             xlim = self.ax_price.get_xlim()
             ylim = self.ax_price.get_ylim()
-            x_range = xlim[1] - xlim[0]
-            y_range = ylim[1] - ylim[0]
+            
+            if self.debug_hover:
+                self._log(f"Tooltip position: x={x:.2f}, y={y:.5f}", 'gray')
+                self._log(f"Axes limits: xlim=[{xlim[0]:.2f}, {xlim[1]:.2f}], ylim=[{ylim[0]:.5f}, {ylim[1]:.5f}]", 'gray')
             
             # Ajustar posición para que no se salga de los límites
-            x_offset = 15 if x < (xlim[0] + xlim[1]) / 2 else -15
-            y_offset = 15 if y < (ylim[0] + ylim[1]) / 2 else -15
+            x_offset = 20 if x < (xlim[0] + xlim[1]) / 2 else -120  # Más espacio para el texto
+            y_offset = 20 if y < (ylim[0] + ylim[1]) / 2 else -120
             
             # Actualizar anotación
             self._hover_annot.xy = (x, y)
@@ -603,13 +735,19 @@ class CandleStreamer:
             self._hover_annot.set_visible(True)
             
             # Actualizar marcador en el cierre con el color correspondiente
-            self._hover_marker.set_data([xnum], [close_price])
+            self._hover_marker.set_data([x], [close_price])  # Usar x del evento
             self._hover_marker.set_markerfacecolor(color)
             self._hover_marker.set_visible(True)
+            
+            if self.debug_hover:
+                self._log(f"Tooltip updated and made visible at ({x:.2f}, {y:.2f}) with offset ({x_offset}, {y_offset})", 'green')
+                self._log(f"Annotation visible: {self._hover_annot.get_visible()}, Marker visible: {self._hover_marker.get_visible()}", 'blue')
 
             # Redibujar ligero
-            # Redibuja de forma ociosa usando el canvas de la figura
-            self.fig.canvas.draw_idle()
+            self._force_canvas_draw()
+            
+            if self.debug_hover:
+                self._log("Canvas draw completed", 'blue')
         except Exception as e:
             if self.debug_hover:
                 self._log(f"Hover error: {e}", 'red')

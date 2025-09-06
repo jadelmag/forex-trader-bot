@@ -567,7 +567,6 @@ Commons Clause + Apache/MIT
 ----
 * Optimizar las estrategias [ALWAYS DOING]
 * Arreglar error de reconexion [DOING]
-* Arreglar hover sobre la grafica de candle streamer [TODO]
 * Generar informe [TODO]
 * Configuración de la aplicacion [TODO]
 * Conectar con Metatrader [TODO VERSION FINAL]
