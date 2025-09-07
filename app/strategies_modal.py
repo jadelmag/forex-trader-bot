@@ -14,8 +14,6 @@ from strategies.strategies import ForexStrategies
 from strategies.candle_strategies import CandleStrategies
 from strategies.risk_manager import RiskManager, RiskManagerIntegration
 from .binance_modal import CandleConfigModal
-from ia_strategies.chatgpt_strategies import SuperheroStrategies
-from ia_strategies.deep_seek_strategies import QuantumStrategies
 
 class EstrategiasModal(tk.Toplevel):
     def __init__(self, parent, estrategias_fx, estrategias_candle, callback, patrones_list=None):
@@ -28,7 +26,7 @@ class EstrategiasModal(tk.Toplevel):
             self.gui_parent = parent
         self.parent = parent
         self.callback = callback
-        self.title("Seleccionar Estrategias Forex y Candle")
+        self.title("")
         self.resizable(False, False)
         self.grab_set()  # modal
 
@@ -351,67 +349,6 @@ class EstrategiasModal(tk.Toplevel):
                     "custom_config": None
                 }
 
-        # ---------------- SECCIÓN RAPIÑAIRE STRATEGIES ----------------
-        # Descubrir estrategias desde SuperheroStrategies y QuantumStrategies
-        try:
-            discovered_rapinaire, providers_map = self._discover_rapinaire_strategies()
-        except Exception:
-            discovered_rapinaire, providers_map = [], {}
-        self.estrategias_rapinaire = sorted(set(discovered_rapinaire))
-        self.rapinaire_providers = providers_map  # nombre -> 'superhero' | 'quantum'
-
-        if self.estrategias_rapinaire:
-            # Calcular fila de inicio tras Candle Strategies
-            base_after_fx = (len(estrategias_fx) + 3) if estrategias_fx else 0
-            base_after_candle = base_after_fx
-            if self.estrategias_candle:
-                base_after_candle = base_after_fx + 3 + len(self.estrategias_candle)
-
-            start_row_r = base_after_candle
-
-            lbl_rap = ttk.Label(self.scrollable_frame, text="Rapiñaire Strategies",
-                                 font=("Arial", 10, "bold"), anchor="w")
-            lbl_rap.grid(row=start_row_r, column=0, columnspan=3, sticky="w", pady=(20, 10))
-
-            # Botones seleccionar/deseleccionar (centrados)
-            btn_rap_frame = tk.Frame(self.scrollable_frame)
-            btn_rap_frame.grid(row=start_row_r + 1, column=0, columnspan=7, pady=(0, 5))
-            btn_rap_sel = ttk.Button(
-                btn_rap_frame,
-                text="Seleccionar todos",
-                command=lambda: self._set_group("rapinaire", 1),
-                width=18
-            )
-            btn_rap_desel = ttk.Button(
-                btn_rap_frame,
-                text="Deseleccionar todos",
-                command=lambda: self._set_group("rapinaire", 0),
-                width=20
-            )
-            btn_rap_sel.pack(side="left", padx=5)
-            btn_rap_desel.pack(side="left", padx=5)
-
-            # Encabezado
-            ttk.Label(self.scrollable_frame, text="Estrategia", width=20, anchor="w").grid(row=start_row_r+2, column=0, padx=5)
-            ttk.Label(self.scrollable_frame, text="Origen", width=15, anchor="w").grid(row=start_row_r+2, column=1, padx=5)
-
-            # Listado de estrategias Rapiñaire
-            for idx, nombre in enumerate(self.estrategias_rapinaire, start=start_row_r+3):
-                var_check = tk.IntVar()
-                display_name = nombre.replace('_', ' ').capitalize()
-                chk = tk.Checkbutton(self.scrollable_frame, text=display_name, variable=var_check,
-                                     anchor="w", width=20)
-                chk.grid(row=idx, column=0, sticky="w", padx=5, pady=2)
-
-                origen = 'Superhero' if self.rapinaire_providers.get(nombre) == 'superhero' else 'Quantum'
-                ttk.Label(self.scrollable_frame, text=origen, anchor="w").grid(row=idx, column=1, padx=5, sticky="w")
-
-                self.controls[nombre] = {
-                    "selected": var_check,
-                    "tipo": "rapinaire",
-                    "provider": self.rapinaire_providers.get(nombre)
-                }
-
         # ---------------- CHECKBOXES DE OPCIONES ----------------
         # Calcular la fila donde colocar los checkboxes
         base_row = 0
@@ -421,11 +358,6 @@ class EstrategiasModal(tk.Toplevel):
         if self.estrategias_candle:
             # Inicio Candle en len_fx+3, usa: título, botones, header, items
             base_row = max(base_row, (len(estrategias_fx) + 3 if estrategias_fx else 0) + 3 + len(self.estrategias_candle))
-        if getattr(self, 'estrategias_rapinaire', None):
-            # Inicio Rapiñaire tras Candle, usa: título, botones, header, items
-            base_after_fx = (len(estrategias_fx) + 3) if estrategias_fx else 0
-            base_after_candle = base_after_fx + (3 + len(self.estrategias_candle)) if self.estrategias_candle else base_after_fx
-            base_row = max(base_row, base_after_candle + 3 + len(self.estrategias_rapinaire))
 
         options_row = base_row + 2
         
@@ -516,9 +448,6 @@ class EstrategiasModal(tk.Toplevel):
                         except Exception:
                             config = None
                         seleccion[nombre] = {"tipo": "candle", "config": config}
-                    elif ctrl["tipo"] == "rapinaire":
-                        # Para Rapiñaire Strategies no hay configuración adicional por ahora
-                        seleccion[nombre] = {"tipo": "rapinaire", "provider": ctrl.get("provider")}
         
         if not seleccion:
             messagebox.showwarning("Atención", "Seleccione al menos una estrategia")
@@ -674,7 +603,6 @@ class EstrategiasModal(tk.Toplevel):
             
             forex_signals = {}
             candle_signals = {}
-            rapinaire_signals = {}
             
             # Pre-calcular estrategias Forex
             forex_strategies = ForexStrategies(df)
@@ -725,42 +653,6 @@ class EstrategiasModal(tk.Toplevel):
                 except Exception as e:
                     self._log_to_parent(f"Error pre-calculando {nombre}: {str(e)}", 'red')
                     continue
-
-            # Pre-calcular estrategias Rapiñaire (Superhero + Quantum)
-            if any(cfg.get("tipo") == "rapinaire" for _, cfg in seleccion.items()):
-                try:
-                    super_strats = SuperheroStrategies(df)
-                except Exception:
-                    super_strats = None
-                try:
-                    quantum_strats = QuantumStrategies(df)
-                except Exception:
-                    quantum_strats = None
-
-                rap_items = [item for item in seleccion.items() if item[1]["tipo"] == "rapinaire"]
-                total_rap = len(rap_items) if rap_items else 1
-                for i, (nombre, cfg) in enumerate(rap_items):
-                    if not self.is_running:
-                        return
-                    try:
-                        provider = cfg.get('provider') or self.rapinaire_providers.get(nombre)
-                        target = super_strats if provider == 'superhero' else quantum_strats
-                        strategy_method = getattr(target, nombre, None) if target is not None else None
-                        if strategy_method and callable(strategy_method):
-                            try:
-                                df_result = strategy_method()
-                            except TypeError:
-                                df_result = strategy_method()
-                            if 'ExecSignal' in df_result.columns:
-                                rapinaire_signals[nombre] = {
-                                    'signals': df_result['ExecSignal'].fillna(0),
-                                    'config': cfg
-                                }
-                            progress = 30 + (i + 1) / total_rap * 5  # 30-35%
-                            self._update_progress(progress, f"Pre-calculando Rapiñaire: {nombre}")
-                    except Exception as e:
-                        self._log_to_parent(f"Error pre-calculando {nombre}: {str(e)}", 'red')
-                        continue
 
             self._update_progress(30, "Iniciando análisis de velas...")
 
@@ -881,36 +773,6 @@ class EstrategiasModal(tk.Toplevel):
                         )
                         if operacion:
                             self._log_to_parent(f"CANDLE SELL: ${current_price:.5f} | {strategy_name}", 'red')
-
-                # Evaluar señales de estrategias Rapiñaire
-                for strategy_name, strategy_data in rapinaire_signals.items():
-                    if idx not in strategy_data['signals'].index:
-                        continue
-                    signal = strategy_data['signals'].loc[idx]
-                    if signal == 1 and risk_manager.puede_abrir_operacion():
-                        operacion = risk_manager.abrir_operacion(
-                            tipo='BUY',
-                            precio=current_price,
-                            timestamp=idx,
-                            stop_loss=current_price - (current_atr * 1.5),
-                            take_profit=current_price + (current_atr * 3.0),
-                            riesgo_por_operacion=0.01,
-                            estrategia=strategy_name
-                        )
-                        if operacion:
-                            self._log_to_parent(f"RAPIÑAIRE BUY: ${current_price:.5f} | {strategy_name}", 'green')
-                    elif signal == -1 and risk_manager.puede_abrir_operacion():
-                        operacion = risk_manager.abrir_operacion(
-                            tipo='SELL',
-                            precio=current_price,
-                            timestamp=idx,
-                            stop_loss=current_price + (current_atr * 1.5),
-                            take_profit=current_price - (current_atr * 3.0),
-                            riesgo_por_operacion=0.01,
-                            estrategia=strategy_name
-                        )
-                        if operacion:
-                            self._log_to_parent(f"RAPIÑAIRE SELL: ${current_price:.5f} | {strategy_name}", 'red')
 
 
             self._update_progress(95, "Cerrando operaciones finales...")
@@ -1252,63 +1114,3 @@ class EstrategiasModal(tk.Toplevel):
         except Exception:
             pass
         return sorted(set(strategies))
-
-    def _discover_rapinaire_strategies(self):
-        """Descubre estrategias públicas de SuperheroStrategies y QuantumStrategies."""
-        strategies = []
-        providers = {}
-        try:
-            df_dummy = pd.DataFrame({'Open': [], 'High': [], 'Low': [], 'Close': [], 'Volume': []})
-        except Exception:
-            df_dummy = pd.DataFrame({'Open': [], 'High': [], 'Low': [], 'Close': []})
-
-        # SuperheroStrategies
-        try:
-            super_inst = SuperheroStrategies(df_dummy)
-        except Exception:
-            super_inst = None
-        target = super_inst if super_inst is not None else SuperheroStrategies
-        for name in dir(target):
-            if name.startswith('_'):
-                continue
-            if name in ['data', '_calculate_indicators', '_apply_quantum_exit_logic']:
-                continue
-            try:
-                member = getattr(target, name)
-            except Exception:
-                continue
-            if callable(member):
-                strategies.append(name)
-                providers[name] = 'superhero'
-
-        # QuantumStrategies
-        try:
-            quant_inst = QuantumStrategies(df_dummy)
-        except Exception:
-            quant_inst = None
-        target = quant_inst if quant_inst is not None else QuantumStrategies
-        for name in dir(target):
-            if name.startswith('_'):
-                continue
-            if name in ['data', '_calculate_indicators', '_apply_quantum_exit_logic', 'test_quantum_strategies']:
-                continue
-            try:
-                member = getattr(target, name)
-            except Exception:
-                continue
-            if callable(member):
-                strategies.append(name)
-                providers[name] = 'quantum'
-
-        # Resolver duplicados manteniendo primer proveedor encontrado
-        unique_strats = []
-        seen = set()
-        for n in strategies:
-            if n not in seen:
-                unique_strats.append(n)
-                seen.add(n)
-        try:
-            self._log_to_parent(f"[DEBUG] Descubiertas Rapiñaire: {len(unique_strats)}", 'cyan')
-        except Exception:
-            pass
-        return unique_strats, providers

@@ -9,8 +9,8 @@ class QuantumExitConfig:
     use_take_profit: bool = True
     use_trailing_stop: bool = False
     
-    quick_profit_multiplier: float = 0.5
-    quick_loss_multiplier: float = 0.5
+    quick_profit_multiplier: float = 0.8
+    quick_loss_multiplier: float = 0.2
     atr_period: int = 14
     
     def __post_init__(self):

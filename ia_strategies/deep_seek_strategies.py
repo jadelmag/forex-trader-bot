@@ -14,8 +14,8 @@ class QuantumExitConfig:
     use_trailing_stop: bool = False
     
     # Parámetros específicos para estrategias rápidas
-    quick_profit_multiplier: float = 0.5  # Multiplicador para take profit rápido
-    quick_loss_multiplier: float = 0.5    # Multiplicador para stop loss
+    quick_profit_multiplier: float = 0.8  # Multiplicador para take profit rápido
+    quick_loss_multiplier: float = 0.2    # Multiplicador para stop loss
     atr_period: int = 14
     
     def __post_init__(self):
