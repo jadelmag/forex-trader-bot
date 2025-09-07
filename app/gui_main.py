@@ -1887,20 +1887,33 @@ class GUIPrincipal:
             # Aplicar estrategias de velas (máximo 2 por vela)
             from strategies.candle_strategies import CandleStrategies
             candle_strategies = CandleStrategies(df)
-            for strategy_name in self.simulation_config.get('candle_strategies', []):
+            for strat in self.simulation_config.get('candle_strategies', []):
                 if candle_orders_opened >= max_orders_per_type:
                     break
-                    
+
                 try:
+                    # Soportar tanto formato string como dict {'name': ..., 'config': ...}
+                    if isinstance(strat, dict):
+                        strategy_name = strat.get('name')
+                        strategy_config = strat.get('config')
+                    else:
+                        strategy_name = str(strat)
+                        strategy_config = None
+
                     metodo = getattr(candle_strategies, strategy_name, None)
                     if callable(metodo):
-                        df_res = metodo()
-                        signals = df_res['Signal'] if 'Signal' in df_res.columns else None
+                        df_res = metodo(strategy_config)
+                        # Usar ExecSignal si está disponible; fallback a Signal
+                        if 'ExecSignal' in df_res.columns:
+                            signals = df_res['ExecSignal']
+                        else:
+                            signals = df_res['Signal'] if 'Signal' in df_res.columns else None
+
                         if signals is not None and not signals.empty and signals.iloc[-1] == 1:
                             if self._procesar_senal_compra_risk_manager(last_candle, f"candle_{strategy_name}", 0.01, 2.0):
                                 candle_orders_opened += 1
                 except Exception as e:
-                    self.log(f"Error aplicando estrategia de vela {strategy_name}: {str(e)}", color="red")
+                    self.log(f"Error aplicando estrategia de vela {strat}: {str(e)}", color="red")
             
             # Aplicar patrones (máximo 2 por vela)
             try:

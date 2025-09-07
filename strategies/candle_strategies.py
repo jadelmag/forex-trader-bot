@@ -2,7 +2,34 @@
 
 import pandas as pd
 import numpy as np
+from dataclasses import dataclass
 from patterns.candlestickpatterns import CandlestickPatterns
+
+
+@dataclass
+class CandleExitConfig:
+    """Configuración para cierres automáticos en estrategias de velas."""
+    use_signal_change: bool = True
+    use_stop_loss: bool = True
+    use_take_profit: bool = True
+    use_trailing_stop: bool = False
+    use_pattern_reversal: bool = False
+
+    # Parámetros de riesgo
+    atr_sl_multiplier: float = 1.5
+    atr_tp_multiplier: float = 3.0
+    atr_trailing_multiplier: float = 2.0
+
+    # Listas de patrones (reservadas para futuras extensiones)
+    bullish_reversal_patterns: list | None = None
+    bearish_reversal_patterns: list | None = None
+
+    def __post_init__(self):
+        if self.bullish_reversal_patterns is None:
+            self.bullish_reversal_patterns = ['hammer', 'bullish_engulfing', 'morning_star']
+        if self.bearish_reversal_patterns is None:
+            self.bearish_reversal_patterns = ['hanging_man', 'bearish_engulfing', 'evening_star']
+
 
 class CandleStrategies:
     def __init__(self, data):
@@ -38,10 +65,122 @@ class CandleStrategies:
         return result_df
 
     def _apply_exit_logic(self, df, strategy_name, config=None):
-        """Versión simplificada para evitar errores"""
-        # Implementación básica sin lógica compleja
-        df['ExecSignal'] = df['Signal']
-        df['Position'] = df['Signal']
+        """Aplica cierres explícitos (SL/TP, trailing, cambio de señal) y devuelve estructura completa.
+
+        Requiere columna 'Signal' en df y devuelve las columnas:
+        - ExecSignal (-1/0/1), Position (-1/0/1), StopLoss, TakeProfit, ExitReason
+        """
+        # Config por defecto
+        if config is None or not isinstance(config, CandleExitConfig):
+            # Si viene un dict desde el modal, convertir a CandleExitConfig
+            if isinstance(config, dict):
+                try:
+                    config = CandleExitConfig(**config)
+                except TypeError:
+                    config = CandleExitConfig()
+            else:
+                config = CandleExitConfig()
+
+        df = df.copy()
+
+        # Asegurar ATR
+        if 'ATR' not in df.columns:
+            df['ATR'] = (df['High'] - df['Low']).rolling(14, min_periods=1).mean()
+
+        # Inicializar columnas de salida
+        df['ExecSignal'] = 0
+        df['Position'] = 0
+        df['StopLoss'] = np.nan
+        df['TakeProfit'] = np.nan
+        df['ExitReason'] = ''
+
+        position = 0
+        entry_price = 0.0
+        stop_loss = np.nan
+        take_profit = np.nan
+        trailing_stop = np.nan
+
+        for i in range(len(df)):
+            current_signal = int(df.iloc[i]['Signal']) if not pd.isna(df.iloc[i]['Signal']) else 0
+            current_price = float(df.iloc[i]['Close'])
+            current_high = float(df.iloc[i]['High'])
+            current_low = float(df.iloc[i]['Low'])
+            current_atr = float(df.iloc[i]['ATR']) if not pd.isna(df.iloc[i]['ATR']) else 0.0
+
+            # Si hay posición abierta, evaluar posibles cierres
+            if position != 0:
+                exit_signal = 0
+                exit_reason = ''
+
+                # 1) Stop Loss
+                if config.use_stop_loss:
+                    if (position == 1 and current_low <= stop_loss) or (position == -1 and current_high >= stop_loss):
+                        exit_signal = -position
+                        exit_reason = 'STOP_LOSS'
+
+                # 2) Take Profit
+                if exit_signal == 0 and config.use_take_profit:
+                    if (position == 1 and current_high >= take_profit) or (position == -1 and current_low <= take_profit):
+                        exit_signal = -position
+                        exit_reason = 'TAKE_PROFIT'
+
+                # 3) Trailing Stop
+                if exit_signal == 0 and config.use_trailing_stop and current_atr > 0:
+                    if position == 1:
+                        new_trailing = current_price - (current_atr * config.atr_trailing_multiplier)
+                        if np.isnan(trailing_stop) or new_trailing > trailing_stop:
+                            trailing_stop = new_trailing
+                        if current_low <= trailing_stop:
+                            exit_signal = -1
+                            exit_reason = 'TRAILING_STOP'
+                    else:  # position == -1
+                        new_trailing = current_price + (current_atr * config.atr_trailing_multiplier)
+                        if np.isnan(trailing_stop) or new_trailing < trailing_stop:
+                            trailing_stop = new_trailing
+                        if current_high >= trailing_stop:
+                            exit_signal = 1
+                            exit_reason = 'TRAILING_STOP'
+
+                # 4) Cambio de señal
+                if exit_signal == 0 and config.use_signal_change:
+                    if (position == 1 and current_signal == -1) or (position == -1 and current_signal == 1):
+                        exit_signal = -position
+                        exit_reason = 'SIGNAL_CHANGE'
+
+                if exit_signal != 0:
+                    df.iloc[i, df.columns.get_loc('ExecSignal')] = exit_signal
+                    df.iloc[i, df.columns.get_loc('ExitReason')] = exit_reason
+                    position = 0
+                    entry_price = 0.0
+                    stop_loss = np.nan
+                    take_profit = np.nan
+                    trailing_stop = np.nan
+
+            # Entradas: si no hay posición y existe señal
+            if position == 0 and current_signal != 0:
+                df.iloc[i, df.columns.get_loc('ExecSignal')] = current_signal
+                position = current_signal
+                entry_price = current_price
+
+                # Calcular SL/TP
+                if current_atr <= 0:
+                    # Fallback si ATR es 0: usar rango de la vela
+                    current_atr = max(current_high - current_low, 1e-6)
+                if position == 1:
+                    stop_loss = entry_price - (current_atr * config.atr_sl_multiplier)
+                    take_profit = entry_price + (current_atr * config.atr_tp_multiplier)
+                    trailing_stop = entry_price - (current_atr * config.atr_trailing_multiplier) if config.use_trailing_stop else np.nan
+                else:
+                    stop_loss = entry_price + (current_atr * config.atr_sl_multiplier)
+                    take_profit = entry_price - (current_atr * config.atr_tp_multiplier)
+                    trailing_stop = entry_price + (current_atr * config.atr_trailing_multiplier) if config.use_trailing_stop else np.nan
+
+                df.iloc[i, df.columns.get_loc('StopLoss')] = stop_loss
+                df.iloc[i, df.columns.get_loc('TakeProfit')] = take_profit
+
+            # Actualizar posición persistente
+            df.iloc[i, df.columns.get_loc('Position')] = position
+
         return df
 
     # ---------------- Estrategias corregidas ----------------
