@@ -24,7 +24,7 @@ class BinanceSimulationModal(tk.Toplevel):
 
         # Centrar ventana sobre el padre
         self.update_idletasks()
-        w = 550
+        w = 600
         # Altura total del modal: área de lista (400) + controles inferiores
         h_total = 550
         x = parent.winfo_rootx() + (parent.winfo_width() - w) // 2
@@ -221,6 +221,14 @@ class BinanceSimulationModal(tk.Toplevel):
             )
             btn_candle_sel.pack(side="left", padx=5)
             btn_candle_desel.pack(side="left", padx=5)
+            # Botón para cargar configuraciones guardadas y aplicar a las estrategias
+            btn_candle_cargar = ttk.Button(
+                btn_candle_frame,
+                text="Cargar configuraciones",
+                command=self._load_all_candle_configs,
+                width=22
+            )
+            btn_candle_cargar.pack(side="left", padx=5)
 
             # Encabezado para Candle Strategies (con configuración personalizada)
             ttk.Label(self.scrollable_frame, text="Estrategia", width=20, anchor="w").grid(row=start_row+2, column=0, padx=5)
@@ -566,6 +574,58 @@ class BinanceSimulationModal(tk.Toplevel):
             CandleConfigModal(self, strategy_name, current, on_save, x, y)
         except Exception as e:
             print(f"Error opening candle config modal for {strategy_name}: {e}")
+
+    def _load_all_candle_configs(self):
+        """Carga los archivos de configuración existentes para estrategias Candle y
+        cambia el combo de cada estrategia a 'Custom'."""
+        try:
+            # Localizar carpeta config a nivel de proyecto
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            config_dir = os.path.join(project_root, 'config')
+        except Exception:
+            config_dir = None
+
+        if not config_dir or not os.path.isdir(config_dir):
+            return
+
+        loaded_count = 0
+        for name in self.estrategias_candle:
+            try:
+                resolved = resolve_strategy_name(name, "candle") if name else ""
+
+                cfg_path = os.path.join(config_dir, f"candle_{resolved}.json")
+                if not os.path.exists(cfg_path):
+                    continue
+
+                # Leer JSON de configuración
+                try:
+                    with open(cfg_path, 'r', encoding='utf-8') as f:
+                        cfg = json.load(f)
+                except Exception:
+                    continue
+
+                ctrl = self.controls.get(name)
+                if not ctrl or ctrl.get("tipo") != "candle":
+                    continue
+
+                try:
+                    ctrl["custom_config"] = cfg
+                    # Cambiar el combo a 'Custom' y habilitar botón de configuración
+                    if ctrl.get("config_type"):
+                        ctrl["config_type"].set("Custom")
+                    if ctrl.get("config_button"):
+                        ctrl["config_button"].config(state="normal")
+                    loaded_count += 1
+                except Exception:
+                    continue
+            except Exception:
+                # Si algo falla al procesar una estrategia, continuar con la siguiente
+                continue
+        # Opcional: imprimir resumen en consola
+        try:
+            print(f"Cargar configuraciones: {loaded_count} estrategia(s) actualizada(s).")
+        except Exception:
+            pass
 
     def _get_default_candle_config(self, strategy_name: str) -> dict:
         """Devuelve preset por tipo de estrategia según recomendaciones."""

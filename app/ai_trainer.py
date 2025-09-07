@@ -766,193 +766,50 @@ class AITrainer:
                     self._emit_log(f"📉 WinRate final {winrate:.1f}% < objetivo {self.winrate_target:.1f}%. Ajustando estrategias y reintentando (intento {attempt+1}).", 'yellow')
                     self._mutate_configs(winrate)
                 else:
-                    profit = (op.precio_apertura - op.precio_cierre) * op.lote_size
-            except Exception:
-                profit = 0.0
-                
-            if np.isnan(profit) or np.isinf(profit):
-                profit = 0.0
-                
-            color = 'green' if profit >= 0 else 'red'
-            if profit >= 0:
-                closed_gains += 1
-                dinero_ganado += profit
+                    self._emit_log(f"🔄 Finalizado intento {attempt}. Preparando siguiente intento...", 'white')
+
+                attempt += 1
+                time.sleep(0.1)
+
+            # FINALIZACIÓN
+            final_stats = self._best_stats or {
+                'capital_final': float(self.risk_manager.capital),
+                'beneficio_total': float(self.risk_manager.beneficio_total),
+                'operaciones_ganadas': int(self.risk_manager.operaciones_ganadas),
+                'operaciones_perdidas': int(self.risk_manager.operaciones_perdidas),
+                'operaciones_activas': int(self.risk_manager.get_operaciones_activas_count()),
+                'max_operaciones': int(self.risk_manager.max_operaciones_activas),
+                'dinero_ganado': float(getattr(self.risk_manager, 'ganancia_ganadoras_total', 0.0)),
+                'dinero_perdido': float(getattr(self.risk_manager, 'perdida_perdedoras_total', 0.0)),
+                'fx_config': copy.deepcopy(self._current_fx),
+                'winrate': 0.0,
+                'attempt': attempt-1,
+            }
+
+            # Incluir mejor configuración si existe
+            if self._best_stats:
+                final_stats['best'] = {
+                    'stats': self._best_stats,
+                    'fx': copy.deepcopy(self._best_fx),
+                    'candle': copy.deepcopy(self._best_candle),
+                    'patterns': copy.deepcopy(self._best_patterns),
+                }
+
+            # Mensaje final
+            if reached_winrate_target:
+                self._emit_log(f"🎉 ENTRENAMIENTO FINALIZADO - OBJETIVO ALCANZADO", 'green')
             else:
-                closed_losses += 1
-                dinero_perdido += abs(profit)
-                
-            self._emit_log(f"🔒 CIERRE {op.estrategia}: {op} | Profit: ${profit:+.2f}", color)
+                self._emit_log(f"🏁 ENTRENAMIENTO FINALIZADO", 'green')
 
-        # Análisis inteligente para apertura de órdenes
-        senal = row.get('RL_Signal')
-        if senal is not None and senal != 0 and not np.isnan(senal):
-            if not self.risk_manager.puede_abrir_operacion():
-                continue
-                
-            # ANÁLISIS INTELIGENTE DE LA VELA
-            analysis = self.smart_analyzer.analyze_candle_for_buy_opportunity(idx, row['Close'])
-            
-            if analysis['should_buy']:
-                atr_value = row.get('ATR')
-                if np.isnan(atr_value) or atr_value <= 0:
-                    atr_value = (df_work['High'] - df_work['Low']).mean() * 0.1
-                    
-                # Usar estrategia recomendada por el análisis inteligente
-                strategy_name = analysis['recommended_strategy']
-                strategy_type = analysis.get('strategy_type', 'rl')
-                
-                # Determinar parámetros según tipo de estrategia
-                if strategy_type == 'forex' and strategy_name in self._current_fx:
-                    rr_ratio = self._current_fx[strategy_name].get('rr', 2.0)
-                    riesgo = self._current_fx[strategy_name].get('riesgo', 0.01)
-                else:
-                    rr_ratio = 2.0
-                    riesgo = 0.01
-                    
-                operacion = self.risk_integration.procesar_senal(
-                    senal=senal,
-                    precio_actual=row['Close'],
-                    timestamp=idx,
-                    atr_value=atr_value,
-                    rr_ratio=rr_ratio,
-                    estrategia=f"AI_{strategy_name}" if strategy_name else "AI_RL"
-                )
-                
-                if operacion:
-                    confidence = analysis['confidence_score']
-                    patterns = ', '.join(analysis['pattern_signals'][:2])  # Mostrar máximo 2 patrones
-                    self._emit_log(f"🧠 APERTURA INTELIGENTE: {operacion}", 'cyan')
-                    self._emit_log(f"   └─ Estrategia: {strategy_name} | Confianza: {confidence:.2f} | Patrones: {patterns}", 'white')
-                    self._emit_log(f"   └─ Razón: {analysis['reason'][:100]}...", 'white')
-            else:
-                # Log de por qué no se abrió la operación
-                self._emit_log(f"⚠️ SEÑAL RL RECHAZADA en vela {idx}: {analysis['reason'][:80]}...", 'yellow')
+            # Escribir siempre el reporte TXT final
+            try:
+                self._write_best_txt_report()
+                self._emit_log(f"📝 Reporte final best_config_ia.txt generado", 'cyan')
+            except Exception as re:
+                self._emit_log(f"⚠️ No se pudo escribir el reporte final TXT: {re}", 'yellow')
 
-        # Verificar condición de WinRate
-        total_closed = closed_gains + closed_losses
-        if self.use_winrate and total_closed > 0:
-            winrate = (closed_gains / total_closed) * 100.0
-            if winrate >= self.winrate_target:
-                self._emit_log(f"🎯 WinRate objetivo alcanzado: {winrate:.1f}% >= {self.winrate_target:.1f}%", 'yellow')
-                reached_winrate_target = True
-                break
+            self._emit_finish(final_stats)
 
-        time.sleep(0.0)
-
-    # Cierre final de operaciones
-    if not reached_winrate_target:
-        try:
-            last_price = df_work['Close'].dropna().iloc[-1]
-            last_idx = df_work.dropna(subset=['Close']).index[-1]
-            for op in self.risk_manager.operaciones_activas[:]:
-                profit = op.cerrar(last_price, last_idx)
-                if np.isnan(profit) or np.isinf(profit):
-                    profit = 0.0
-                    
-                color = 'green' if profit >= 0 else 'red'
-                if profit >= 0:
-                    closed_gains += 1
-                    dinero_ganado += profit
-                else:
-                    closed_losses += 1
-                    dinero_perdido += abs(profit)
-                    
-                self._emit_log(f"🔚 CIERRE FINAL: {op} | Profit: ${profit:+.2f}", color)
-        except Exception:
-            pass
-
-    # Calcular estadísticas finales
-    total_closed = closed_gains + closed_losses
-    winrate = (closed_gains / total_closed * 100.0) if total_closed > 0 else 0.0
-    beneficio_total = dinero_ganado - dinero_perdido
-    
-    stats = {
-        'capital_final': float(self.risk_manager.capital),
-        'beneficio_total': float(beneficio_total),
-        'operaciones_ganadas': int(closed_gains),
-        'operaciones_perdidas': int(closed_losses),
-        'operaciones_activas': int(self.risk_manager.get_operaciones_activas_count()),
-        'max_operaciones': int(self.risk_manager.max_operaciones_activas),
-        'dinero_ganado': float(dinero_ganado),
-        'dinero_perdido': float(dinero_perdido),
-        'fx_config': copy.deepcopy(self._current_fx),
-        'candle_config': copy.deepcopy(self._current_candle),
-        'patterns_config': copy.deepcopy(self._current_patterns),
-        'winrate': float(winrate),
-        'attempt': attempt,
-    }
-
-    # Actualizar mejor resultado
-    def _is_better(a: Optional[Dict], b: Dict) -> bool:
-        if a is None:
-            return True
-        if self.use_winrate:
-            return b.get('winrate', 0.0) > a.get('winrate', 0.0)
-        else:
-            return b.get('beneficio_total', 0.0) > a.get('beneficio_total', 0.0)
-
-    if _is_better(self._best_stats, stats):
-        self._best_stats = copy.deepcopy(stats)
-        self._best_fx = copy.deepcopy(self._current_fx)
-        self._best_candle = copy.deepcopy(self._current_candle)
-        self._best_patterns = copy.deepcopy(self._current_patterns)
-        self._save_best_configuration(stats, attempt)
-
-    # Verificar si se alcanzó el objetivo
-    if self.use_winrate and winrate >= self.winrate_target:
-        reached_winrate_target = True
-        self._emit_log(f"✅ OBJETIVO ALCANZADO en intento {attempt}", 'green')
-        break
-
-    # Si no se alcanzó, mutar y reintentar
-    if self.use_winrate:
-        self._emit_log(f"📉 WinRate final {winrate:.1f}% < objetivo {self.winrate_target:.1f}%. Ajustando estrategias y reintentando (intento {attempt+1}).", 'yellow')
-        self._mutate_configs(winrate)
-    else:
-        self._emit_log(f"🔄 Finalizado intento {attempt}. Preparando siguiente intento...", 'white')
-
-    attempt += 1
-    time.sleep(0.1)
-
-# FINALIZACIÓN
-final_stats = self._best_stats or {
-    'capital_final': float(self.risk_manager.capital),
-    'beneficio_total': float(self.risk_manager.beneficio_total),
-    'operaciones_ganadas': int(self.risk_manager.operaciones_ganadas),
-    'operaciones_perdidas': int(self.risk_manager.operaciones_perdidas),
-    'operaciones_activas': int(self.risk_manager.get_operaciones_activas_count()),
-    'max_operaciones': int(self.risk_manager.max_operaciones_activas),
-    'dinero_ganado': float(getattr(self.risk_manager, 'ganancia_ganadoras_total', 0.0)),
-    'dinero_perdido': float(getattr(self.risk_manager, 'perdida_perdedoras_total', 0.0)),
-    'fx_config': copy.deepcopy(self._current_fx),
-    'winrate': 0.0,
-    'attempt': attempt-1,
-}
-
-# Incluir mejor configuración si existe
-if self._best_stats:
-    final_stats['best'] = {
-        'stats': self._best_stats,
-        'fx': copy.deepcopy(self._best_fx),
-        'candle': copy.deepcopy(self._best_candle),
-        'patterns': copy.deepcopy(self._best_patterns),
-    }
-
-# Mensaje final
-if reached_winrate_target:
-    self._emit_log(f"🎉 ENTRENAMIENTO FINALIZADO - OBJETIVO ALCANZADO", 'green')
-else:
-    self._emit_log(f"🏁 ENTRENAMIENTO FINALIZADO", 'green')
-
-# Escribir siempre el reporte TXT final
-try:
-    self._write_best_txt_report()
-    self._emit_log(f"📝 Reporte final best_config_ia.txt generado", 'cyan')
-except Exception as re:
-    self._emit_log(f"⚠️ No se pudo escribir el reporte final TXT: {re}", 'yellow')
-
-self._emit_finish(final_stats)
-
-except Exception as e:
-    self._emit_log(f"❌ Error en hilo de entrenamiento IA: {e}", 'red')
-    self._emit_finish({'error': str(e)})
+        except Exception as e:
+            self._emit_log(f"❌ Error en hilo de entrenamiento IA: {e}", 'red')
+            self._emit_finish({'error': str(e)})
