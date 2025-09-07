@@ -9,6 +9,8 @@ Este proyecto permite:
 * Ejecutar estrategias de RL y backtesting.
 * Exportar datos históricos a PKL.
 
+ [Ver descripción completa de la aplicación (Overview)](docs/overview.md)
+
 ---
 
 ## Requisitos

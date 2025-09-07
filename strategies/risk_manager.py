@@ -336,7 +336,8 @@ class RiskManagerIntegration:
     def __init__(self, risk_manager: RiskManager):
         self.risk_manager = risk_manager
 
-    def procesar_senal(self, senal, precio_actual, timestamp, atr_value, rr_ratio=2, estrategia_nombre=None):
+    def procesar_senal(self, senal, precio_actual, timestamp, atr_value, rr_ratio=2, estrategia_nombre=None,
+                       stop_loss_override=None, take_profit_override=None):
         if senal == 0:
             return None
 
@@ -349,8 +350,13 @@ class RiskManagerIntegration:
         # Señal de entrada (1)
         if senal == 1 and self.risk_manager.puede_abrir_operacion():
             tipo = 'BUY'
-            stop_loss = precio_actual - (atr_value * 2)
-            take_profit = precio_actual + (atr_value * 2 * rr_ratio)
+            # Usar niveles provenientes de CandleStrategies si están disponibles
+            if stop_loss_override is not None and take_profit_override is not None:
+                stop_loss = float(stop_loss_override)
+                take_profit = float(take_profit_override)
+            else:
+                stop_loss = precio_actual - (atr_value * 2)
+                take_profit = precio_actual + (atr_value * 2 * rr_ratio)
             return self.risk_manager.abrir_operacion(
                 tipo=tipo,
                 precio=precio_actual,
@@ -371,21 +377,36 @@ class RiskManagerIntegration:
             for op in operaciones_cerradas_sltp:
                 resultados.append({'timestamp': idx, 'tipo': 'CIERRE_SL_TP', 'operacion': op, 'precio': row['Close'], 'resultado': op.resultado})
 
-            # Procesar señales
-            if 'Signal' in row and row['Signal'] != 0:
+            # Procesar señales (priorizar ExecSignal de CandleStrategies si existe)
+            signal_value = 0
+            if 'ExecSignal' in df.columns and not pd.isna(row.get('ExecSignal', np.nan)):
+                signal_value = int(row['ExecSignal'])
+            elif 'Signal' in df.columns and not pd.isna(row.get('Signal', np.nan)):
+                signal_value = int(row['Signal'])
+
+            if signal_value != 0:
                 atr_value = row.get('ATR', max(row['High'] - row['Low'], 0.0001))
+                stop_loss_override = None
+                take_profit_override = None
+                if 'StopLoss' in df.columns and not pd.isna(row.get('StopLoss', np.nan)):
+                    stop_loss_override = row['StopLoss']
+                if 'TakeProfit' in df.columns and not pd.isna(row.get('TakeProfit', np.nan)):
+                    take_profit_override = row['TakeProfit']
+
                 resultado_senal = self.procesar_senal(
-                    senal=row['Signal'],
+                    senal=signal_value,
                     precio_actual=row['Close'],
                     timestamp=idx,
                     atr_value=atr_value,
                     rr_ratio=rr_ratio,
-                    estrategia_nombre=estrategia_nombre
+                    estrategia_nombre=estrategia_nombre,
+                    stop_loss_override=stop_loss_override,
+                    take_profit_override=take_profit_override
                 )
                 if resultado_senal is not None:
-                    if row['Signal'] == 1 and hasattr(resultado_senal, 'id'):
+                    if signal_value == 1 and hasattr(resultado_senal, 'id'):
                         resultados.append({'timestamp': idx, 'tipo': 'APERTURA', 'operacion': resultado_senal, 'precio': row['Close']})
-                    elif row['Signal'] == -1 and isinstance(resultado_senal, list):
+                    elif signal_value == -1 and isinstance(resultado_senal, list):
                         for op in resultado_senal:
                             resultados.append({'timestamp': idx, 'tipo': 'CIERRE_ESTRATEGIA', 'operacion': op, 'precio': row['Close'], 'resultado': op.resultado})
         return resultados
