@@ -12,7 +12,7 @@ class BinanceSimulationModal(tk.Toplevel):
         super().__init__(parent)
         self.parent = parent
         self.callback = callback
-        self.title("Seleccionar Estrategias")
+        self.title("Seleccionar Estrategias Candle Streamer")
         self.resizable(False, False)
         self.grab_set()  # modal
 

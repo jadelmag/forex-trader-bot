@@ -53,23 +53,17 @@ class PatternsModal(tk.Toplevel):
         self.strategies_list = strategies_list or []
         self.on_accept_backtesting = on_accept_backtesting
 
-        self.title("Seleccionar patrones")
+        self.title("Seleccionar patrones por número de velas")
         self.geometry("350x450")
         self.resizable(True, True)
         self.grab_set()
 
-        self.one_candle_patterns = [
-            'doji', 'hammer', 'hanging_man', 'shooting_star', 'spinning_top', 'inverted_hammer'
-        ]
-        self.two_candle_patterns = [
-            'bullish_engulfing', 'bearish_engulfing', 'piercing_line', 'dark_cloud_cover',
-            'tweezer_top', 'tweezer_bottom'
-        ]
-        self.three_candle_patterns = [
-            'morning_star', 'evening_star', 'three_white_soldiers', 'three_black_crows',
-            'three_inside_up', 'three_inside_down', 'rising_three_methods', 'falling_three_methods'
-        ]
-        self.other_patterns = []
+        # Cargar dinámicamente patrones agrupados por número de velas desde CandlestickPatterns
+        groups = CandlestickPatterns.get_patterns_by_candle_count()
+        self.one_candle_patterns = groups.get(1, [])
+        self.two_candle_patterns = groups.get(2, [])
+        self.three_candle_patterns = groups.get(3, [])
+        self.other_patterns = groups.get('other', [])
 
         self.vars = {}
         self.vars_strat = {}
@@ -163,9 +157,20 @@ class PatternsModal(tk.Toplevel):
         df_patrones = self.df.copy()
         encontrados_totales = 0
         for pattern_name in selected_patterns:
-            df_patrones[pattern_name] = patterns.__getattribute__(pattern_name)()['Signal']
-            # contar coincidencias del patrón actual
-            encontrados_patron = (df_patrones[pattern_name] != 0).sum()
+            # Proteger contra patrones no implementados o errores internos del patrón
+            if not hasattr(patterns, pattern_name):
+                # Columna de ceros para mantener consistencia
+                df_patrones[pattern_name] = 0
+                encontrados_patron = 0
+            else:
+                try:
+                    df_patrones[pattern_name] = getattr(patterns, pattern_name)()['Signal']
+                    # contar coincidencias del patrón actual
+                    encontrados_patron = (df_patrones[pattern_name] != 0).sum()
+                except Exception:
+                    # Si falla el cálculo, dejar columna en cero para no romper el flujo
+                    df_patrones[pattern_name] = 0
+                    encontrados_patron = 0
             encontrados_totales += int(encontrados_patron)
             # actualizar progreso en el hilo de UI
             idx_actual = selected_patterns.index(pattern_name) + 1
@@ -203,6 +208,69 @@ class PatternsModal(tk.Toplevel):
                             color = "red"
                         mensaje = f"Patrón: {pattern_name} | Fecha: {fecha_str} | Open: {row['Open']:.5f} | Close: {row['Close']:.5f}"
                         self.gui_principal.log(mensaje, color=color)
+
+            # Resumen general al final
+            try:
+                total_sel = len(patterns_list)
+                resumen_lines = []
+                resumen_lines.append("===== Resumen de patrones aplicados =====")
+                resumen_lines.append(f"Patrones seleccionados: {total_sel}")
+                # Conteo por patrón y dirección
+                total_coincidencias = 0
+                total_bull = 0
+                total_bear = 0
+                for p in patterns_list:
+                    serie = df_patrones[p]
+                    cnt = int((serie != 0).sum())
+                    bull = int((serie > 0).sum())
+                    bear = int((serie < 0).sum())
+                    total_coincidencias += cnt
+                    total_bull += bull
+                    total_bear += bear
+                    resumen_lines.append(f"- {p.replace('_',' ').title()}: {cnt} (alcistas: {bull}, bajistas: {bear})")
+
+                # Señales finales agregadas
+                final_bull = int((df_patrones['Final_Signal'] == 1).sum()) if 'Final_Signal' in df_patrones.columns else 0
+                final_bear = int((df_patrones['Final_Signal'] == -1).sum()) if 'Final_Signal' in df_patrones.columns else 0
+                resumen_lines.append("")
+                resumen_lines.append(f"Total coincidencias: {total_coincidencias}")
+                resumen_lines.append(f"Final_Signal -> Alcistas: {final_bull} | Bajistas: {final_bear}")
+
+                # Métricas monetarias (P&L por vela usando lote 1)
+                try:
+                    pnl_series = []
+                    if 'Final_Signal' in df_patrones.columns:
+                        for _, r in df_patrones.iterrows():
+                            s = r['Final_Signal']
+                            if s == 0:
+                                continue
+                            # Beneficio por vela: (Close-Open) * signo
+                            pnl_series.append((r['Close'] - r['Open']) * (1 if s > 0 else -1))
+                    neto = float(sum(pnl_series)) if pnl_series else 0.0
+                    ganadas = [x for x in pnl_series if x > 0]
+                    perdidas = [x for x in pnl_series if x < 0]
+                    total_ganado = float(sum(ganadas)) if ganadas else 0.0
+                    total_perdido = float(-sum(perdidas)) if perdidas else 0.0
+                    velas_ganadoras = len(ganadas)
+                    velas_perdedoras = len(perdidas)
+                    prom_ganado = (total_ganado / velas_ganadoras) if velas_ganadoras > 0 else 0.0
+                    prom_perdido = (total_perdido / velas_perdedoras) if velas_perdedoras > 0 else 0.0
+
+                    resumen_lines.append("")
+                    resumen_lines.append(f"Dinero (P&L neto): {neto:.5f}")
+                    resumen_lines.append(f"Ganancias (velas con ganancia): {velas_ganadoras}")
+                    resumen_lines.append(f"Dinero ganado: {total_ganado:.5f}")
+                    resumen_lines.append(f"Dinero perdido: {total_perdido:.5f}")
+                    resumen_lines.append(f"Dinero ganado por cada vela: {prom_ganado:.5f}")
+                    resumen_lines.append(f"Dinero perdido por cada vela: {prom_perdido:.5f}")
+                except Exception:
+                    pass
+
+                resumen_text = "\n".join(resumen_lines)
+                self.gui_principal.log(resumen_text, color="white")
+            except Exception:
+                # No impedir el cierre si algo falla al generar el resumen
+                pass
 
         # Completar progreso y re-habilitar por si el modal no se cerrara aún
         try:

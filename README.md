@@ -610,12 +610,12 @@ Commons Clause + Apache/MIT
 
 ## TODO
 ----
-* Arreglar pequeños detalles [DOING]
-- En candle streamer una opcion que se llame Desconexión general (lo que hace es cerrar el websoket y no haga reintentos de conexión) 
+* Arreglar pequeños detalles [DONE] ✅
+- En candle streamer una opcion que se llame Desconexión general (lo que hace es cerrar el websoket y no haga reintentos de conexión) [DOING]
 * Optimizar las estrategias [ALWAYS DOING]
 * Arreglar error de reconexion [DOING] 
 * Sistema de reportes automáticos por email [DONE] ✅
-* Conectar con Metatrader [TODO VERSION FINAL]
+* Conectar con Metatrader [TODO VERSION FINAL] [ERROR ✅]
 
 
 

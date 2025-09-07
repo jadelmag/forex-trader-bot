@@ -293,6 +293,50 @@ class CandleStrategies:
     def three_white_soldiers(self, config=None):
         return self.three_white_soldiers_strategy(config)
 
+    # ---------------- Nuevos metodos -----------------------
+
+    def shooting_star_strategy(self, config=None):
+        df = self.patterns.shooting_star()
+        result_df = self.data.copy()
+        result_df['Signal'] = df['Signal']
+        return self._apply_exit_logic(result_df, 'shooting_star', config)
+
+    def spinning_top_strategy(self, config=None):
+        df = self.patterns.spinning_top()
+        result_df = self.data.copy()
+        result_df['Signal'] = df['Signal']
+        return self._apply_exit_logic(result_df, 'spinning_top', config)
+
+    def inverted_hammer_strategy(self, config=None):
+        df = self.patterns.inverted_hammer()
+        result_df = self.data.copy()
+        result_df['Signal'] = df['Signal']
+        return self._apply_exit_logic(result_df, 'inverted_hammer', config)
+
+    def piercing_line_strategy(self, config=None):
+        df = self.patterns.piercing_line()
+        result_df = self.data.copy()
+        result_df['Signal'] = df['Signal']
+        return self._apply_exit_logic(result_df, 'piercing_line', config)
+
+    def dark_cloud_cover_strategy(self, config=None):
+        df = self.patterns.dark_cloud_cover()
+        result_df = self.data.copy()
+        result_df['Signal'] = df['Signal']
+        return self._apply_exit_logic(result_df, 'dark_cloud_cover', config)
+
+    def tweezer_top_strategy(self, config=None):
+        df = self.patterns.tweezer_top()
+        result_df = self.data.copy()
+        result_df['Signal'] = df['Signal']
+        return self._apply_exit_logic(result_df, 'tweezer_top', config)
+
+    def tweezer_bottom_strategy(self, config=None):
+        df = self.patterns.tweezer_bottom()
+        result_df = self.data.copy()
+        result_df['Signal'] = df['Signal']
+        return self._apply_exit_logic(result_df, 'tweezer_bottom', config)
+
     # ---------------- Métodos simplificados ----------------
     
     def filter_with_trend(self, config=None):

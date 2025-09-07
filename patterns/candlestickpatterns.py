@@ -4,6 +4,29 @@ import pandas as pd
 import numpy as np
 
 class CandlestickPatterns:
+    # Mapa canónico de patrones -> número de velas requeridas
+    PATTERN_CANDLE_COUNTS = {
+        # 1 vela
+        'doji': 1,
+        'hammer': 1,
+        'hanging_man': 1,
+        'shooting_star': 1,
+        'spinning_top': 1,
+        'inverted_hammer': 1,
+        # 2 velas
+        'bullish_engulfing': 2,
+        'bearish_engulfing': 2,
+        'piercing_line': 2,
+        'dark_cloud_cover': 2,
+        'tweezer_top': 2,
+        'tweezer_bottom': 2,
+        # 3 velas
+        'morning_star': 3,
+        'evening_star': 3,
+        'three_white_soldiers': 3,
+        'three_black_crows': 3,
+    }
+
     def __init__(self, data, atr_period=14, trend_period=20, volatility_period=20):
         """
         data: DataFrame con columnas ['Open', 'High', 'Low', 'Close', 'Volume']
@@ -11,6 +34,34 @@ class CandlestickPatterns:
         self.data = data.copy()
         self._calculate_indicators(atr_period, trend_period, volatility_period)
     
+    @classmethod
+    def get_patterns_by_candle_count(cls):
+        """Devuelve patrones agrupados por número de velas, filtrando solo los implementados.
+        Estructura: {1: [...], 2: [...], 3: [...], 'other': [...]}"""
+        groups = {1: [], 2: [], 3: [], 'other': []}
+        for name, count in cls.PATTERN_CANDLE_COUNTS.items():
+            # Asegurar que el método exista en la clase
+            if hasattr(cls, name):
+                if count in (1, 2, 3):
+                    groups[count].append(name)
+                else:
+                    groups['other'].append(name)
+        # Además, incluir cualquier método público adicional que no esté en el mapa
+        for attr in dir(cls):
+            if attr.startswith('_'):
+                continue
+            if attr in groups[1] + groups[2] + groups[3] + groups['other']:
+                continue
+            # Solo considerar métodos que devuelvan un DataFrame con 'Signal' (no podemos comprobar aquí),
+            # pero al menos que sean callables y no sean utilidades estáticas conocidas
+            member = getattr(cls, attr)
+            if callable(member):
+                groups['other'].append(attr)
+        # Orden alfabético para consistencia
+        for k in groups:
+            groups[k] = sorted(groups[k])
+        return groups
+
     def _calculate_indicators(self, atr_period, trend_period, volatility_period):
         """Calcula indicadores técnicos necesarios"""
         df = self.data
@@ -377,6 +428,54 @@ class CandlestickPatterns:
         df['Signal'] = signals
         return df
 
+    def tweezer_top(self, tolerance=0.001):
+        df = self.data.copy()
+        signals = []
+
+        for i in range(len(df)):
+            if i < 1:
+                signals.append(0)
+                continue
+
+            prev_bullish = df['Close'].iloc[i-1] > df['Open'].iloc[i-1]
+            current_bearish = df['Close'].iloc[i] < df['Open'].iloc[i]
+
+            # Máximos casi iguales (ajustado por tolerancia relativa)
+            tops_aligned = abs(df['High'].iloc[i] - df['High'].iloc[i-1]) <= df['High'].iloc[i] * tolerance
+
+            is_pattern = prev_bullish and current_bearish and tops_aligned
+            confidence = self._get_pattern_confidence('bearish', i)
+
+            signal = -confidence if is_pattern else 0
+            signals.append(signal)
+
+        df['Signal'] = signals
+        return df
+
+    def tweezer_bottom(self, tolerance=0.001):
+        df = self.data.copy()
+        signals = []
+
+        for i in range(len(df)):
+            if i < 1:
+                signals.append(0)
+                continue
+
+            prev_bearish = df['Close'].iloc[i-1] < df['Open'].iloc[i-1]
+            current_bullish = df['Close'].iloc[i] > df['Open'].iloc[i]
+
+            # Mínimos casi iguales (ajustado por tolerancia relativa)
+            bottoms_aligned = abs(df['Low'].iloc[i] - df['Low'].iloc[i-1]) <= df['Low'].iloc[i] * tolerance
+
+            is_pattern = prev_bearish and current_bullish and bottoms_aligned
+            confidence = self._get_pattern_confidence('bullish', i)
+
+            signal = confidence if is_pattern else 0
+            signals.append(signal)
+
+        df['Signal'] = signals
+        return df
+
     # ---------------- Métodos de compatibilidad ----------------
     
     def detect_all_patterns(self):
@@ -385,7 +484,7 @@ class CandlestickPatterns:
             'doji', 'hammer', 'hanging_man', 'shooting_star', 'spinning_top', 
             'inverted_hammer', 'marubozu', 'bullish_engulfing', 'bearish_engulfing',
             'piercing_line', 'dark_cloud_cover', 'morning_star', 'evening_star',
-            'three_white_soldiers', 'three_black_crows'
+            'three_white_soldiers', 'three_black_crows', 'tweezer_top', 'tweezer_bottom'
         ]
         
         for method in pattern_methods:
@@ -402,8 +501,8 @@ class CandlestickPatterns:
         df = self.detect_all_patterns()
         
         # Señal combinada
-        bullish_patterns = ['hammer', 'bullish_engulfing', 'piercing_line', 'morning_star', 'three_white_soldiers']
-        bearish_patterns = ['hanging_man', 'bearish_engulfing', 'dark_cloud_cover', 'evening_star', 'three_black_crows']
+        bullish_patterns = ['hammer', 'bullish_engulfing', 'piercing_line', 'morning_star', 'three_white_soldiers', 'tweezer_top']
+        bearish_patterns = ['hanging_man', 'bearish_engulfing', 'dark_cloud_cover', 'evening_star', 'three_black_crows', 'tweezer_bottom']
         
         df['Bullish_Score'] = df[bullish_patterns].sum(axis=1)
         df['Bearish_Score'] = df[bearish_patterns].sum(axis=1)
