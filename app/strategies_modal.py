@@ -3,6 +3,9 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import re
+import os
+import json
+
 import threading
 import pandas as pd
 import inspect
@@ -32,7 +35,7 @@ class EstrategiasModal(tk.Toplevel):
 
         # Centrar ventana sobre el padre
         self.update_idletasks()
-        w = 550
+        w = 600
         # Altura total del modal: área de lista (400) + controles inferiores
         h_total = 500
         # Usar gui_parent.root para obtener coordenadas si es necesario
@@ -230,6 +233,20 @@ class EstrategiasModal(tk.Toplevel):
             )
             btn_candle_sel.pack(side="left", padx=5)
             btn_candle_desel.pack(side="left", padx=5)
+
+            # Botón para cargar configuraciones desde carpeta config/
+            try:
+                all_exist = self._can_load_all_candle_configs(self.estrategias_candle)
+            except Exception:
+                all_exist = False
+            self.btn_load_candle_configs = ttk.Button(
+                btn_candle_frame,
+                text="Cargar configuraciones",
+                command=self._load_all_candle_configs,
+                width=23,
+                state=("normal" if all_exist else "disabled")
+            )
+            self.btn_load_candle_configs.pack(side="left", padx=5)
 
             # Encabezado para Candle Strategies (con configuración personalizada)
             ttk.Label(self.scrollable_frame, text="Estrategia", width=20, anchor="w").grid(row=start_row+2, column=0, padx=5)
@@ -897,6 +914,88 @@ class EstrategiasModal(tk.Toplevel):
                     ctrl["selected"].set(1 if value else 0)
         except Exception:
             pass
+
+    # ---------- Helpers de configuración Candle ----------
+    def _config_dir(self) -> str:
+        try:
+            return os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config')
+        except Exception:
+            return 'config'
+
+    def _strategy_config_paths(self, strategy_name: str) -> list[str]:
+        """Posibles rutas de archivo JSON para una estrategia Candle.
+        Intenta con alias visible y con nombre real resuelto.
+        """
+        try:
+            resolved = resolve_strategy_name(strategy_name, 'candle')
+        except Exception:
+            resolved = strategy_name
+        fname_alias = f"candle_{strategy_name}.json"
+        fname_resolved = f"candle_{resolved}.json"
+        cfg_dir = self._config_dir()
+        return [os.path.join(cfg_dir, fname_alias), os.path.join(cfg_dir, fname_resolved)]
+
+    def _config_exists_for_strategy(self, strategy_name: str) -> bool:
+        for p in self._strategy_config_paths(strategy_name):
+            try:
+                if os.path.isfile(p):
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def _can_load_all_candle_configs(self, strategies: list[str]) -> bool:
+        try:
+            return all(self._config_exists_for_strategy(n) for n in strategies)
+        except Exception:
+            return False
+
+    def _load_config_from_file(self, strategy_name: str) -> dict | None:
+        for p in self._strategy_config_paths(strategy_name):
+            try:
+                if os.path.isfile(p):
+                    with open(p, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        if isinstance(data, dict):
+                            return data
+            except Exception:
+                continue
+        return None
+
+    def _load_all_candle_configs(self):
+        """Carga todas las configuraciones de config/ y pone los combos en Custom.
+        Si alguna falta, no hace nada y deja el botón deshabilitado.
+        """
+        try:
+            if not self._can_load_all_candle_configs(self.estrategias_candle):
+                # Revalidar estado del botón
+                try:
+                    self.btn_load_candle_configs.config(state='disabled')
+                except Exception:
+                    pass
+                self._log_to_parent("No se pueden cargar todas las configuraciones: faltan archivos.", 'yellow')
+                return
+
+            loaded_count = 0
+            for nombre in self.estrategias_candle:
+                ctrl = self.controls.get(nombre)
+                if not ctrl:
+                    continue
+                cfg = self._load_config_from_file(nombre)
+                if cfg is None:
+                    continue
+                # Asignar y cambiar a Custom
+                ctrl['custom_config'] = cfg
+                if ctrl.get('config_type') is not None:
+                    ctrl['config_type'].set('Custom')
+                if ctrl.get('config_button') is not None:
+                    ctrl['config_button'].config(state='normal')
+                loaded_count += 1
+
+            # Log y feedback
+            self._log_to_parent(f"Configuraciones cargadas: {loaded_count}/{len(self.estrategias_candle)}", 'white')
+        except Exception as e:
+            self._log_to_parent(f"Error cargando configuraciones: {e}", 'red')
 
     def _open_candle_config(self, strategy_name: str):
         """Abre modal de configuración personalizada para una estrategia de velas."""
