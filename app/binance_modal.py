@@ -5,7 +5,10 @@ from tkinter import ttk
 import re
 import os
 import json
+import inspect
+import pandas as pd
 from strategies.strategy_utils import resolve_strategy_name
+from strategies.candle_strategies import CandleStrategies
 
 class BinanceSimulationModal(tk.Toplevel):
     def __init__(self, parent, estrategias_fx, estrategias_candle, callback, patrones_list=None):
@@ -69,6 +72,18 @@ class BinanceSimulationModal(tk.Toplevel):
             self.scrollable_frame.grid_columnconfigure(4, weight=1)
         except Exception:
             pass
+
+        # Descubrir dinámicamente estrategias Candle y fusionar con las recibidas
+        try:
+            discovered_candle = self._discover_candle_strategies()
+        except Exception:
+            discovered_candle = []
+        try:
+            provided_candle = list(estrategias_candle or [])
+        except Exception:
+            provided_candle = []
+        # Unir y ordenar únicas
+        self.estrategias_candle = sorted(set(provided_candle + discovered_candle))
 
         # ---------------- SECCIÓN FOREX STRATEGIES ----------------
         if estrategias_fx:
@@ -182,7 +197,7 @@ class BinanceSimulationModal(tk.Toplevel):
                 }
 
         # ---------------- SECCIÓN CANDLE STRATEGIES ----------------
-        if estrategias_candle:
+        if self.estrategias_candle:
             start_row = len(estrategias_fx) + 3 if estrategias_fx else 0
             
             lbl_candle = ttk.Label(self.scrollable_frame, text="Candle Strategies", 
@@ -213,7 +228,7 @@ class BinanceSimulationModal(tk.Toplevel):
             ttk.Label(self.scrollable_frame, text="", width=15).grid(row=start_row+2, column=2, padx=5)
 
             # Estrategias Candle (con configuración personalizada)
-            for idx, nombre in enumerate(estrategias_candle, start=start_row+3):
+            for idx, nombre in enumerate(self.estrategias_candle, start=start_row+3):
                 var_check = tk.IntVar()
                 display_name = nombre.replace('_', ' ').capitalize()
                 chk = tk.Checkbutton(self.scrollable_frame, text=display_name, variable=var_check, 
@@ -314,9 +329,9 @@ class BinanceSimulationModal(tk.Toplevel):
         if estrategias_fx:
             # Filas usadas por Forex: título(0), botones(1), header(2), items(3..len+2)
             base_row = max(base_row, 3 + len(estrategias_fx))
-        if estrategias_candle:
+        if self.estrategias_candle:
             # Inicio Candle en len_fx+3, usa: título, botones, header, items
-            base_row = max(base_row, (len(estrategias_fx) + 3 if estrategias_fx else 0) + 3 + len(estrategias_candle))
+            base_row = max(base_row, (len(estrategias_fx) + 3 if estrategias_fx else 0) + 3 + len(self.estrategias_candle))
         options_row = base_row + 2
         
         # Checkbox para mostrar detección de patrones
@@ -616,6 +631,39 @@ class BinanceSimulationModal(tk.Toplevel):
 
         # Default fallback
         return cfg(use_ts=False, sl=1.5, tp=3.0, ts_mult=1.5)
+
+    def _discover_candle_strategies(self):
+        """Descubre estrategias públicas de CandleStrategies con parámetro 'config'."""
+        try:
+            # Instancia dummy para inspección (sin datos reales)
+            df_dummy = pd.DataFrame({
+                'Open': [], 'High': [], 'Low': [], 'Close': []
+            })
+            temp = CandleStrategies(df_dummy)
+        except Exception:
+            temp = None
+
+        strategies = []
+        target = temp if temp is not None else CandleStrategies
+        for name in dir(target):
+            if name.startswith('_'):
+                continue
+            if name in ['data', 'patterns', 'add_indicators']:
+                continue
+            try:
+                member = getattr(target, name)
+            except Exception:
+                continue
+            if callable(member):
+                # Filtrar por métodos que acepten 'config'
+                try:
+                    sig = inspect.signature(member)
+                    if 'config' in sig.parameters:
+                        strategies.append(name)
+                except Exception:
+                    # Si no se puede inspeccionar, incluirlo por si es estrategia
+                    strategies.append(name)
+        return sorted(set(strategies))
 
 
 class CandleConfigModal(tk.Toplevel):

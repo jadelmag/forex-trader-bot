@@ -1,0 +1,10 @@
+{
+  "use_signal_change": true,
+  "use_stop_loss": true,
+  "use_take_profit": true,
+  "use_trailing_stop": true,
+  "use_pattern_reversal": false,
+  "atr_sl_multiplier": 2.0,
+  "atr_tp_multiplier": 4.0,
+  "atr_trailing_multiplier": 2.0
+}
