@@ -7,6 +7,7 @@ import copy
 import os
 import json
 from typing import Callable, Dict, List, Optional
+
 import numpy as np
 import pandas as pd
 
@@ -79,6 +80,15 @@ class AITrainer:
         self._best_candle: List[str] = list(self._current_candle)
         self._best_model_path: Optional[str] = None
 
+        # --- Candle strategies configuration management ---
+        # Maintain per-strategy CandleExitConfig-like dicts that we can optimize
+        self._config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config')
+        os.makedirs(self._config_dir, exist_ok=True)
+        self._current_candle_configs: Dict[str, Dict] = {}
+        for name in self._current_candle:
+            self._current_candle_configs[name] = self._load_candle_config(name)
+        self._best_candle_configs: Dict[str, Dict] = {k: dict(v) for k, v in self._current_candle_configs.items()}
+
         # Agente RL
         self.rl_agent = None
         self._initialize_rl_agent()
@@ -95,6 +105,7 @@ class AITrainer:
             self._current_fx,
             self._current_candle,
             self._current_patterns,
+            candle_configs=self._current_candle_configs,
             log_fn=lambda m: self._emit_log(m, 'cyan')
         )
 
@@ -137,10 +148,11 @@ class AITrainer:
         params_list = [(k, f"riesgo={v.get('riesgo', 0.0):.3f}, rr={v.get('rr', 0.0):.2f}") for k, v in self._current_fx.items()]
         self._emit_log(f"⚙️  Parámetros: {params_list}", 'white')
         
-        # Recrear entorno con estrategias actuales
+        # Recrear entorno con estrategias y configuraciones actuales
         self.rl_agent.estrategias_fx = self._current_fx
         self.rl_agent.estrategias_candle = self._current_candle
         self.rl_agent.patrones = self._current_patterns
+        self.rl_agent.candle_configs = self._current_candle_configs
         self.rl_agent.env = self.rl_agent._create_env()
         
         # Actualizar analizador inteligente
@@ -198,7 +210,7 @@ class AITrainer:
             params['riesgo'] = riesgo
             params['rr'] = rr
 
-        # Mutar estrategias candle
+        # Mutar estrategias candle (selección de estrategias activas)
         base_candle = set(self.seleccion_candle)
         cur_candle = set(self._current_candle)
         if base_candle:
@@ -209,6 +221,61 @@ class AITrainer:
                 if restantes:
                     cur_candle.add(random.choice(restantes))
         self._current_candle = list(cur_candle)
+
+        # Mantener el dict de configs sincronizado con la selección actual
+        # 1) Eliminar configs de estrategias ya no seleccionadas
+        for k in list(self._current_candle_configs.keys()):
+            if k not in self._current_candle:
+                self._current_candle_configs.pop(k, None)
+        # 2) Añadir configs por defecto para nuevas estrategias seleccionadas
+        for k in self._current_candle:
+            if k not in self._current_candle_configs:
+                self._current_candle_configs[k] = self._load_candle_config(k)
+
+        # Mutar parámetros de configuración Candle por estrategia
+        for name, cfg in self._current_candle_configs.items():
+            try:
+                # Booleans: pequeñas probabilidades de toggle, guiadas por rendimiento
+                def maybe_flip(val: bool, p: float) -> bool:
+                    return (not val) if random.random() < p else val
+
+                # Tasa base de mutación guiada por winrate (peor -> más mutación)
+                base_p = 0.02 if last_winrate >= self.winrate_target else 0.08
+                cfg['use_signal_change'] = maybe_flip(bool(cfg.get('use_signal_change', True)), base_p)
+                cfg['use_stop_loss'] = maybe_flip(bool(cfg.get('use_stop_loss', True)), base_p)
+                cfg['use_take_profit'] = maybe_flip(bool(cfg.get('use_take_profit', True)), base_p)
+                cfg['use_trailing_stop'] = maybe_flip(bool(cfg.get('use_trailing_stop', False)), base_p)
+                cfg['use_pattern_reversal'] = maybe_flip(bool(cfg.get('use_pattern_reversal', False)), base_p)
+
+                # ATR multipliers: mutate within reasonable ranges
+                def mutate_float(x: float, low: float, high: float, scale: float = 0.15) -> float:
+                    x = float(x)
+                    x *= random.uniform(1.0 - scale, 1.0 + scale)
+                    return min(max(x, low), high)
+
+                cfg['atr_sl_multiplier'] = mutate_float(cfg.get('atr_sl_multiplier', 1.5), 0.5, 5.0)
+                cfg['atr_tp_multiplier'] = mutate_float(cfg.get('atr_tp_multiplier', 3.0), 0.5, 8.0)
+                cfg['atr_trailing_multiplier'] = mutate_float(cfg.get('atr_trailing_multiplier', 2.0), 0.5, 6.0)
+
+                # Pattern lists: keep as-is, optionally small mutation
+                for key, defaults in (
+                    ('bullish_reversal_patterns', ['hammer', 'bullish_engulfing', 'morning_star']),
+                    ('bearish_reversal_patterns', ['hanging_man', 'bearish_engulfing', 'evening_star']),
+                ):
+                    arr = cfg.get(key)
+                    if not isinstance(arr, list):
+                        arr = list(defaults)
+                    # 10% chance to swap one element with defaults
+                    if random.random() < 0.1 and defaults:
+                        idx = random.randrange(0, len(arr)) if arr else 0
+                        pick = random.choice(defaults)
+                        if idx < len(arr):
+                            arr[idx] = pick
+                        else:
+                            arr.append(pick)
+                    cfg[key] = arr
+            except Exception:
+                continue
 
         # Mutar patrones
         base_patterns = set(self.seleccion_patterns)
@@ -241,6 +308,7 @@ class AITrainer:
                 'stats': stats,
                 'fx': self._best_fx,
                 'candle_strategies': self._best_candle,
+                'candle_configs': self._best_candle_configs,
                 'patterns': self._best_patterns,
                 'winrate_target': self.winrate_target,
                 'capital_inicial': self.capital_inicial,
@@ -260,8 +328,208 @@ class AITrainer:
                 self.rl_agent.model.save(model_save_path)
                 self._emit_log(f"🤖 Mejor modelo guardado en: {model_save_path}.zip", 'cyan')
                 
+            # Persist per-strategy candle configs to config/*.json
+            try:
+                for strat, cfg in self._best_candle_configs.items():
+                    path = self._primary_config_path(strat)
+                    with open(path, 'w', encoding='utf-8') as f:
+                        json.dump(cfg, f, ensure_ascii=False, indent=2)
+                self._emit_log(f"💾 Configs de Candle guardadas en {self._config_dir}", 'cyan')
+            except Exception as ie:
+                self._emit_log(f"⚠️ No se pudo guardar configs de Candle: {ie}", 'yellow')
+
+            # Escribir siempre el reporte TXT final
+            try:
+                self._write_best_txt_report()
+                self._emit_log(f"📝 Reporte final best_config_ia.txt generado", 'cyan')
+            except Exception as re:
+                self._emit_log(f"⚠️ No se pudo escribir el reporte final TXT: {re}", 'yellow')
+            # Escribir siempre el reporte JSON final
+            try:
+                self._write_best_json_report()
+                self._emit_log(f"📝 Reporte final best_config_ia.json generado", 'cyan')
+            except Exception as re2:
+                self._emit_log(f"⚠️ No se pudo escribir el reporte final JSON: {re2}", 'yellow')
+                self._emit_log(f"⚠️ No se pudo escribir el reporte JSON: {re2}", 'yellow')
+
         except Exception as e:
             self._emit_log(f"❌ No se pudo guardar la mejor configuración: {e}", 'red')
+
+    # ------------- Config helpers (Candle) -------------
+    def _primary_config_path(self, strategy_name: str) -> str:
+        """Primary filename for a candle strategy config: config/candle_<resolved>.json"""
+        try:
+            from strategies.strategy_utils import resolve_strategy_name
+            resolved = resolve_strategy_name(strategy_name, 'candle')
+        except Exception:
+            resolved = strategy_name
+        fname = f"candle_{resolved}.json"
+        return os.path.join(self._config_dir, fname)
+
+    def _all_config_paths(self, strategy_name: str) -> List[str]:
+        paths = []
+        try:
+            from strategies.strategy_utils import resolve_strategy_name
+            resolved = resolve_strategy_name(strategy_name, 'candle')
+        except Exception:
+            resolved = strategy_name
+        paths.append(os.path.join(self._config_dir, f"candle_{strategy_name}.json"))
+        paths.append(os.path.join(self._config_dir, f"candle_{resolved}.json"))
+        return list(dict.fromkeys(paths))
+
+    def _default_candle_config(self) -> Dict:
+        return {
+            'use_signal_change': True,
+            'use_stop_loss': True,
+            'use_take_profit': True,
+            'use_trailing_stop': False,
+            'use_pattern_reversal': False,
+            'atr_sl_multiplier': 1.5,
+            'atr_tp_multiplier': 3.0,
+            'atr_trailing_multiplier': 2.0,
+            'bullish_reversal_patterns': ['hammer', 'bullish_engulfing', 'morning_star'],
+            'bearish_reversal_patterns': ['hanging_man', 'bearish_engulfing', 'evening_star'],
+        }
+
+    def _load_candle_config(self, strategy_name: str) -> Dict:
+        # Load from any matching path, else default
+        for p in self._all_config_paths(strategy_name):
+            try:
+                if os.path.isfile(p):
+                    with open(p, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        if isinstance(data, dict):
+                            # merge with defaults to ensure keys
+                            base = self._default_candle_config()
+                            base.update({k: v for k, v in data.items() if k in base or True})
+                            return base
+            except Exception:
+                continue
+        return self._default_candle_config()
+
+    def _write_best_txt_report(self):
+        """Escribe reports/best_config_ia.txt con la mejor configuración y resumen de resultados."""
+        project_root = os.path.dirname(os.path.dirname(__file__))
+        reports_dir = os.path.join(project_root, 'reports')
+        os.makedirs(reports_dir, exist_ok=True)
+        path = os.path.join(reports_dir, 'best_config_ia.txt')
+
+        best = self._best_stats or {}
+        fx_cfg = self._best_fx or {}
+        candle_list = self._best_candle or []
+        candle_cfgs = self._best_candle_configs or {}
+
+        # Operaciones
+        ganancias = float(best.get('dinero_ganado', 0.0)) if 'dinero_ganado' in best else 0.0
+        perdidas = float(best.get('dinero_perdido', 0.0)) if 'dinero_perdido' in best else 0.0
+        beneficio_total = float(best.get('beneficio_total', ganancias - perdidas))
+        ops_gan = int(best.get('operaciones_ganadas', 0))
+        ops_per = int(best.get('operaciones_perdidas', 0))
+        winrate = float(best.get('winrate', 0.0))
+        max_ops = int(best.get('max_operaciones', getattr(self.risk_manager, 'max_operaciones_activas', 0)))
+
+        lines = []
+        lines.append("=== MEJOR CONFIGURACIÓN IA ===")
+        lines.append("")
+        lines.append(f"Objetivo WinRate: {self.winrate_target:.2f}%  |  WinRate logrado: {winrate:.2f}%")
+        lines.append(f"Capital inicial: ${self.capital_inicial:.2f}  |  Capital final: ${float(best.get('capital_final', 0.0)):.2f}")
+        lines.append(f"Máx. operaciones simultáneas permitidas: {max_ops}")
+        lines.append("")
+        lines.append("-- Estrategias Forex --")
+        if fx_cfg:
+            for name, params in sorted(fx_cfg.items()):
+                try:
+                    riesgo_pct = float(params.get('riesgo', 0.0)) * 100.0
+                    rr = float(params.get('rr', 0.0))
+                except Exception:
+                    riesgo_pct, rr = 0.0, 0.0
+                lines.append(f"  * {name}: riesgo={riesgo_pct:.2f}%  rr={rr:.2f}")
+        else:
+            lines.append("  (ninguna)")
+        lines.append("")
+        lines.append("-- Candle Strategies --")
+        if candle_list:
+            for name in sorted(candle_list):
+                cfg = candle_cfgs.get(name, {})
+                lines.append(f"  * {name}:")
+                for k in [
+                    'use_signal_change','use_stop_loss','use_take_profit','use_trailing_stop','use_pattern_reversal',
+                    'atr_sl_multiplier','atr_tp_multiplier','atr_trailing_multiplier',
+                    'bullish_reversal_patterns','bearish_reversal_patterns']:
+                    v = cfg.get(k, None)
+                    lines.append(f"      - {k}: {v}")
+        else:
+            lines.append("  (ninguna)")
+        lines.append("")
+        lines.append("-- Resultados de Operaciones --")
+        lines.append(f"  Operaciones ganadas: {ops_gan}  |  Dinero ganado: ${ganancias:.2f}")
+        lines.append(f"  Operaciones perdidas: {ops_per}  |  Dinero perdido: -${perdidas:.2f}")
+        lines.append(f"  Beneficio total: ${beneficio_total:.2f}")
+        lines.append("")
+        # Listado detallado de operaciones
+        succ_ops = best.get('successful_operations', []) or []
+        fail_ops = best.get('failed_operations', []) or []
+        lines.append("-- Operaciones Ganadoras (detalle) --")
+        if succ_ops:
+            for op in succ_ops:
+                estr = op.get('estrategia', '')
+                amt = float(op.get('profit', 0.0))
+                ts = op.get('timestamp', '')
+                lines.append(f"  + [{ts}] {estr}: +${amt:.2f}")
+        else:
+            lines.append("  (ninguna)")
+        lines.append("")
+        lines.append("-- Operaciones Perdedoras (detalle) --")
+        if fail_ops:
+            for op in fail_ops:
+                estr = op.get('estrategia', '')
+                amt = float(op.get('loss', 0.0))
+                ts = op.get('timestamp', '')
+                lines.append(f"  - [{ts}] {estr}: -${amt:.2f}")
+        else:
+            lines.append("  (ninguna)")
+        lines.append("")
+        lines.append("Restricciones aplicadas:")
+        lines.append("  - Máximo de operaciones simultáneas respetado por RiskManager")
+        lines.append("  - Sin estrategias Forex duplicadas (clave única por estrategia)")
+        lines.append("  - Máximo una apertura por vela (pipeline de RL/analizador abre 0/1 por paso)")
+
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write("\n".join(lines))
+
+    def _write_best_json_report(self):
+        """Escribe reports/best_config_ia.json con la mejor configuración y resultados en formato estructurado."""
+        project_root = os.path.dirname(os.path.dirname(__file__))
+        reports_dir = os.path.join(project_root, 'reports')
+        os.makedirs(reports_dir, exist_ok=True)
+        path = os.path.join(reports_dir, 'best_config_ia.json')
+
+        best = self._best_stats or {}
+        data = {
+            'winrate_target': self.winrate_target,
+            'capital_inicial': self.capital_inicial,
+            'capital_final': best.get('capital_final'),
+            'max_operaciones': best.get('max_operaciones', getattr(self.risk_manager, 'max_operaciones_activas', 0)),
+            'winrate': best.get('winrate'),
+            'beneficio_total': best.get('beneficio_total'),
+            'dinero_ganado': best.get('dinero_ganado'),
+            'dinero_perdido': best.get('dinero_perdido'),
+            'operaciones_ganadas': best.get('operaciones_ganadas'),
+            'operaciones_perdidas': best.get('operaciones_perdidas'),
+            'estrategias_fx': self._best_fx or {},
+            'candle_strategies': self._best_candle or [],
+            'candle_configs': self._best_candle_configs or {},
+            'successful_operations': best.get('successful_operations', []),
+            'failed_operations': best.get('failed_operations', []),
+            'restricciones': [
+                'Máximo de operaciones simultáneas respetado por RiskManager',
+                'Sin estrategias Forex duplicadas (clave única por estrategia)',
+                'Máximo una apertura por vela (pipeline RL/analizador)'
+            ],
+        }
+
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
 
     def _run(self):
         try:
@@ -302,6 +570,8 @@ class AITrainer:
                 closed_losses = 0
                 dinero_ganado = 0.0
                 dinero_perdido = 0.0
+                successful_ops: List[Dict] = []
+                failed_ops: List[Dict] = []
 
                 # 3. EJECUTAR BACKTESTING CON ANÁLISIS INTELIGENTE
                 for idx, row in df_work.iterrows():
@@ -330,9 +600,25 @@ class AITrainer:
                         if profit >= 0:
                             closed_gains += 1
                             dinero_ganado += profit
+                            try:
+                                successful_ops.append({
+                                    'estrategia': getattr(op, 'estrategia', ''),
+                                    'profit': float(profit),
+                                    'timestamp': idx
+                                })
+                            except Exception:
+                                pass
                         else:
                             closed_losses += 1
                             dinero_perdido += abs(profit)
+                            try:
+                                failed_ops.append({
+                                    'estrategia': getattr(op, 'estrategia', ''),
+                                    'loss': float(abs(profit)),
+                                    'timestamp': idx
+                                })
+                            except Exception:
+                                pass
                             
                         self._emit_log(f"🔒 CIERRE {op.estrategia}: {op} | Profit: ${profit:+.2f}", color)
 
@@ -406,9 +692,25 @@ class AITrainer:
                             if profit >= 0:
                                 closed_gains += 1
                                 dinero_ganado += profit
+                                try:
+                                    successful_ops.append({
+                                        'estrategia': getattr(op, 'estrategia', ''),
+                                        'profit': float(profit),
+                                        'timestamp': last_idx
+                                    })
+                                except Exception:
+                                    pass
                             else:
                                 closed_losses += 1
                                 dinero_perdido += abs(profit)
+                                try:
+                                    failed_ops.append({
+                                        'estrategia': getattr(op, 'estrategia', ''),
+                                        'loss': float(abs(profit)),
+                                        'timestamp': last_idx
+                                    })
+                                except Exception:
+                                    pass
                                 
                             self._emit_log(f"🔚 CIERRE FINAL: {op} | Profit: ${profit:+.2f}", color)
                     except Exception:
@@ -433,6 +735,8 @@ class AITrainer:
                     'patterns_config': copy.deepcopy(self._current_patterns),
                     'winrate': float(winrate),
                     'attempt': attempt,
+                    'successful_operations': successful_ops,
+                    'failed_operations': failed_ops,
                 }
 
                 # Actualizar mejor resultado
@@ -462,43 +766,193 @@ class AITrainer:
                     self._emit_log(f"📉 WinRate final {winrate:.1f}% < objetivo {self.winrate_target:.1f}%. Ajustando estrategias y reintentando (intento {attempt+1}).", 'yellow')
                     self._mutate_configs(winrate)
                 else:
-                    self._emit_log(f"🔄 Finalizado intento {attempt}. Preparando siguiente intento...", 'white')
-
-                attempt += 1
-                time.sleep(0.1)
-
-            # FINALIZACIÓN
-            final_stats = self._best_stats or {
-                'capital_final': float(self.risk_manager.capital),
-                'beneficio_total': float(self.risk_manager.beneficio_total),
-                'operaciones_ganadas': int(self.risk_manager.operaciones_ganadas),
-                'operaciones_perdidas': int(self.risk_manager.operaciones_perdidas),
-                'operaciones_activas': int(self.risk_manager.get_operaciones_activas_count()),
-                'max_operaciones': int(self.risk_manager.max_operaciones_activas),
-                'dinero_ganado': float(getattr(self.risk_manager, 'ganancia_ganadoras_total', 0.0)),
-                'dinero_perdido': float(getattr(self.risk_manager, 'perdida_perdedoras_total', 0.0)),
-                'fx_config': copy.deepcopy(self._current_fx),
-                'winrate': 0.0,
-                'attempt': attempt-1,
-            }
-
-            # Incluir mejor configuración si existe
-            if self._best_stats:
-                final_stats['best'] = {
-                    'stats': self._best_stats,
-                    'fx': copy.deepcopy(self._best_fx),
-                    'candle': copy.deepcopy(self._best_candle),
-                    'patterns': copy.deepcopy(self._best_patterns),
-                }
-
-            # Mensaje final
-            if reached_winrate_target:
-                self._emit_log(f"🎉 ENTRENAMIENTO FINALIZADO - OBJETIVO ALCANZADO", 'green')
+                    profit = (op.precio_apertura - op.precio_cierre) * op.lote_size
+            except Exception:
+                profit = 0.0
+                
+            if np.isnan(profit) or np.isinf(profit):
+                profit = 0.0
+                
+            color = 'green' if profit >= 0 else 'red'
+            if profit >= 0:
+                closed_gains += 1
+                dinero_ganado += profit
             else:
-                self._emit_log(f"🏁 ENTRENAMIENTO FINALIZADO", 'green')
+                closed_losses += 1
+                dinero_perdido += abs(profit)
+                
+            self._emit_log(f"🔒 CIERRE {op.estrategia}: {op} | Profit: ${profit:+.2f}", color)
 
-            self._emit_finish(final_stats)
+        # Análisis inteligente para apertura de órdenes
+        senal = row.get('RL_Signal')
+        if senal is not None and senal != 0 and not np.isnan(senal):
+            if not self.risk_manager.puede_abrir_operacion():
+                continue
+                
+            # ANÁLISIS INTELIGENTE DE LA VELA
+            analysis = self.smart_analyzer.analyze_candle_for_buy_opportunity(idx, row['Close'])
+            
+            if analysis['should_buy']:
+                atr_value = row.get('ATR')
+                if np.isnan(atr_value) or atr_value <= 0:
+                    atr_value = (df_work['High'] - df_work['Low']).mean() * 0.1
+                    
+                # Usar estrategia recomendada por el análisis inteligente
+                strategy_name = analysis['recommended_strategy']
+                strategy_type = analysis.get('strategy_type', 'rl')
+                
+                # Determinar parámetros según tipo de estrategia
+                if strategy_type == 'forex' and strategy_name in self._current_fx:
+                    rr_ratio = self._current_fx[strategy_name].get('rr', 2.0)
+                    riesgo = self._current_fx[strategy_name].get('riesgo', 0.01)
+                else:
+                    rr_ratio = 2.0
+                    riesgo = 0.01
+                    
+                operacion = self.risk_integration.procesar_senal(
+                    senal=senal,
+                    precio_actual=row['Close'],
+                    timestamp=idx,
+                    atr_value=atr_value,
+                    rr_ratio=rr_ratio,
+                    estrategia=f"AI_{strategy_name}" if strategy_name else "AI_RL"
+                )
+                
+                if operacion:
+                    confidence = analysis['confidence_score']
+                    patterns = ', '.join(analysis['pattern_signals'][:2])  # Mostrar máximo 2 patrones
+                    self._emit_log(f"🧠 APERTURA INTELIGENTE: {operacion}", 'cyan')
+                    self._emit_log(f"   └─ Estrategia: {strategy_name} | Confianza: {confidence:.2f} | Patrones: {patterns}", 'white')
+                    self._emit_log(f"   └─ Razón: {analysis['reason'][:100]}...", 'white')
+            else:
+                # Log de por qué no se abrió la operación
+                self._emit_log(f"⚠️ SEÑAL RL RECHAZADA en vela {idx}: {analysis['reason'][:80]}...", 'yellow')
 
-        except Exception as e:
-            self._emit_log(f"❌ Error en hilo de entrenamiento IA: {e}", 'red')
-            self._emit_finish({'error': str(e)})
+        # Verificar condición de WinRate
+        total_closed = closed_gains + closed_losses
+        if self.use_winrate and total_closed > 0:
+            winrate = (closed_gains / total_closed) * 100.0
+            if winrate >= self.winrate_target:
+                self._emit_log(f"🎯 WinRate objetivo alcanzado: {winrate:.1f}% >= {self.winrate_target:.1f}%", 'yellow')
+                reached_winrate_target = True
+                break
+
+        time.sleep(0.0)
+
+    # Cierre final de operaciones
+    if not reached_winrate_target:
+        try:
+            last_price = df_work['Close'].dropna().iloc[-1]
+            last_idx = df_work.dropna(subset=['Close']).index[-1]
+            for op in self.risk_manager.operaciones_activas[:]:
+                profit = op.cerrar(last_price, last_idx)
+                if np.isnan(profit) or np.isinf(profit):
+                    profit = 0.0
+                    
+                color = 'green' if profit >= 0 else 'red'
+                if profit >= 0:
+                    closed_gains += 1
+                    dinero_ganado += profit
+                else:
+                    closed_losses += 1
+                    dinero_perdido += abs(profit)
+                    
+                self._emit_log(f"🔚 CIERRE FINAL: {op} | Profit: ${profit:+.2f}", color)
+        except Exception:
+            pass
+
+    # Calcular estadísticas finales
+    total_closed = closed_gains + closed_losses
+    winrate = (closed_gains / total_closed * 100.0) if total_closed > 0 else 0.0
+    beneficio_total = dinero_ganado - dinero_perdido
+    
+    stats = {
+        'capital_final': float(self.risk_manager.capital),
+        'beneficio_total': float(beneficio_total),
+        'operaciones_ganadas': int(closed_gains),
+        'operaciones_perdidas': int(closed_losses),
+        'operaciones_activas': int(self.risk_manager.get_operaciones_activas_count()),
+        'max_operaciones': int(self.risk_manager.max_operaciones_activas),
+        'dinero_ganado': float(dinero_ganado),
+        'dinero_perdido': float(dinero_perdido),
+        'fx_config': copy.deepcopy(self._current_fx),
+        'candle_config': copy.deepcopy(self._current_candle),
+        'patterns_config': copy.deepcopy(self._current_patterns),
+        'winrate': float(winrate),
+        'attempt': attempt,
+    }
+
+    # Actualizar mejor resultado
+    def _is_better(a: Optional[Dict], b: Dict) -> bool:
+        if a is None:
+            return True
+        if self.use_winrate:
+            return b.get('winrate', 0.0) > a.get('winrate', 0.0)
+        else:
+            return b.get('beneficio_total', 0.0) > a.get('beneficio_total', 0.0)
+
+    if _is_better(self._best_stats, stats):
+        self._best_stats = copy.deepcopy(stats)
+        self._best_fx = copy.deepcopy(self._current_fx)
+        self._best_candle = copy.deepcopy(self._current_candle)
+        self._best_patterns = copy.deepcopy(self._current_patterns)
+        self._save_best_configuration(stats, attempt)
+
+    # Verificar si se alcanzó el objetivo
+    if self.use_winrate and winrate >= self.winrate_target:
+        reached_winrate_target = True
+        self._emit_log(f"✅ OBJETIVO ALCANZADO en intento {attempt}", 'green')
+        break
+
+    # Si no se alcanzó, mutar y reintentar
+    if self.use_winrate:
+        self._emit_log(f"📉 WinRate final {winrate:.1f}% < objetivo {self.winrate_target:.1f}%. Ajustando estrategias y reintentando (intento {attempt+1}).", 'yellow')
+        self._mutate_configs(winrate)
+    else:
+        self._emit_log(f"🔄 Finalizado intento {attempt}. Preparando siguiente intento...", 'white')
+
+    attempt += 1
+    time.sleep(0.1)
+
+# FINALIZACIÓN
+final_stats = self._best_stats or {
+    'capital_final': float(self.risk_manager.capital),
+    'beneficio_total': float(self.risk_manager.beneficio_total),
+    'operaciones_ganadas': int(self.risk_manager.operaciones_ganadas),
+    'operaciones_perdidas': int(self.risk_manager.operaciones_perdidas),
+    'operaciones_activas': int(self.risk_manager.get_operaciones_activas_count()),
+    'max_operaciones': int(self.risk_manager.max_operaciones_activas),
+    'dinero_ganado': float(getattr(self.risk_manager, 'ganancia_ganadoras_total', 0.0)),
+    'dinero_perdido': float(getattr(self.risk_manager, 'perdida_perdedoras_total', 0.0)),
+    'fx_config': copy.deepcopy(self._current_fx),
+    'winrate': 0.0,
+    'attempt': attempt-1,
+}
+
+# Incluir mejor configuración si existe
+if self._best_stats:
+    final_stats['best'] = {
+        'stats': self._best_stats,
+        'fx': copy.deepcopy(self._best_fx),
+        'candle': copy.deepcopy(self._best_candle),
+        'patterns': copy.deepcopy(self._best_patterns),
+    }
+
+# Mensaje final
+if reached_winrate_target:
+    self._emit_log(f"🎉 ENTRENAMIENTO FINALIZADO - OBJETIVO ALCANZADO", 'green')
+else:
+    self._emit_log(f"🏁 ENTRENAMIENTO FINALIZADO", 'green')
+
+# Escribir siempre el reporte TXT final
+try:
+    self._write_best_txt_report()
+    self._emit_log(f"📝 Reporte final best_config_ia.txt generado", 'cyan')
+except Exception as re:
+    self._emit_log(f"⚠️ No se pudo escribir el reporte final TXT: {re}", 'yellow')
+
+self._emit_finish(final_stats)
+
+except Exception as e:
+    self._emit_log(f"❌ Error en hilo de entrenamiento IA: {e}", 'red')
+    self._emit_finish({'error': str(e)})

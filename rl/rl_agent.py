@@ -11,7 +11,7 @@ from rl.rl_env import TradingEnv
 
 class RLTradingAgent:
     def __init__(self, df, estrategias_fx: Dict, estrategias_candle: List, 
-                 patrones: List, model_dir="models_rl", model_name="ppo_trading", 
+                 patrones: List, candle_configs: Dict = None, model_dir="models_rl", model_name="ppo_trading", 
                  log_fn: Optional[Callable[[str], None]] = None):
         """
         df: DataFrame de velas OHLC
@@ -23,6 +23,8 @@ class RLTradingAgent:
         self.estrategias_fx = estrategias_fx or {}
         self.estrategias_candle = estrategias_candle or []
         self.patrones = patrones or []
+        self.candle_configs = candle_configs or {}
+
         # Asegurar ruta absoluta para la carpeta de modelos
         try:
             if os.path.isabs(model_dir):
@@ -49,6 +51,7 @@ class RLTradingAgent:
             self.df, 
             self.estrategias_fx,
             self.estrategias_candle,
+            self.candle_configs,
             self.patrones
         )])
 

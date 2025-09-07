@@ -282,6 +282,14 @@ class AITrainingModal(tk.Toplevel):
             state="disabled"
         )
         self.btn_accept.pack(side="right", padx=5)
+
+        # Botón Abrir reporte IA
+        self.btn_open_report = ttk.Button(
+            button_frame,
+            text="Abrir reporte IA",
+            command=self._open_best_report
+        )
+        self.btn_open_report.pack(side="left", padx=5)
         # Aviso de condiciones para habilitar Aceptar
         self.accept_hint = ttk.Label(
             button_frame,
@@ -738,3 +746,39 @@ class AITrainingModal(tk.Toplevel):
         """Muestra el modal"""
         self.wait_window()
         return None
+
+    # ----------------- Helpers -----------------
+    def _best_report_paths(self):
+        try:
+            project_root = os.path.dirname(os.path.dirname(__file__))
+            reports_dir = os.path.join(project_root, 'reports')
+            txt_path = os.path.join(reports_dir, 'best_config_ia.txt')
+            json_path = os.path.join(reports_dir, 'best_config_ia.json')
+            return txt_path, json_path
+        except Exception:
+            return None, None
+
+    def _open_best_report(self):
+        try:
+            txt_path, json_path = self._best_report_paths()
+            candidates = []
+            if txt_path and os.path.isfile(txt_path):
+                candidates.append(txt_path)
+            if json_path and os.path.isfile(json_path):
+                candidates.append(json_path)
+            if not candidates:
+                messagebox.showinfo("Reporte IA", "Aún no hay reportes generados. Ejecute un entrenamiento para crear best_config_ia.")
+                return
+            target = candidates[0]
+            # Abrir según plataforma
+            try:
+                if os.name == 'nt':  # Windows
+                    os.startfile(target)
+                else:
+                    import webbrowser
+                    webbrowser.open(f"file://{target}")
+            except Exception:
+                import webbrowser
+                webbrowser.open(f"file://{target}")
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo abrir el reporte: {e}")

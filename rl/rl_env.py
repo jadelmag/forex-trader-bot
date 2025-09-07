@@ -23,6 +23,7 @@ class TradingEnv(gym.Env):
         df: pd.DataFrame,
         estrategias_fx: dict = None,
         estrategias_candle: list = None,
+        candle_configs: dict = None,
         patrones: list = None,
         initial_balance: float = 10000,
         window_size: int = DEFAULT_WINDOW_SIZE,
@@ -32,6 +33,7 @@ class TradingEnv(gym.Env):
         self.df = df.reset_index(drop=True).copy()
         self.estrategias_fx = estrategias_fx or {}
         self.estrategias_candle = estrategias_candle or []
+        self.candle_configs = candle_configs or {}
         self.patrones = patrones or []
         self.n_steps = len(self.df)
         self.current_step = 0
@@ -114,7 +116,15 @@ class TradingEnv(gym.Env):
         for estrategia in self.estrategias_candle:
             try:
                 metodo = getattr(self.candle_strategies, estrategia)
-                df_res = metodo()
+                # Si hay configuración para esta estrategia, intentar pasarla
+                cfg = self.candle_configs.get(estrategia)
+                try:
+                    if cfg is not None:
+                        df_res = metodo(config=cfg)
+                    else:
+                        df_res = metodo()
+                except TypeError:
+                    df_res = metodo()
                 signal = df_res.iloc[self.current_step]["Signal"] if self.current_step < len(df_res) else 0
                 obs.append(float(signal))
             except Exception:
