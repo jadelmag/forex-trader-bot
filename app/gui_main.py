@@ -2286,6 +2286,11 @@ class GUIPrincipal:
 
     def _procesar_compra_rl(self, idx, row, timestamp):
         """Procesa una señal de compra RL"""
+        # Mensaje base para logs RL
+        try:
+            mensaje_base = f"[RL] {timestamp}"
+        except Exception:
+            mensaje_base = "[RL]"
         # Confirmación por patrones (si disponible): solo comprar si Final_Signal == 1
         if self._pattern_signals is not None:
             patt = int(self._pattern_signals.iloc[idx])
@@ -2313,8 +2318,13 @@ class GUIPrincipal:
             'signal_idx': idx
         })
 
-    def _procesar_venta_rl(self, idx, row, timestamp, mensaje_base):
+    def _procesar_venta_rl(self, idx, row, timestamp):
         """Procesa una señal de venta RL"""
+        # Mensaje base para logs RL
+        try:
+            mensaje_base = f"[RL] {timestamp}"
+        except Exception:
+            mensaje_base = "[RL]"
         if not self.posiciones_activas:
             mensaje = mensaje_base + " | SEÑAL RL: VENTA IGNORADA (no hay posiciones activas)"
             self.log(mensaje, color="orange")
