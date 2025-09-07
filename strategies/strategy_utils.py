@@ -40,6 +40,7 @@ _FOREX_ALIAS_TO_METHOD: Dict[str, str] = {
 # Aliases for Candle strategies. If aliases are identical to implementation
 # names, we can keep them as identity mapping. Adjust here if names diverge.
 _CANDLE_ALIAS_TO_METHOD: Dict[str, str] = {
+    # Alias (métodos alias directos)
     "hammer_reversal": "hammer_reversal",
     "bullish_engulfing_reversal": "bullish_engulfing_reversal",
     "morning_star_swing": "morning_star_swing",
@@ -47,13 +48,35 @@ _CANDLE_ALIAS_TO_METHOD: Dict[str, str] = {
     "bearish_engulfing_reversal": "bearish_engulfing_reversal",
     "evening_star_swing": "evening_star_swing",
     "doji_indecision": "doji_indecision",
-    "marubozu_trend": "marubozu_trend",
     "three_white_soldiers": "three_white_soldiers",
     "three_black_crows": "three_black_crows",
+
+    # Estrategias principales basadas en patrones (sufijo _strategy)
+    "hammer_reversal_strategy": "hammer_reversal_strategy",
+    "bullish_engulfing_strategy": "bullish_engulfing_strategy",
+    "bearish_engulfing_strategy": "bearish_engulfing_strategy",
+    "morning_star_strategy": "morning_star_strategy",
+    "evening_star_strategy": "evening_star_strategy",
+    "hanging_man_strategy": "hanging_man_strategy",
+    "three_white_soldiers_strategy": "three_white_soldiers_strategy",
+    "three_black_crows_strategy": "three_black_crows_strategy",
+    "doji_reversal_strategy": "doji_reversal_strategy",
+
+    # Tendencia / combinadas
+    "marubozu_trend": "marubozu_trend",
+    "filter_with_trend": "filter_with_trend",
+    "stop_loss_take_profit": "stop_loss_take_profit",
     "scalping_reversal": "scalping_reversal",
     "swing_trading": "swing_trading",
-    "filter_with_trend": "filter_with_trend",
-    "stop_loss_take_profit": "stop_loss_take_profit"
+
+    # Nuevos métodos añadidos
+    "shooting_star_strategy": "shooting_star_strategy",
+    "spinning_top_strategy": "spinning_top_strategy",
+    "inverted_hammer_strategy": "inverted_hammer_strategy",
+    "piercing_line_strategy": "piercing_line_strategy",
+    "dark_cloud_cover_strategy": "dark_cloud_cover_strategy",
+    "tweezer_top_strategy": "tweezer_top_strategy",
+    "tweezer_bottom_strategy": "tweezer_bottom_strategy",
 }
 
 

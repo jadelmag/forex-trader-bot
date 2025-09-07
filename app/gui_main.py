@@ -765,17 +765,17 @@ class GUIPrincipal:
                         señales_del_dia.append({'estrategia': nombre, 'senal': df_new.loc[idx, col_name], 'precio': row['Close']})
 
                 # Procesar señales de salida (-1) primero para cerrar operaciones
-                for señal_info in señales_del_dia:
-                    if señal_info['senal'] == -1:  # Solo procesar señales de salida
-                        estrategia_id = estrategia_id_map.get(señal_info['estrategia'], señal_info['estrategia'])
+                for signal_info in señales_del_dia:
+                    if signal_info['senal'] == -1:  # Solo procesar señales de salida
+                        estrategia_id = estrategia_id_map.get(signal_info['estrategia'], signal_info['estrategia'])
                         atr_value = row.get('ATR')
                         if np.isnan(atr_value) or atr_value <= 0:
                             atr_value = (df_new['High'] - df_new['Low']).mean() * 0.1
 
                         # Procesar señal de salida
                         operaciones_cerradas_estrategia = self.risk_integration.procesar_senal(
-                            senal=señal_info['senal'],
-                            precio_actual=señal_info['precio'],
+                            senal=signal_info['senal'],
+                            precio_actual=signal_info['precio'],
                             timestamp=idx,
                             atr_value=atr_value,
                             rr_ratio=2.0,
@@ -803,7 +803,7 @@ class GUIPrincipal:
                                         pass
                                 resultados.append({'timestamp': idx, 'operacion': op, 'resultado': op.resultado, 'profit': profit})
                                 color = 'green' if op.resultado == 'GANANCIA' else 'red'
-                                self.log(f"CIERRE POR ESTRATEGIA: {op} -> {op.resultado} | Profit: ${profit:+.2f} | Estrategia: {señal_info['estrategia']}", color=color)
+                                self.log(f"CIERRE POR ESTRATEGIA: {op} -> {op.resultado} | Profit: ${profit:+.2f} | Estrategia: {signal_info['estrategia']}", color=color)
 
                         # Actualizar dinero visible tras cierre por estrategia
                         try:
@@ -818,23 +818,23 @@ class GUIPrincipal:
                 opened_buy_any_forex = False
 
                 # Procesar señales de entrada (1) después de las de salida
-                for señal_info in señales_del_dia:
-                    if señal_info['senal'] != 1:  # Solo procesar señales de entrada
+                for signal_info in señales_del_dia:
+                    if signal_info['senal'] != 1:  # Solo procesar señales de entrada
                         continue
-                    tipo_estrategia = estrategia_tipo_map.get(señal_info['estrategia'])
-                    estrategia_id = estrategia_id_map.get(señal_info['estrategia'], señal_info['estrategia'])
-                    if señal_info['senal'] == 1 and tipo_estrategia == 'forex' and estrategia_id in opened_buy_for_strategy:
+                    tipo_estrategia = estrategia_tipo_map.get(signal_info['estrategia'])
+                    estrategia_id = estrategia_id_map.get(signal_info['estrategia'], signal_info['estrategia'])
+                    if signal_info['senal'] == 1 and tipo_estrategia == 'forex' and estrategia_id in opened_buy_for_strategy:
                         # Ya se abrió un BUY para esta estrategia en esta misma vela; saltamos
                         continue
                     # Bloqueo por vela: si ya abrimos un BUY de cualquier estrategia FOREX en esta vela
-                    if señal_info['senal'] == 1 and tipo_estrategia == 'forex' and opened_buy_any_forex:
+                    if signal_info['senal'] == 1 and tipo_estrategia == 'forex' and opened_buy_any_forex:
                         try:
-                            self.log(f"SKIP: Ya se abrió un BUY forex en esta vela, se omite {señal_info['estrategia']} en {idx}", color='yellow')
+                            self.log(f"SKIP: Ya se abrió un BUY forex en esta vela, se omite {signal_info['estrategia']} en {idx}", color='yellow')
                         except Exception:
                             pass
                         continue
                     # Regla global: no permitir más de una BUY ACTIVA para la misma estrategia forex
-                    if señal_info['senal'] == 1 and tipo_estrategia == 'forex':
+                    if signal_info['senal'] == 1 and tipo_estrategia == 'forex':
                         try:
                             ya_activa = any(
                                 (getattr(op, 'estado', 'ACTIVA') == 'ACTIVA') and 
@@ -859,8 +859,8 @@ class GUIPrincipal:
 
                         # Solo procesar señales de entrada (1) aquí
                         operacion = self.risk_integration.procesar_senal(
-                            senal=señal_info['senal'],
-                            precio_actual=señal_info['precio'],
+                            senal=signal_info['senal'],
+                            precio_actual=signal_info['precio'],
                             timestamp=idx,
                             atr_value=atr_value,
                             rr_ratio=2.0,
@@ -869,10 +869,10 @@ class GUIPrincipal:
 
                         if operacion:
                             resultados.append({'timestamp': idx, 'operacion': operacion, 'tipo': 'APERTURA'})
-                            self.log(f"APERTURA: {operacion} | Estrategia: {señal_info['estrategia']}", color='green')
+                            self.log(f"APERTURA: {operacion} | Estrategia: {signal_info['estrategia']}", color='green')
                             operaciones_abiertas += 1
                             # Marcar que ya se abrió BUY para esta estrategia en esta vela
-                            if señal_info['senal'] == 1 and tipo_estrategia == 'forex':
+                            if signal_info['senal'] == 1 and tipo_estrategia == 'forex':
                                 opened_buy_for_strategy.add(estrategia_id)
                                 opened_buy_any_forex = True
                             # Refrescar dinero visible inmediatamente tras abrir

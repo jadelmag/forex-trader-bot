@@ -5,10 +5,12 @@ from tkinter import ttk, messagebox
 import re
 import threading
 import pandas as pd
+import inspect
 from strategies.strategy_utils import resolve_strategy_name
 from strategies.strategies import ForexStrategies
 from strategies.candle_strategies import CandleStrategies
 from strategies.risk_manager import RiskManager, RiskManagerIntegration
+from .binance_modal import CandleConfigModal
 
 class EstrategiasModal(tk.Toplevel):
     def __init__(self, parent, estrategias_fx, estrategias_candle, callback, patrones_list=None):
@@ -21,7 +23,7 @@ class EstrategiasModal(tk.Toplevel):
             self.gui_parent = parent
         self.parent = parent
         self.callback = callback
-        self.title("Seleccionar Estrategias")
+        self.title("Seleccionar Estrategias Forex y Candle")
         self.resizable(False, False)
         self.grab_set()  # modal
 
@@ -193,7 +195,18 @@ class EstrategiasModal(tk.Toplevel):
                 }
 
         # ---------------- SECCIÓN CANDLE STRATEGIES ----------------
-        if estrategias_candle:
+        # Descubrir dinámicamente estrategias Candle y fusionar con las recibidas
+        try:
+            discovered_candle = self._discover_candle_strategies()
+        except Exception:
+            discovered_candle = []
+        try:
+            provided_candle = list(estrategias_candle or [])
+        except Exception:
+            provided_candle = []
+        self.estrategias_candle = sorted(set(provided_candle + discovered_candle))
+
+        if self.estrategias_candle:
             start_row = len(estrategias_fx) + 3 if estrategias_fx else 0
             
             lbl_candle = ttk.Label(self.scrollable_frame, text="Candle Strategies", 
@@ -218,18 +231,58 @@ class EstrategiasModal(tk.Toplevel):
             btn_candle_sel.pack(side="left", padx=5)
             btn_candle_desel.pack(side="left", padx=5)
 
-            # Encabezado para Candle Strategies (sin parámetros de riesgo)
+            # Encabezado para Candle Strategies (con configuración personalizada)
             ttk.Label(self.scrollable_frame, text="Estrategia", width=20, anchor="w").grid(row=start_row+2, column=0, padx=5)
-            ttk.Label(self.scrollable_frame, text="Sin parámetros", width=20).grid(row=start_row+2, column=1, columnspan=2, padx=5)
+            ttk.Label(self.scrollable_frame, text="Configuración", width=15).grid(row=start_row+2, column=1, padx=5)
+            ttk.Label(self.scrollable_frame, text="", width=15).grid(row=start_row+2, column=2, padx=5)
 
-            # Estrategias Candle (sin parámetros de riesgo)
-            for idx, nombre in enumerate(estrategias_candle, start=start_row+3):
+            # Estrategias Candle (con configuración personalizada)
+            for idx, nombre in enumerate(self.estrategias_candle, start=start_row+3):
                 var_check = tk.IntVar()
                 display_name = nombre.replace('_', ' ').capitalize()
                 chk = tk.Checkbutton(self.scrollable_frame, text=display_name, variable=var_check, 
                                     anchor="w", width=20)
                 chk.grid(row=idx, column=0, sticky="w", padx=5, pady=2)
-                
+
+                # Combobox para seleccionar configuración
+                var_config = tk.StringVar(value="Default")
+                config_combo = ttk.Combobox(
+                    self.scrollable_frame,
+                    textvariable=var_config,
+                    values=["Default", "Custom"],
+                    state="readonly",
+                    width=12
+                )
+                config_combo.grid(row=idx, column=1, padx=5)
+
+                # Botón para abrir modal de configuración (inicialmente deshabilitado)
+                btn_config = ttk.Button(
+                    self.scrollable_frame,
+                    text="Configuración",
+                    command=lambda n=nombre: self._open_candle_config(n),
+                    state="disabled",
+                    width=14
+                )
+                btn_config.grid(row=idx, column=2, padx=5, sticky="w")
+
+                # Cambiar estado del botón según selección del combo
+                def on_combo_change(event, n=nombre):
+                    try:
+                        ctrl = self.controls.get(n)
+                        if not ctrl:
+                            return
+                        if ctrl["config_type"].get() == "Custom":
+                            ctrl["config_button"].config(state="normal")
+                            # Inicializar config si no existe con preset por estrategia
+                            if ctrl.get("custom_config") is None:
+                                ctrl["custom_config"] = self._get_default_candle_config(n)
+                        else:
+                            ctrl["config_button"].config(state="disabled")
+                    except Exception:
+                        pass
+
+                config_combo.bind('<<ComboboxSelected>>', on_combo_change)
+
                 # Definir niveles de riesgo para cada estrategia
                 risk_levels = {
                     # Alto riesgo
@@ -260,24 +313,23 @@ class EstrategiasModal(tk.Toplevel):
                     "trendline_strategy": ("Bajo", "green"),
                     "range_trading_strategy": ("Bajo", "green")
                 }
-                
+
                 # Aplicar etiqueta de riesgo si la estrategia está en el diccionario
                 if nombre in risk_levels:
                     level, color = risk_levels[nombre]
                     ttk.Label(
-                        self.scrollable_frame, 
-                        text=f"[Riesgo {level}]", 
+                        self.scrollable_frame,
+                        text=f"[Riesgo {level}]",
                         foreground=color,
                         font=('Arial', 8, 'bold')
                     ).grid(row=idx, column=4, padx=5, sticky="w")
 
-                # Espacio vacío para alinear con las forex strategies
-                ttk.Label(self.scrollable_frame, text="").grid(row=idx, column=1, padx=5)
-                ttk.Label(self.scrollable_frame, text="").grid(row=idx, column=2, padx=5)
-
                 self.controls[nombre] = {
                     "selected": var_check,
-                    "tipo": "candle"
+                    "tipo": "candle",
+                    "config_type": var_config,
+                    "config_button": btn_config,
+                    "custom_config": None
                 }
 
         # ---------------- CHECKBOXES DE OPCIONES ----------------
@@ -286,9 +338,10 @@ class EstrategiasModal(tk.Toplevel):
         if estrategias_fx:
             # Filas usadas por Forex: título(0), botones(1), header(2), items(3..len+2)
             base_row = max(base_row, 3 + len(estrategias_fx))
-        if estrategias_candle:
+        if self.estrategias_candle:
             # Inicio Candle en len_fx+3, usa: título, botones, header, items
-            base_row = max(base_row, (len(estrategias_fx) + 3 if estrategias_fx else 0) + 3 + len(estrategias_candle))
+            base_row = max(base_row, (len(estrategias_fx) + 3 if estrategias_fx else 0) + 3 + len(self.estrategias_candle))
+
         options_row = base_row + 2
         
         # Checkbox para mostrar detección de patrones
@@ -363,9 +416,21 @@ class EstrategiasModal(tk.Toplevel):
                         continue
                     seleccion[nombre] = {"riesgo": riesgo, "rr": rr, "tipo": "forex"}
                 else:
-                    # Para Candle Strategies: solo marcar como seleccionada
+                    # Para Candle Strategies: incluir configuración si es Custom
                     if ctrl["tipo"] == "candle":
-                        seleccion[nombre] = {"tipo": "candle"}
+                        try:
+                            if ctrl.get("config_type") and ctrl["config_type"].get() == "Custom":
+                                config = ctrl.get("custom_config") or self._get_default_candle_config(nombre)
+                                def on_save(config_dict):
+                                    try:
+                                        ctrl["custom_config"] = config_dict
+                                        # Log de verificación de guardado
+                                        self._log_to_parent(f"Configuración guardada para {nombre}: {list(config_dict.keys())}", 'white')
+                                    except Exception:
+                                        pass
+                        except Exception:
+                            config = None
+                        seleccion[nombre] = {"tipo": "candle", "config": config}
         
         if not seleccion:
             messagebox.showwarning("Atención", "Seleccione al menos una estrategia")
@@ -554,7 +619,11 @@ class EstrategiasModal(tk.Toplevel):
                 try:
                     strategy_method = getattr(candle_strategies, nombre, None)
                     if strategy_method and callable(strategy_method):
-                        df_result = strategy_method()
+                        # Intentar pasar configuración si el método lo acepta
+                        try:
+                            df_result = strategy_method(config=config.get("config"))
+                        except TypeError:
+                            df_result = strategy_method()
                         if 'ExecSignal' in df_result.columns:
                             candle_signals[nombre] = {
                                 'signals': df_result['ExecSignal'].fillna(0),
@@ -659,7 +728,7 @@ class EstrategiasModal(tk.Toplevel):
                 for strategy_name, strategy_data in candle_signals.items():
                     if idx not in strategy_data['signals'].index:
                         continue
-                        
+                    
                     signal = strategy_data['signals'].loc[idx]
                     
                     if signal == 1 and risk_manager.puede_abrir_operacion():
@@ -762,10 +831,6 @@ class EstrategiasModal(tk.Toplevel):
                 self.gui_parent.beneficios += risk_manager.ganancia_ganadoras_total
             if hasattr(self.gui_parent, 'perdidas'):
                 self.gui_parent.perdidas += abs(risk_manager.perdida_perdedoras_total)
-            if hasattr(self.gui_parent, 'actualizar_labels'):
-                self.gui_parent.actualizar_labels()
-        
-        self.after(0, update)
 
     # --- Mouse wheel support for scrolling ---
     def _bind_mousewheel(self):
@@ -832,3 +897,120 @@ class EstrategiasModal(tk.Toplevel):
                     ctrl["selected"].set(1 if value else 0)
         except Exception:
             pass
+
+    def _open_candle_config(self, strategy_name: str):
+        """Abre modal de configuración personalizada para una estrategia de velas."""
+        try:
+            ctrl = self.controls.get(strategy_name)
+            if not ctrl:
+                return
+
+            # Posicionar a la derecha del modal principal
+            self.update_idletasks()
+            x = self.winfo_rootx() + self.winfo_width() + 10
+            y = self.winfo_rooty()
+
+            current = ctrl.get("custom_config") or self._get_default_candle_config(strategy_name)
+
+            def on_save(config_dict):
+                try:
+                    ctrl["custom_config"] = config_dict
+                    # Log opcional de confirmación
+                    if isinstance(config_dict, dict):
+                        self._log_to_parent(f"Configuración guardada para {strategy_name}: {list(config_dict.keys())}")
+                except Exception:
+                    pass
+
+            CandleConfigModal(self, strategy_name, current, on_save, x, y)
+        except Exception as e:
+            print(f"Error opening candle config modal for {strategy_name}: {e}")
+
+    def _get_default_candle_config(self, strategy_name: str) -> dict:
+        """Devuelve preset por tipo de estrategia según recomendaciones (igual que en Binance)."""
+        try:
+            name = resolve_strategy_name(strategy_name, "candle") if strategy_name else ""
+        except Exception:
+            name = strategy_name or ""
+
+        reversal = {
+            "hammer_reversal_strategy",
+            "bullish_engulfing_strategy",
+            "bearish_engulfing_strategy",
+            "morning_star_strategy",
+            "evening_star_strategy",
+            "doji_reversal_strategy",
+            "hanging_man_strategy",
+            "bearish_engulfing_reversal",
+            "bullish_engulfing_reversal",
+            "doji_indecision",
+            "evening_star_swing",
+            "hammer_reversal",
+            "hanging_man_reversal",
+            "morning_star_swing",
+        }
+        trend = {
+            "three_white_soldiers_strategy",
+            "three_black_crows_strategy",
+            "marubozu_trend",
+            "filter_with_trend",
+            "three_black_crows",
+            "three_white_soldiers",
+        }
+        scalping = {"scalping_reversal", "scalping_reversal_strategy"}
+        swing_cons = {"conservative_swing_strategy"}
+        sltp = {"stop_loss_take_profit"}
+        combined = {"multi_pattern_strategy", "swing_trading", "swing_trading_strategy"}
+
+        def cfg(use_ts, sl, tp, ts_mult=None, use_sc=True, use_sl=True, use_tp=True, use_pr=False):
+            return {
+                "use_signal_change": use_sc,
+                "use_stop_loss": use_sl,
+                "use_take_profit": use_tp,
+                "use_trailing_stop": use_ts,
+                "use_pattern_reversal": use_pr,
+                "atr_sl_multiplier": sl,
+                "atr_tp_multiplier": tp,
+                "atr_trailing_multiplier": ts_mult if ts_mult is not None else 1.5,
+            }
+
+        if name in reversal:
+            return cfg(use_ts=False, sl=1.5, tp=3.0, ts_mult=1.5)
+        if name in trend:
+            return cfg(use_ts=True, sl=2.0, tp=4.0, ts_mult=2.0)
+        if name in scalping:
+            return cfg(use_ts=True, sl=1.0, tp=2.0, ts_mult=1.5)
+        if name in swing_cons:
+            return cfg(use_ts=False, sl=2.5, tp=4.0, ts_mult=2.0)
+        if name in sltp:
+            return cfg(use_ts=False, sl=1.5, tp=3.0, ts_mult=1.5, use_sc=True)
+        if name in combined:
+            return cfg(use_ts=False, sl=1.5, tp=3.0, ts_mult=1.5)
+
+        return cfg(use_ts=False, sl=1.5, tp=3.0, ts_mult=1.5)
+
+    def _discover_candle_strategies(self):
+        """Descubre TODAS las estrategias públicas de CandleStrategies (métodos callables)."""
+        try:
+            df_dummy = pd.DataFrame({'Open': [], 'High': [], 'Low': [], 'Close': []})
+            temp = CandleStrategies(df_dummy)
+        except Exception:
+            temp = None
+
+        strategies = []
+        target = temp if temp is not None else CandleStrategies
+        for name in dir(target):
+            if name.startswith('_'):
+                continue
+            if name in ['data', 'patterns', 'add_indicators', '_apply_exit_logic', '_safe_join']:
+                continue
+            try:
+                member = getattr(target, name)
+            except Exception:
+                continue
+            if callable(member):
+                strategies.append(name)
+        try:
+            self._log_to_parent(f"[DEBUG] Descubiertas Candle: {len(set(strategies))}", 'cyan')
+        except Exception:
+            pass
+        return sorted(set(strategies))
