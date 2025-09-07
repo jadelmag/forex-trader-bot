@@ -14,8 +14,9 @@ class QuantumExitConfig:
     atr_period: int = 14
     
     def __post_init__(self):
-        self.quick_profit_multiplier = max(0.3, min(self.quick_profit_multiplier, 2.0))
-        self.quick_loss_multiplier = max(0.3, min(self.quick_loss_multiplier, 1.0))
+        # Permitir valores más bajos (ej. 0.1, 0.2) como en deep_seek_strategies
+        self.quick_profit_multiplier = max(0.05, min(self.quick_profit_multiplier, 2.0))
+        self.quick_loss_multiplier = max(0.05, min(self.quick_loss_multiplier, 1.0))
 
 class SuperheroStrategies:
     def __init__(self, data):
@@ -76,10 +77,13 @@ class SuperheroStrategies:
                 exit_signal = 0
                 exit_reason = ''
                 
-                if unrealized_pl >= 0.5:
+                # Usar umbrales configurables del QuantumExitConfig
+                tp_target = float(config.quick_profit_multiplier)
+                sl_target = float(config.quick_loss_multiplier)
+                if unrealized_pl >= tp_target:
                     exit_signal = -position
                     exit_reason = 'TAKE_PROFIT'
-                elif unrealized_pl <= -0.5:
+                elif unrealized_pl <= -sl_target:
                     exit_signal = -position
                     exit_reason = 'STOP_LOSS'
                 elif config.use_signal_change and current_signal == -position:

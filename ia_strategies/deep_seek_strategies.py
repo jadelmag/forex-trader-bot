@@ -3,6 +3,7 @@
 import pandas as pd
 import numpy as np
 from dataclasses import dataclass
+import random
 
 @dataclass
 class QuantumExitConfig:
@@ -19,8 +20,9 @@ class QuantumExitConfig:
     
     def __post_init__(self):
         # Validar parámetros
-        self.quick_profit_multiplier = max(0.3, min(self.quick_profit_multiplier, 2.0))
-        self.quick_loss_multiplier = max(0.3, min(self.quick_loss_multiplier, 1.0))
+        # Permitir valores más bajos (ej. 0.1, 0.2) según los casos del usuario
+        self.quick_profit_multiplier = max(0.05, min(self.quick_profit_multiplier, 2.0))
+        self.quick_loss_multiplier = max(0.05, min(self.quick_loss_multiplier, 1.0))
 
 class QuantumStrategies:
     def __init__(self, data):
@@ -67,7 +69,7 @@ class QuantumStrategies:
         self.data['Volume_MA'] = self.data['Volume'].rolling(window=20).mean()
     
     def _apply_quantum_exit_logic(self, df, strategy_name, config=None):
-        """Lógica de salida para estrategias rápidas con ganancias de $0.5-$1 y pérdidas de $0.5"""
+        """Lógica de salida para estrategias rápidas usando umbrales configurables (TP/SL en $)."""
         if config is None:
             config = QuantumExitConfig()
         
@@ -103,14 +105,16 @@ class QuantumStrategies:
                 exit_signal = 0
                 exit_reason = ''
                 
-                # Take Profit: Ganancia entre $0.5 y $1
-                if unrealized_pl >= 0.5:
-                    if unrealized_pl >= 1.0 or random.random() < 0.7:  # 70% de probabilidad de tomar ganancias en $0.5-$1
-                        exit_signal = -position
-                        exit_reason = 'TAKE_PROFIT'
+                # Umbrales de salida basados en configuración
+                tp_target = float(config.quick_profit_multiplier)
+                sl_target = float(config.quick_loss_multiplier)
                 
-                # Stop Loss: Pérdida máxima de $0.5
-                elif unrealized_pl <= -0.5:
+                # Take Profit: cerrar cuando la ganancia alcance el objetivo
+                if unrealized_pl >= tp_target:
+                    exit_signal = -position
+                    exit_reason = 'TAKE_PROFIT'
+                # Stop Loss: cerrar cuando la pérdida alcance el objetivo
+                elif unrealized_pl <= -sl_target:
                     exit_signal = -position
                     exit_reason = 'STOP_LOSS'
                 
