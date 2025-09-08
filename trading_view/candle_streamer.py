@@ -536,7 +536,24 @@ class CandleStreamer:
             
             # Configurar límites de los ejes
             if len(dates) > 0:
-                self.ax_price.set_xlim(dates[0] - width, dates[-1] + width)
+                # Centrar solo las velas visibles en lugar de mostrar todas
+                visible_count = min(self.visible_candles, len(dates))
+                if visible_count > 0:
+                    # Calcular el rango para centrar las velas visibles
+                    start_idx = 0
+                    end_idx = visible_count - 1
+                    
+                    # Obtener las fechas de inicio y fin de las velas visibles
+                    start_date = dates[start_idx]
+                    end_date = dates[end_idx]
+                    
+                    # Agregar un pequeño margen a ambos lados para mejor visualización
+                    margin = (end_date - start_date) * 0.1 if end_date > start_date else width * 2
+                    
+                    self.ax_price.set_xlim(start_date - margin, end_date + margin)
+                else:
+                    # Fallback al comportamiento anterior si no hay velas visibles
+                    self.ax_price.set_xlim(dates[0] - width, dates[-1] + width)
                 
                 # Límites Y para precios
                 all_prices = []
