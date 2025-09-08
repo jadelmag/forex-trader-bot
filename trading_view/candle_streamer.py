@@ -15,6 +15,8 @@ import os
 import requests
 import tkinter as tk
 import time
+from concurrent.futures import ThreadPoolExecutor
+import queue
 
 URL = "wss://stream.binance.com:9443/ws"
 DEFAULT_INTERVAL = '1m'
@@ -59,6 +61,11 @@ class CandleStreamer:
         self.reconnect_delay = 1  # Initial delay in seconds
         self.max_reconnect_delay = 300  # Maximum delay (5 minutes)
         self.reconnect_thread = None
+        
+        # Thread pool for background tasks
+        self._thread_pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix="CandleStreamer")
+        self._plot_queue = queue.Queue(maxsize=1)  # Queue for plot updates
+        self._data_lock = threading.RLock()  # Thread-safe data access
 
         # DataFrame inicial con DatetimeIndex
         self.df = pd.DataFrame(columns=["Open", "High", "Low", "Close", "Volume"])
@@ -394,53 +401,56 @@ class CandleStreamer:
             if self.debug_mode:
                 self._log(f"Intervalo actual: {self.interval}, Inicio del intervalo: {interval_start}", 'gray')
             
-            if self.current_candle is None or self.current_candle['Date'] != interval_start:
-                if self.current_candle is not None:
-                    if self.debug_mode:
-                        self._log(f"Nueva vela creada: {self.current_candle}", 'green')
-                    new_candle = pd.DataFrame([self.current_candle])
-                    new_candle.set_index('Date', inplace=True)
-                    # Evitar FutureWarning: no concatenar con DataFrame vacío
-                    if self.df.empty:
-                        self.df = new_candle.copy()
-                    else:
-                        self.df = pd.concat([self.df, new_candle])
-                    if self.debug_mode:
-                        self._log(f"DataFrame actualizado. Total de velas: {len(self.df)}", 'gray')
-                    self._update_csv()
+            # Usar lock para acceso thread-safe
+            with self._data_lock:
+                if self.current_candle is None or self.current_candle['Date'] != interval_start:
+                    if self.current_candle is not None:
+                        if self.debug_mode:
+                            self._log(f"Nueva vela creada: {self.current_candle}", 'green')
+                        new_candle = pd.DataFrame([self.current_candle])
+                        new_candle.set_index('Date', inplace=True)
+                        # Evitar FutureWarning: no concatenar con DataFrame vacío
+                        if self.df.empty:
+                            self.df = new_candle.copy()
+                        else:
+                            self.df = pd.concat([self.df, new_candle])
+                        if self.debug_mode:
+                            self._log(f"DataFrame actualizado. Total de velas: {len(self.df)}", 'gray')
+                        # Actualizar CSV en background
+                        self._thread_pool.submit(self._update_csv_threaded)
 
-                self.current_candle = {
-                    'Date': interval_start,
-                    'Open': trade_price,
-                    'High': trade_price,
-                    'Low': trade_price,
-                    'Close': trade_price,
-                    'Volume': trade_volume
-                }
-                if self.debug_mode:
-                    self._log(f"Nueva vela iniciada: {self.current_candle}", 'green')
-                # Programar refresco del gráfico en lugar de refrescar inmediatamente
-                self._schedule_refresh()
-                # Notificar actualización de vela
-                self._notify_candle_update()
-            else:
-                prev_high = self.current_candle['High']
-                prev_low = self.current_candle['Low']
-                prev_volume = self.current_candle['Volume']
-                
-                self.current_candle['High'] = max(prev_high, trade_price)
-                self.current_candle['Low'] = min(prev_low, trade_price)
-                self.current_candle['Close'] = trade_price
-                self.current_candle['Volume'] += trade_volume
-                
-                if self.debug_mode and (prev_high != self.current_candle['High'] or 
-                    prev_low != self.current_candle['Low'] or 
-                    prev_volume != self.current_candle['Volume']):
-                    self._log(f"Vela actualizada: {self.current_candle}", 'gray')
-                # Programar refresco del gráfico
-                self._schedule_refresh()
-                # Notificar actualización intra-intervalo
-                self._notify_candle_update()
+                    self.current_candle = {
+                        'Date': interval_start,
+                        'Open': trade_price,
+                        'High': trade_price,
+                        'Low': trade_price,
+                        'Close': trade_price,
+                        'Volume': trade_volume
+                    }
+                    if self.debug_mode:
+                        self._log(f"Nueva vela iniciada: {self.current_candle}", 'green')
+                    # Programar refresco del gráfico en lugar de refrescar inmediatamente
+                    self._schedule_refresh()
+                    # Notificar actualización de vela
+                    self._notify_candle_update()
+                else:
+                    prev_high = self.current_candle['High']
+                    prev_low = self.current_candle['Low']
+                    prev_volume = self.current_candle['Volume']
+                    
+                    self.current_candle['High'] = max(prev_high, trade_price)
+                    self.current_candle['Low'] = min(prev_low, trade_price)
+                    self.current_candle['Close'] = trade_price
+                    self.current_candle['Volume'] += trade_volume
+                    
+                    if self.debug_mode and (prev_high != self.current_candle['High'] or 
+                        prev_low != self.current_candle['Low'] or 
+                        prev_volume != self.current_candle['Volume']):
+                        self._log(f"Vela actualizada: {self.current_candle}", 'gray')
+                    # Programar refresco del gráfico
+                    self._schedule_refresh()
+                    # Notificar actualización intra-intervalo
+                    self._notify_candle_update()
         except Exception as e:
             self._log(f"Error en _add_trade_to_candle: {e}", 'red')
 
@@ -454,23 +464,151 @@ class CandleStreamer:
             min_interval = max(self._refresh_interval, 0.1)  # Mínimo 100ms
             
             if current_time - self._last_refresh_time >= min_interval:
-                # Usar after() para no bloquear el hilo actual
-                if self.parent_frame:
-                    self.parent_frame.after(1, self._refresh_plot)
-                else:
-                    self._refresh_plot()
+                # Usar thread pool para procesamiento de datos y after() para UI
+                self._schedule_plot_update()
             elif self.parent_frame:
                 # Programar para más tarde
                 delay = int((min_interval - (current_time - self._last_refresh_time)) * 1000)
-                self.parent_frame.after(max(50, delay), self._refresh_plot)
+                self.parent_frame.after(max(50, delay), self._schedule_plot_update)
+    
+    def _schedule_plot_update(self):
+        """Programa actualización de gráfico usando thread pool"""
+        if not self.running:
+            return
+        
+        # Enviar tarea de preparación de datos al thread pool
+        future = self._thread_pool.submit(self._prepare_plot_data)
+        
+        # Programar verificación del resultado en el hilo principal
+        if self.parent_frame:
+            self.parent_frame.after(10, lambda: self._check_plot_ready(future))
+        else:
+            # Si no hay parent_frame, ejecutar directamente
+            try:
+                plot_data = future.result(timeout=0.1)
+                if plot_data:
+                    self._update_plot_with_data(plot_data)
+            except:
+                pass
+    
+    def _prepare_plot_data(self):
+        """Prepara datos para el gráfico en hilo separado"""
+        try:
+            with self._data_lock:
+                # Construir DataFrame a plotear
+                if self.load_all_candles:
+                    last_df = self.df.copy()  # Cargar todas las velas
+                else:
+                    last_df = self.df.tail(self.max_plot).copy()
+                    
+                if self.current_candle is not None:
+                    temp = pd.DataFrame([self.current_candle]).set_index('Date')
+                    last_df = pd.concat([last_df, temp])
+                    
+                # Asegurar orden por fecha
+                if not last_df.empty:
+                    last_df.sort_index(inplace=True)
+            
+            # Si solo hay 1 fila, añadir punto ficticio
+            if len(last_df) == 1:
+                try:
+                    idx = last_df.index[0]
+                    secs = int(self.interval[:-1]) if self.interval[-1] == 's' else int(self.interval[:-1]) * 60
+                    idx2 = idx + timedelta(seconds=secs)
+                    row = last_df.iloc[0]
+                    dummy = pd.DataFrame({
+                        'Open': [row['Close']],
+                        'High': [row['Close']],
+                        'Low': [row['Close']],
+                        'Close': [row['Close']],
+                        'Volume': [0.0]
+                    }, index=[idx2])
+                    last_df = pd.concat([last_df, dummy])
+                except Exception:
+                    pass
+            
+            if self.debug_mode:
+                self._log(f"Preparando datos: {len(last_df)} filas (visible: {self.visible_candles})", 'gray')
+            
+            return last_df if not last_df.empty else None
+            
+        except Exception as e:
+            if self.debug_mode:
+                self._log(f"Error preparando datos del gráfico: {e}", 'red')
+            return None
+    
+    def _check_plot_ready(self, future):
+        """Verifica si los datos del gráfico están listos"""
+        try:
+            if future.done():
+                plot_data = future.result()
+                if plot_data is not None:
+                    self._update_plot_with_data(plot_data)
+            else:
+                # Si no está listo, verificar de nuevo en 10ms
+                if self.parent_frame and self.running:
+                    self.parent_frame.after(10, lambda: self._check_plot_ready(future))
+        except Exception as e:
+            if self.debug_mode:
+                self._log(f"Error verificando datos del gráfico: {e}", 'red')
+    
+    def _update_plot_with_data(self, last_df):
+        """Actualiza el gráfico con datos preparados (ejecuta en hilo principal)"""
+        try:
+            # Guardar el último DF para el manejo de hover
+            self._last_df = last_df
+            # Cachear posiciones X en coordenadas de Matplotlib
+            try:
+                self._last_x = mdates.date2num(self._last_df.index.to_pydatetime()) if not self._last_df.empty else None
+            except Exception:
+                self._last_x = None
+            
+            # Limpiar los ejes
+            if hasattr(self, 'ax_price'):
+                self.ax_price.clear()
+            if hasattr(self, 'ax_volume'):
+                self.ax_volume.clear()
+            
+            # Limpiar listas de patches
+            self._candle_patches.clear()
+            self._volume_patches.clear()
+            
+            # Dibujar el gráfico con opacidad personalizada
+            self._plot_candles_with_opacity(last_df)
+            
+            # Asegurar que la anotación de hover existe tras limpiar/redibujar
+            self._ensure_hover_annotation()
+
+            # Restaurar límites de zoom del usuario si existen
+            if self._user_xlim is not None:
+                try:
+                    self.ax_price.set_xlim(self._user_xlim)
+                    if hasattr(self, 'ax_volume') and self.ax_volume:
+                        self.ax_volume.set_xlim(self._user_xlim)
+                except Exception:
+                    pass
+
+            # Actualizar el canvas si está en modo embebido
+            if hasattr(self, 'canvas'):
+                self.canvas.draw_idle()  # Usar draw_idle para mejor rendimiento
+            else:
+                plt.pause(0.01)
+                
+            self._pending_refresh = False
+            self._last_refresh_time = time.time()
+            
+        except Exception as e:
+            self._log(f"Error actualizando el gráfico: {e}", 'red')
+            self._pending_refresh = False
 
     def _refresh_plot(self):
         """Refresca el gráfico y reinicia el temporizador (thread-safe)"""
         if self._pending_refresh and self.running:
             try:
-                self._plot_last_candles()
+                # Usar thread pool para procesamiento de datos y after() para UI
+                self._schedule_plot_update()
             except Exception as e:
-                if self.debug_mode:
+                if self.debug_hover:
                     self._log(f"Error refrescando gráfico: {e}", 'red')
             finally:
                 self._pending_refresh = False
@@ -1262,7 +1400,8 @@ class CandleStreamer:
                 self._log(f"Scroll zoom error: {e}", 'red')
 
     def _update_csv(self):
-        self.df.to_csv(self.csv_file)
+        """Método legacy - redirige a versión threaded"""
+        self._thread_pool.submit(self._update_csv_threaded)
 
     def _binance_interval_for_klines(self):
         """Mapea el intervalo configurado a uno soportado por la API de klines de Binance."""
@@ -1277,14 +1416,40 @@ class CandleStreamer:
             self._log(f"Intervalo {self.interval} no soportado por klines. Usando 1m para precarga.", 'yellow')
         return "1m"
 
-    def _seed_historical(self, limit: int = 500):
-        """Precarga velas históricas desde la API de klines para poblar el gráfico al inicio."""
+    def _seed_historical_threaded(self, limit: int = 500):
+        """Precarga velas históricas en hilo separado para no bloquear UI"""
+        try:
+            self._log("Iniciando precarga histórica...", 'blue')
+            hist_df = self._fetch_historical_data(limit)
+            if hist_df is not None and not hist_df.empty:
+                # Usar lock para acceso thread-safe a los datos
+                with self._data_lock:
+                    if self.df.empty:
+                        self.df = hist_df
+                    else:
+                        self.df = pd.concat([self.df, hist_df])
+                        self.df = self.df[~self.df.index.duplicated(keep='last')]
+                        self.df.sort_index(inplace=True)
+                
+                if self.debug_mode:
+                    self._log(f"Precargadas {len(hist_df)} velas históricas para {self.symbol} ({self.interval}).", 'green')
+                
+                # Programar actualización de gráfico en hilo principal
+                self._schedule_plot_update()
+                
+                # Actualizar CSV en background
+                self._thread_pool.submit(self._update_csv_threaded)
+        except Exception as e:
+            self._log(f"Error en precarga histórica: {e}", 'red')
+    
+    def _fetch_historical_data(self, limit: int = 500):
+        """Obtiene datos históricos de la API (método separado para threading)"""
         try:
             k_interval = self._binance_interval_for_klines()
             if not k_interval:
                 if self.debug_mode:
                     self._log("Precarga histórica omitida (intervalo en segundos no soportado por klines).", 'yellow')
-                return
+                return None
 
             symbol = self.symbol.replace('/', '').replace('-', '')
             url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={k_interval}&limit={min(max(limit,1),1000)}"
@@ -1294,7 +1459,7 @@ class CandleStreamer:
             if not isinstance(data, list) or len(data) == 0:
                 if self.debug_mode:
                     self._log("No se recibieron klines para precarga.", 'yellow')
-                return
+                return None
 
             records = []
             for k in data:
@@ -1308,20 +1473,20 @@ class CandleStreamer:
 
             hist_df = pd.DataFrame(records).set_index('Date')
             hist_df.sort_index(inplace=True)
-
-            if self.df.empty:
-                self.df = hist_df
-            else:
-                self.df = pd.concat([self.df, hist_df])
-                self.df = self.df[~self.df.index.duplicated(keep='last')]
-                self.df.sort_index(inplace=True)
-
-            if self.debug_mode:
-                self._log(f"Precargadas {len(hist_df)} velas históricas para {self.symbol} ({self.interval}).")
-            self._plot_last_candles()
-            self._update_csv()
+            return hist_df
         except Exception as e:
-            self._log(f"Error en precarga histórica: {e}", 'red')
+            self._log(f"Error obteniendo datos históricos: {e}", 'red')
+            return None
+    
+    def _update_csv_threaded(self):
+        """Actualiza CSV en hilo separado"""
+        try:
+            with self._data_lock:
+                df_copy = self.df.copy()
+            df_copy.to_csv(self.csv_file)
+        except Exception as e:
+            if self.debug_mode:
+                self._log(f"Error actualizando CSV: {e}", 'red')
 
     def _on_message(self, ws, message):
         try:
@@ -1417,11 +1582,8 @@ class CandleStreamer:
             
         self.running = True
         
-        # Precargar histórico antes de iniciar el stream en vivo
-        try:
-            self._seed_historical(limit=min(self.max_plot, 500))
-        except Exception as e:
-            self._log(f"No se pudo precargar histórico: {e}", 'red')
+        # Precargar histórico en hilo separado para no bloquear UI
+        self._thread_pool.submit(self._seed_historical_threaded, min(self.max_plot, 500))
         
         # Iniciar revelado progresivo de velas (opacidad) automáticamente
         try:
@@ -1483,17 +1645,27 @@ class CandleStreamer:
                 self.reconnect_thread.cancel()
             except Exception:
                 pass
+        
+        # Cerrar thread pool y esperar a que terminen las tareas
+        if hasattr(self, '_thread_pool'):
+            try:
+                self._thread_pool.shutdown(wait=False, cancel_futures=True)
+            except Exception:
+                pass
             
         # Cerrar la figura de matplotlib
         if hasattr(self, 'fig') and self.fig:
-            plt.close(self.fig)
+            try:
+                plt.close(self.fig)
+            except Exception:
+                pass
             
         # Limpiar el canvas de Tkinter si existe
         if hasattr(self, 'canvas') and self.canvas:
-            self.canvas.get_tk_widget().destroy()
-            
-        if hasattr(self, 'thread') and self.thread:
-            self.thread.join(timeout=2.0)
+            try:
+                self.canvas.get_tk_widget().destroy()
+            except Exception:
+                pass
 
     def set_symbol(self, symbol):
         """Cambia el símbolo activo y reinicia el stream"""
