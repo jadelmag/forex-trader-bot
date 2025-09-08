@@ -1335,7 +1335,7 @@ class CandleStreamer:
             on_close=self._on_close,
             on_open=self._on_open
         )
-        self.ws.run_forever(ping_interval=20, ping_timeout=60)
+        self.ws.run_forever(ping_interval=70, ping_timeout=60)
 
         if self.reconnect_attempts < self.max_reconnect_attempts:
             self._reconnect()

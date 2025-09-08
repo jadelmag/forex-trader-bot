@@ -415,10 +415,37 @@ class BinanceSimulationModal(tk.Toplevel):
             for name, ctrl in self.controls.items():
                 if ctrl["selected"].get() == 1:
                     if ctrl["tipo"] == "forex":
+                        # Validate forex strategy has required textboxes filled
+                        risk_value = ctrl["riesgo"].get()
+                        rr_value = ctrl["rr"].get()
+                        
+                        if not risk_value or not rr_value:
+                            tk.messagebox.showerror(
+                                "Error de Validación",
+                                f"La estrategia forex '{name}' debe tener los campos 'Riesgo %' y 'RR' completados."
+                            )
+                            return
+                        
+                        try:
+                            risk = float(risk_value)
+                            rr = float(rr_value)
+                            if risk <= 0 or rr <= 0:
+                                tk.messagebox.showerror(
+                                    "Error de Validación",
+                                    f"La estrategia forex '{name}' debe tener valores positivos en 'Riesgo %' y 'RR'."
+                                )
+                                return
+                        except ValueError:
+                            tk.messagebox.showerror(
+                                "Error de Validación",
+                                f"La estrategia forex '{name}' debe tener valores numéricos válidos en 'Riesgo %' y 'RR'."
+                            )
+                            return
+                        
                         selected_forex.append({
                             'name': name,
-                            'risk': float(ctrl["riesgo"].get() or 0) / 100.0,  # Convert percentage to decimal
-                            'rr_ratio': float(ctrl["rr"].get() or 2.0)
+                            'risk': risk / 100.0,  # Convert percentage to decimal
+                            'rr_ratio': rr
                         })
                     elif ctrl["tipo"] == "candle":
                         # Handle custom configuration for candle strategies
@@ -437,16 +464,44 @@ class BinanceSimulationModal(tk.Toplevel):
                             'config': config
                         })
             
+            # Validate at least one strategy is selected
+            if not selected_forex and not selected_candle:
+                tk.messagebox.showerror(
+                    "Error de Validación",
+                    "Debe seleccionar al menos una estrategia (forex o candle) para iniciar la simulación."
+                )
+                return
+            
             # Get wait candles and max orders
             try:
-                wait_candles = int(self.wait_candles_var.get() or 20)
+                wait_candles = int(self.wait_candles_var.get() or 0)
+                if wait_candles <= 0:
+                    tk.messagebox.showerror(
+                        "Error de Validación",
+                        "El campo 'Velas a esperar' debe ser mayor que 0."
+                    )
+                    return
             except (ValueError, AttributeError):
-                wait_candles = 20
+                tk.messagebox.showerror(
+                    "Error de Validación",
+                    "El campo 'Velas a esperar' debe contener un número válido mayor que 0."
+                )
+                return
                 
             try:
-                max_orders = int(self.max_orders_var.get() or 5)
+                max_orders = int(self.max_orders_var.get() or 0)
+                if max_orders <= 0:
+                    tk.messagebox.showerror(
+                        "Error de Validación",
+                        "El campo 'Máximo de órdenes' debe ser mayor que 0."
+                    )
+                    return
             except (ValueError, AttributeError):
-                max_orders = 5
+                tk.messagebox.showerror(
+                    "Error de Validación",
+                    "El campo 'Máximo de órdenes' debe contener un número válido mayor que 0."
+                )
+                return
             
             # Get display options
             show_detection = bool(self.var_mostrar_deteccion.get())
