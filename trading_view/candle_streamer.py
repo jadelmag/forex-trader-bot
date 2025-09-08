@@ -25,7 +25,7 @@ class CandleStreamer:
     ALLOWED_MAX_PLOT = [100, 200, 300, 400, 500, 700, 1000, 1500, 2000]
 
     def __init__(self, interval: str = DEFAULT_INTERVAL, max_plot: int = DEFAULT_MAX_PLOT, 
-                 base_folder: str = 'trading_view', parent_frame=None, log_callback=None):
+                 base_folder: str = 'trading_view', parent_frame=None, log_callback=None, visible_candles: int = 20):
         # Callback para logging
         self.log_callback = log_callback if callable(log_callback) else print
         self.debug_mode = False  # Flag para modo debug
@@ -43,6 +43,10 @@ class CandleStreamer:
             self.max_plot = DEFAULT_MAX_PLOT
         else:
             self.max_plot = max_plot
+            
+        # Configurar velas visibles
+        self.visible_candles = max(1, min(visible_candles, max_plot))
+        self.load_all_candles = True  # Flag para cargar todas las velas al aceptar config
 
         self.url = URL
         self.ws = None
@@ -83,6 +87,10 @@ class CandleStreamer:
         self._last_refresh_time = 0
         self._refresh_interval = 1.0  # 1 segundo
         self._pending_refresh = False
+        
+        # Variables para control de opacidad de velas
+        self._candle_patches = []  # Lista de patches de velas para control de opacidad
+        self._volume_patches = []  # Lista de patches de volumen para control de opacidad
         
         # Si se proporciona un frame padre, usamos FigureCanvasTkAgg
         if self.parent_frame:
@@ -374,8 +382,12 @@ class CandleStreamer:
             self._last_refresh_time = time.time()
 
     def _plot_last_candles(self):
-        # Construir DataFrame a plotear incluyendo la vela en curso (si existe)
-        last_df = self.df.tail(self.max_plot).copy()
+        # Construir DataFrame a plotear - cargar todas las velas si load_all_candles está activo
+        if self.load_all_candles:
+            last_df = self.df.copy()  # Cargar todas las velas
+        else:
+            last_df = self.df.tail(self.max_plot).copy()
+            
         if self.current_candle is not None:
             temp = pd.DataFrame([self.current_candle]).set_index('Date')
             last_df = pd.concat([last_df, temp])
@@ -405,8 +417,8 @@ class CandleStreamer:
                 if self.debug_mode:
                     self._log(f"No se pudo añadir punto ficticio: {e}", 'red')
 
-            if self.debug_mode:
-                self._log(f"Plotting {len(last_df)} filas", 'gray')
+        if self.debug_mode:
+            self._log(f"Plotting {len(last_df)} filas (visible: {self.visible_candles})", 'gray')
 
         # Guardar el último DF para el manejo de hover
         self._last_df = last_df
@@ -427,13 +439,12 @@ class CandleStreamer:
                 if hasattr(self, 'ax_volume'):
                     self.ax_volume.clear()
                 
-                # Dibujar el gráfico
-                mpf.plot(last_df,
-                         type='candle',
-                         style='charles',
-                         ax=self.ax_price,
-                         volume=self.ax_volume,
-                         show_nontrading=False)
+                # Limpiar listas de patches
+                self._candle_patches.clear()
+                self._volume_patches.clear()
+                
+                # Dibujar el gráfico con opacidad personalizada
+                self._plot_candles_with_opacity(last_df)
                 
                 # Asegurar que la anotación de hover existe tras limpiar/redibujar
                 self._ensure_hover_annotation()
@@ -460,6 +471,101 @@ class CandleStreamer:
             self.parent_frame.after(0, _update_plot)
         else:
             _update_plot()
+
+    def _plot_candles_with_opacity(self, df):
+        """Dibuja velas con control de opacidad - solo las primeras visible_candles son completamente visibles"""
+        if df.empty:
+            return
+            
+        try:
+            # Convertir fechas a números para matplotlib
+            dates = mdates.date2num(df.index.to_pydatetime())
+            
+            # Calcular ancho de vela basado en el intervalo
+            if len(dates) > 1:
+                width = (dates[1] - dates[0]) * 0.6
+            else:
+                # Para una sola vela, usar un ancho fijo
+                width = 0.0005
+            
+            # Dibujar velas con opacidad controlada
+            for i, (idx, row) in enumerate(df.iterrows()):
+                date_num = dates[i]
+                open_price = float(row['Open'])
+                high_price = float(row['High'])
+                low_price = float(row['Low'])
+                close_price = float(row['Close'])
+                volume = float(row['Volume'])
+                
+                # Determinar opacidad: 1.0 para las primeras visible_candles, 0.0 para el resto
+                alpha = 1.0 if i < self.visible_candles else 0.0
+                
+                # Color de la vela
+                is_bullish = close_price >= open_price
+                candle_color = '#2ca02c' if is_bullish else '#d62728'  # Verde/Rojo
+                
+                # Dibujar línea de sombra (high-low)
+                shadow_line = self.ax_price.plot([date_num, date_num], [low_price, high_price], 
+                                                color='black', linewidth=1, alpha=alpha, zorder=1)[0]
+                self._candle_patches.append(shadow_line)
+                
+                # Dibujar cuerpo de la vela
+                body_height = abs(close_price - open_price)
+                body_bottom = min(open_price, close_price)
+                
+                if body_height > 0:
+                    # Vela con cuerpo
+                    candle_rect = Rectangle((date_num - width/2, body_bottom), width, body_height,
+                                          facecolor=candle_color, edgecolor='black', 
+                                          alpha=alpha, linewidth=0.5, zorder=2)
+                else:
+                    # Doji - línea horizontal
+                    candle_rect = Rectangle((date_num - width/2, open_price - 0.00001), width, 0.00002,
+                                          facecolor=candle_color, edgecolor='black',
+                                          alpha=alpha, linewidth=0.5, zorder=2)
+                
+                self.ax_price.add_patch(candle_rect)
+                self._candle_patches.append(candle_rect)
+                
+                # Dibujar volumen si existe el eje
+                if hasattr(self, 'ax_volume') and self.ax_volume is not None:
+                    volume_rect = Rectangle((date_num - width/2, 0), width, volume,
+                                          facecolor='#1f77b4', alpha=alpha * 0.7, zorder=1)
+                    self.ax_volume.add_patch(volume_rect)
+                    self._volume_patches.append(volume_rect)
+            
+            # Configurar límites de los ejes
+            if len(dates) > 0:
+                self.ax_price.set_xlim(dates[0] - width, dates[-1] + width)
+                
+                # Límites Y para precios
+                all_prices = []
+                for _, row in df.iterrows():
+                    all_prices.extend([float(row['High']), float(row['Low'])])
+                if all_prices:
+                    price_margin = (max(all_prices) - min(all_prices)) * 0.05
+                    self.ax_price.set_ylim(min(all_prices) - price_margin, max(all_prices) + price_margin)
+                
+                # Límites Y para volumen
+                if hasattr(self, 'ax_volume') and self.ax_volume is not None:
+                    max_volume = df['Volume'].max()
+                    if max_volume > 0:
+                        self.ax_volume.set_ylim(0, max_volume * 1.1)
+            
+            # Formatear ejes
+            self.ax_price.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+            self.ax_price.xaxis.set_major_locator(mdates.MinuteLocator(interval=max(1, len(df)//10)))
+            
+            if hasattr(self, 'ax_volume') and self.ax_volume is not None:
+                self.ax_volume.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+                
+            # Rotar etiquetas para mejor legibilidad
+            plt.setp(self.ax_price.xaxis.get_majorticklabels(), rotation=45)
+            if hasattr(self, 'ax_volume') and self.ax_volume is not None:
+                plt.setp(self.ax_volume.xaxis.get_majorticklabels(), rotation=45)
+                
+        except Exception as e:
+            self._log(f"Error en _plot_candles_with_opacity: {e}", 'red')
 
     def _init_hover(self):
         """Inicializa el manejo de hover sobre las velas (anotación + evento)."""
@@ -676,81 +782,133 @@ class CandleStreamer:
                     # Mapear desde coordenadas del eje a índice de datos
                     ratio = (event.xdata - xlim[0]) / (xlim[1] - xlim[0])
                     loc = int(ratio * (len(self._last_x) - 1))
-                    loc = max(0, min(loc, len(self._last_df) - 1))
-                    if self.debug_hover:
-                        self._log(f"Mapeado a índice {loc} usando ratio {ratio:.3f}", 'blue')
                 else:
-                    return
-            else:
-                loc = int(np.argmin(np.abs(self._last_x - event.xdata)))
-                loc = max(0, min(loc, len(self._last_df) - 1))
-
-            ts = self._last_df.index[loc]
-            row = self._last_df.iloc[loc]
-            
-            if self.debug_hover:
-                self._log(f"Found candle at index {loc}: {ts}", 'gray')
-
-            # Calcular cambio y color
-            open_price = float(row['Open'])
-            close_price = float(row['Close'])
-            change = close_price - open_price
-            change_pct = (change / open_price) * 100 if open_price != 0 else 0
-            color = '#28a745' if close_price >= open_price else '#dc3545'  # Verde si sube, rojo si baja
-            
-            # Formatear fecha y valores
-            ts_str = ts.strftime('%Y-%m-%d %H:%M:%S') if hasattr(ts, 'strftime') else str(ts)
-            
-            # Crear texto con formato simple (sin secuencias ANSI)
-            sign = '+' if change >= 0 else ''
-            txt = (
-                f"{ts_str}\n"
-                f"--------------------\n"
-                f"Open:   {open_price:.5f}\n"
-                f"High:   {float(row['High']):.5f}\n"
-                f"Low:    {float(row['Low']):.5f}\n"
-                f"Close:  {close_price:.5f}  ({sign}{change:.5f}, {change_pct:+.2f}%)\n"
-                f"--------------------\n"
-                f"Volume: {float(row['Volume']):.4f}\n"
-            )
-
-            # Posicionar anotación usando coordenadas del evento en lugar de mdates
-            # Esto evita problemas de conversión de coordenadas
-            x, y = event.xdata, float(row['High'])
-            xlim = self.ax_price.get_xlim()
-            ylim = self.ax_price.get_ylim()
-            
-            if self.debug_hover:
-                self._log(f"Tooltip position: x={x:.2f}, y={y:.5f}", 'gray')
-                self._log(f"Axes limits: xlim=[{xlim[0]:.2f}, {xlim[1]:.2f}], ylim=[{ylim[0]:.5f}, {ylim[1]:.5f}]", 'gray')
-            
-            # Ajustar posición para que no se salga de los límites
-            x_offset = 20 if x < (xlim[0] + xlim[1]) / 2 else -120  # Más espacio para el texto
-            y_offset = 20 if y < (ylim[0] + ylim[1]) / 2 else -120
-            
-            # Actualizar anotación
-            self._hover_annot.xy = (x, y)
-            self._hover_annot.set_position((x_offset, y_offset))
-            self._hover_annot.set_text(txt)
-            self._hover_annot.set_visible(True)
-            
-            # Actualizar marcador en el cierre con el color correspondiente
-            self._hover_marker.set_data([x], [close_price])  # Usar x del evento
-            self._hover_marker.set_markerfacecolor(color)
-            self._hover_marker.set_visible(True)
-            
-            if self.debug_hover:
-                self._log(f"Tooltip updated and made visible at ({x:.2f}, {y:.2f}) with offset ({x_offset}, {y_offset})", 'green')
-                self._log(f"Annotation visible: {self._hover_annot.get_visible()}, Marker visible: {self._hover_marker.get_visible()}", 'blue')
-
-            # Redibujar ligero
-            self._force_canvas_draw()
-            
-            if self.debug_hover:
-                self._log("Canvas draw completed", 'blue')
+                    self._rect_patch.set_xy((xmin, ymin))
+                    self._rect_patch.set_width(max(xmax - xmin, 0))
+                    self._rect_patch.set_height(max(ymax - ymin, 0))
+                self._rect_patch.set_visible(True)
+                # Redibuja de forma ociosa usando el canvas de la figura
+                self._force_canvas_draw()
         except Exception as e:
             if self.debug_hover:
-                self._log(f"Hover error: {e}", 'red')
+                self._log(f"Rect draw error: {e}", 'red')
+        finally:
+            # ocultar hover mientras se dibuja
+            if self._hover_annot is not None and self._hover_annot.get_visible():
+                self._hover_annot.set_visible(False)
+            if self._hover_marker is not None and self._hover_marker.get_visible():
+                self._hover_marker.set_visible(False)
+
+        # Asegurar que existe la anotación
+        self._ensure_hover_annotation()
+        
+        if self.debug_hover:
+            self._log(f"Processing hover - last_x length: {len(self._last_x) if self._last_x is not None else 0}", 'gray')
+            if self._last_x is not None and len(self._last_x) > 0:
+                self._log(f"_last_x range: {min(self._last_x):.2f} to {max(self._last_x):.2f}", 'gray')
+                self._log(f"event.xdata: {event.xdata:.2f}", 'gray')
+
+        # Buscar índice de vela más cercano usando coordenadas x numéricas (evita problemas de tz)
+        if self._last_x is None or len(self._last_x) == 0:
+            if self.debug_hover:
+                self._log("No _last_x data available", 'gray')
+            return
+        
+        # Verificar si event.xdata está en el rango de _last_x
+        x_min, x_max = min(self._last_x), max(self._last_x)
+        if event.xdata < x_min or event.xdata > x_max:
+            if self.debug_hover:
+                self._log(f"event.xdata {event.xdata:.2f} fuera del rango [{x_min:.2f}, {x_max:.2f}]", 'yellow')
+            # Intentar mapear a coordenadas del eje
+            xlim = self.ax_price.get_xlim()
+            if xlim[0] <= event.xdata <= xlim[1]:
+                # Mapear desde coordenadas del eje a índice de datos
+                ratio = (event.xdata - xlim[0]) / (xlim[1] - xlim[0])
+                loc = int(ratio * (len(self._last_x) - 1))
+                loc = max(0, min(loc, len(self._last_df) - 1))
+                if self.debug_hover:
+                    self._log(f"Mapeado a índice {loc} usando ratio {ratio:.3f}", 'blue')
+            else:
+                return
+        else:
+            loc = int(np.argmin(np.abs(self._last_x - event.xdata)))
+            loc = max(0, min(loc, len(self._last_df) - 1))
+
+        # Verificar si la vela está dentro del rango visible (solo hover en velas con opacidad = 1)
+        if loc >= self.visible_candles:
+            # Ocultar tooltip si estaba visible
+            if self._hover_annot is not None and self._hover_annot.get_visible():
+                if self.debug_hover:
+                    self._log(f"Hiding tooltip - candle {loc} is not visible (>= {self.visible_candles})", 'gray')
+                self._hover_annot.set_visible(False)
+                if self._hover_marker is not None and self._hover_marker.get_visible():
+                    self._hover_marker.set_visible(False)
+                self._force_canvas_draw()
+            return
+
+        ts = self._last_df.index[loc]
+        row = self._last_df.iloc[loc]
+        
+        if self.debug_hover:
+            self._log(f"Found visible candle at index {loc}: {ts}", 'gray')
+
+        # Calcular cambio y color
+        open_price = float(row['Open'])
+        close_price = float(row['Close'])
+        change = close_price - open_price
+        change_pct = (change / open_price) * 100 if open_price != 0 else 0
+        color = '#28a745' if close_price >= open_price else '#dc3545'  # Verde si sube, rojo si baja
+        
+        # Formatear fecha y valores
+        ts_str = ts.strftime('%Y-%m-%d %H:%M:%S') if hasattr(ts, 'strftime') else str(ts)
+        
+        # Crear texto con formato simple (sin secuencias ANSI)
+        sign = '+' if change >= 0 else ''
+        txt = (
+            f"{ts_str}\n"
+            f"--------------------\n"
+            f"Open:   {open_price:.5f}\n"
+            f"High:   {float(row['High']):.5f}\n"
+            f"Low:    {float(row['Low']):.5f}\n"
+            f"Close:  {close_price:.5f}  ({sign}{change:.5f}, {change_pct:+.2f}%)\n"
+            f"--------------------\n"
+            f"Volume: {float(row['Volume']):.4f}\n"
+        )
+
+        # Posicionar anotación usando coordenadas del evento en lugar de mdates
+        # Esto evita problemas de conversión de coordenadas
+        x, y = event.xdata, float(row['High'])
+        xlim = self.ax_price.get_xlim()
+        ylim = self.ax_price.get_ylim()
+        
+        if self.debug_hover:
+            self._log(f"Tooltip position: x={x:.2f}, y={y:.5f}", 'gray')
+            self._log(f"Axes limits: xlim=[{xlim[0]:.2f}, {xlim[1]:.2f}], ylim=[{ylim[0]:.5f}, {ylim[1]:.5f}]", 'gray')
+        
+        # Ajustar posición para que no se salga de los límites
+        x_offset = 20 if x < (xlim[0] + xlim[1]) / 2 else -120  # Más espacio para el texto
+        y_offset = 20 if y < (ylim[0] + ylim[1]) / 2 else -120
+        
+        # Actualizar anotación
+        self._hover_annot.xy = (x, y)
+        self._hover_annot.set_position((x_offset, y_offset))
+        self._hover_annot.set_text(txt)
+        self._hover_annot.set_visible(True)
+        
+        # Actualizar marcador en el cierre con el color correspondiente
+        self._hover_marker.set_data([x], [close_price])  # Usar x del evento
+        self._hover_marker.set_markerfacecolor(color)
+        self._hover_marker.set_visible(True)
+        
+        if self.debug_hover:
+            self._log(f"Tooltip updated and made visible at ({x:.2f}, {y:.2f}) with offset ({x_offset}, {y_offset})", 'green')
+            self._log(f"Annotation visible: {self._hover_annot.get_visible()}, Marker visible: {self._hover_marker.get_visible()}", 'blue')
+
+        # Redibujar ligero
+        self._force_canvas_draw()
+        
+        if self.debug_hover:
+            self._log("Canvas draw completed", 'blue')
 
     def _on_button_press(self, event):
         """Inicia pan (botón derecho) o zoom por recuadro (botón izquierdo)."""
@@ -1117,6 +1275,24 @@ class CandleStreamer:
         if max_plot in self.ALLOWED_MAX_PLOT and max_plot != self.max_plot:
             self.max_plot = max_plot
             self._plot_last_candles()
+
+    def set_visible_candles(self, visible_candles):
+        """Cambia el número de velas visibles (con opacidad = 1)"""
+        if visible_candles > 0 and visible_candles != self.visible_candles:
+            self.visible_candles = max(1, min(visible_candles, self.max_plot))
+            self._plot_last_candles()
+
+    def update_config(self, config):
+        """Actualiza la configuración del streamer"""
+        if 'visible_candles' in config:
+            self.set_visible_candles(config['visible_candles'])
+        if 'max_plot' in config:
+            self.set_max_plot(config['max_plot'])
+        if 'symbol' in config and config['symbol'] != self.symbol:
+            self.symbol = config['symbol']
+            self.csv_file = os.path.join(self.csv_folder, f'{self.symbol}_data.csv')
+        if 'interval' in config and config['interval'] != self.interval:
+            self.interval = config['interval']
 
     def get_available_symbols(self):
         """Devuelve la lista de símbolos disponibles"""

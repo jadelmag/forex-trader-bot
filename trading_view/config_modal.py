@@ -16,7 +16,7 @@ class CandleStreamerConfigModal:
         # Configuración de la ventana modal
         self.window = tk.Toplevel(parent)
         self.window.title("Configuración de CandleStreamer")
-        self.window.geometry("300x250")
+        self.window.geometry("300x280")
         self.window.resizable(False, False)
         self.window.grab_set()  # Hace que la ventana sea modal
         
@@ -29,6 +29,7 @@ class CandleStreamerConfigModal:
         self.max_candles_var = tk.StringVar(value=str(initial_values.get("max_plot", 500)) if initial_values else "500")
         self.symbol_var = tk.StringVar(value=initial_values.get("symbol", "") if initial_values and "symbol" in initial_values else (symbols[0] if symbols else ""))
         self.initial_money_var = tk.StringVar(value=str(initial_values.get("initial_money", "1000")) if initial_values else "1000")
+        self.visible_candles_var = tk.StringVar(value=str(initial_values.get("visible_candles", 5)) if initial_values else "5")
         
         # Estilo
         style = ttk.Style()
@@ -76,9 +77,20 @@ class CandleStreamerConfigModal:
         )
         initial_money_entry.grid(row=3, column=1, sticky="w", pady=5, padx=5)
         
+        # Campo para velas visibles
+        ttk.Label(main_frame, text="Velas iniciales:").grid(row=4, column=0, sticky="w", pady=5)
+        visible_candles_combo = ttk.Combobox(
+            main_frame,
+            textvariable=self.visible_candles_var,
+            values=["5", "6", "7", "8", "9", "10"],
+            state="readonly",
+            width=10
+        )
+        visible_candles_combo.grid(row=4, column=1, sticky="w", pady=5, padx=5)
+        
         # Frame para los botones
         button_frame = ttk.Frame(main_frame)
-        button_frame.grid(row=4, column=0, columnspan=2, pady=20)
+        button_frame.grid(row=5, column=0, columnspan=2, pady=20)
         
         # Botón Cancelar
         cancel_btn = ttk.Button(
@@ -134,11 +146,21 @@ class CandleStreamerConfigModal:
             messagebox.showerror("Error", "Por favor ingrese un valor numérico válido para el dinero inicial")
             return
             
+        try:
+            visible_candles = int(self.visible_candles_var.get())
+            if visible_candles <= 0:
+                messagebox.showerror("Error", "Las velas visibles deben ser un número positivo")
+                return
+        except ValueError:
+            messagebox.showerror("Error", "Por favor ingrese un valor numérico válido para las velas visibles")
+            return
+            
         config = {
             "interval": self.interval_var.get(),
             "max_plot": int(self.max_candles_var.get()),
             "symbol": self.symbol_var.get(),
-            "initial_money": initial_money
+            "initial_money": initial_money,
+            "visible_candles": visible_candles
         }
         self.on_connect(config)
         self.window.destroy()

@@ -1523,7 +1523,8 @@ class GUIPrincipal:
                 interval=config["interval"],
                 max_plot=config["max_plot"],
                 parent_frame=chart_frame,  # Pasar el frame para el gráfico
-                log_callback=self.log  # Pasar la función de logging
+                log_callback=self.log,
+                visible_candles=config.get("visible_candles", 5)
             )
             
             # Configurar el símbolo si se proporciona
