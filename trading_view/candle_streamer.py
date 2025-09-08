@@ -445,23 +445,36 @@ class CandleStreamer:
             self._log(f"Error en _add_trade_to_candle: {e}", 'red')
 
     def _schedule_refresh(self):
-        """Programa un refresco del gráfico si no hay uno pendiente"""
-        if not self._pending_refresh:
+        """Programa un refresco del gráfico si no hay uno pendiente (optimizado)"""
+        if not self._pending_refresh and self.running:
             self._pending_refresh = True
             current_time = time.time()
-            if current_time - self._last_refresh_time >= self._refresh_interval:
-                self._refresh_plot()
+            
+            # Limitar frecuencia de refresco para evitar sobrecarga
+            min_interval = max(self._refresh_interval, 0.1)  # Mínimo 100ms
+            
+            if current_time - self._last_refresh_time >= min_interval:
+                # Usar after() para no bloquear el hilo actual
+                if self.parent_frame:
+                    self.parent_frame.after(1, self._refresh_plot)
+                else:
+                    self._refresh_plot()
             elif self.parent_frame:
-                # Usar after() para refrescar en el futuro
-                delay = int((self._refresh_interval - (current_time - self._last_refresh_time)) * 1000)
-                self.parent_frame.after(max(10, delay), self._refresh_plot)
+                # Programar para más tarde
+                delay = int((min_interval - (current_time - self._last_refresh_time)) * 1000)
+                self.parent_frame.after(max(50, delay), self._refresh_plot)
 
     def _refresh_plot(self):
-        """Refresca el gráfico y reinicia el temporizador"""
-        if self._pending_refresh:
-            self._plot_last_candles()
-            self._pending_refresh = False
-            self._last_refresh_time = time.time()
+        """Refresca el gráfico y reinicia el temporizador (thread-safe)"""
+        if self._pending_refresh and self.running:
+            try:
+                self._plot_last_candles()
+            except Exception as e:
+                if self.debug_mode:
+                    self._log(f"Error refrescando gráfico: {e}", 'red')
+            finally:
+                self._pending_refresh = False
+                self._last_refresh_time = time.time()
 
     def _plot_last_candles(self):
         # Construir DataFrame a plotear - cargar todas las velas si load_all_candles está activo
@@ -797,7 +810,7 @@ class CandleStreamer:
                     if hasattr(self, 'ax_volume') and self.ax_volume:
                         self.ax_volume.set_xlim(left, right)
                     self._user_xlim = (left, right)
-                    # Redibuja de forma ociosa usando el canvas de la figura
+                    # Redibujar
                     self._force_canvas_draw()
                 except Exception as e:
                     if self.debug_hover:
@@ -828,7 +841,7 @@ class CandleStreamer:
                         self._rect_patch.set_width(max(xmax - xmin, 0))
                         self._rect_patch.set_height(max(ymax - ymin, 0))
                     self._rect_patch.set_visible(True)
-                    # Redibuja de forma ociosa usando el canvas de la figura
+                    # Redibujar
                     self._force_canvas_draw()
                 except Exception as e:
                     if self.debug_hover:
@@ -868,12 +881,87 @@ class CandleStreamer:
                     ratio = (event.xdata - xlim[0]) / (xlim[1] - xlim[0])
                     loc = int(ratio * (len(self._last_x) - 1))
                 else:
-                    self._rect_patch.set_xy((xmin, ymin))
-                    self._rect_patch.set_width(max(xmax - xmin, 0))
-                    self._rect_patch.set_height(max(ymax - ymin, 0))
-                self._rect_patch.set_visible(True)
-                # Redibuja de forma ociosa usando el canvas de la figura
-                self._force_canvas_draw()
+                    return
+            else:
+                loc = int(np.argmin(np.abs(self._last_x - event.xdata)))
+                loc = max(0, min(loc, len(self._last_df) - 1))
+
+            # Verificar si la vela está dentro del rango visible (solo hover en velas con opacidad = 1)
+            if loc >= self.visible_candles:
+                # Ocultar tooltip si estaba visible
+                if self._hover_annot is not None and self._hover_annot.get_visible():
+                    if self.debug_hover:
+                        self._log(f"Hiding tooltip - candle {loc} is not visible (>= {self.visible_candles})", 'gray')
+                    self._hover_annot.set_visible(False)
+                    if self._hover_marker is not None and self._hover_marker.get_visible():
+                        self._hover_marker.set_visible(False)
+                    self._force_canvas_draw()
+                return
+
+            ts = self._last_df.index[loc]
+            row = self._last_df.iloc[loc]
+            
+            if self.debug_hover:
+                self._log(f"Found visible candle at index {loc}: {ts}", 'gray')
+
+            # Calcular cambio y color
+            open_price = float(row['Open'])
+            close_price = float(row['Close'])
+            change = close_price - open_price
+            change_pct = (change / open_price) * 100 if open_price != 0 else 0
+            color = '#28a745' if close_price >= open_price else '#dc3545'  # Verde si sube, rojo si baja
+            
+            # Formatear fecha y valores
+            ts_str = ts.strftime('%Y-%m-%d %H:%M:%S') if hasattr(ts, 'strftime') else str(ts)
+            
+            # Crear texto con formato simple (sin secuencias ANSI)
+            sign = '+' if change >= 0 else ''
+            txt = (
+                f"{ts_str}\n"
+                f"--------------------\n"
+                f"Open:   {open_price:.5f}\n"
+                f"High:   {float(row['High']):.5f}\n"
+                f"Low:    {float(row['Low']):.5f}\n"
+                f"Close:  {close_price:.5f}  ({sign}{change:.5f}, {change_pct:+.2f}%)\n"
+                f"--------------------\n"
+                f"Volume: {float(row['Volume']):.4f}\n"
+            )
+
+            # Posicionar anotación usando coordenadas del evento en lugar de mdates
+            # Esto evita problemas de conversión de coordenadas
+            x, y = event.xdata, float(row['High'])
+            xlim = self.ax_price.get_xlim()
+            ylim = self.ax_price.get_ylim()
+            
+            if self.debug_hover:
+                self._log(f"Tooltip position: x={x:.2f}, y={y:.5f}", 'gray')
+                self._log(f"Axes limits: xlim=[{xlim[0]:.2f}, {xlim[1]:.2f}], ylim=[{ylim[0]:.5f}, {ylim[1]:.5f}]", 'gray')
+            
+            # Ajustar posición para que no se salga de los límites
+            x_offset = 20 if x < (xlim[0] + xlim[1]) / 2 else -120  # Más espacio para el texto
+            y_offset = 20 if y < (ylim[0] + ylim[1]) / 2 else -120
+            
+            # Actualizar anotación
+            self._hover_annot.xy = (x, y)
+            self._hover_annot.set_position((x_offset, y_offset))
+            self._hover_annot.set_text(txt)
+            self._hover_annot.set_visible(True)
+            
+            # Actualizar marcador en el cierre con el color correspondiente
+            self._hover_marker.set_data([x], [close_price])  # Usar x del evento
+            self._hover_marker.set_markerfacecolor(color)
+            self._hover_marker.set_visible(True)
+            
+            if self.debug_hover:
+                self._log(f"Tooltip updated and made visible at ({x:.2f}, {y:.2f}) with offset ({x_offset}, {y_offset})", 'green')
+                self._log(f"Annotation visible: {self._hover_annot.get_visible()}, Marker visible: {self._hover_marker.get_visible()}", 'blue')
+
+            # Redibujar ligero
+            self._force_canvas_draw()
+            
+            if self.debug_hover:
+                self._log("Canvas draw completed", 'blue')
+
         except Exception as e:
             if self.debug_hover:
                 self._log(f"Rect draw error: {e}", 'red')
@@ -910,9 +998,6 @@ class CandleStreamer:
                 # Mapear desde coordenadas del eje a índice de datos
                 ratio = (event.xdata - xlim[0]) / (xlim[1] - xlim[0])
                 loc = int(ratio * (len(self._last_x) - 1))
-                loc = max(0, min(loc, len(self._last_df) - 1))
-                if self.debug_hover:
-                    self._log(f"Mapeado a índice {loc} usando ratio {ratio:.3f}", 'blue')
             else:
                 return
         else:
@@ -1303,18 +1388,35 @@ class CandleStreamer:
         ws.send(json.dumps(payload))
 
     def _reconnect(self):
+        """Reconecta con backoff exponencial (thread-safe)"""
+        if not self.running:
+            return
+            
         self.reconnect_attempts += 1
         delay = min(self.reconnect_delay * (2 ** (self.reconnect_attempts - 1)), self.max_reconnect_delay)
         
         # Always show reconnection attempts with clear status
         self._log(f"🔄 Reconectando en {delay}s... (intento {self.reconnect_attempts}/{self.max_reconnect_attempts})", 'yellow')
         
-        self.reconnect_thread = threading.Timer(delay, self.start)
+        # Cancelar timer anterior si existe
+        if hasattr(self, 'reconnect_thread') and self.reconnect_thread:
+            try:
+                self.reconnect_thread.cancel()
+            except Exception:
+                pass
+                
+        self.reconnect_thread = threading.Timer(delay, self._run_websocket)
+        self.reconnect_thread.daemon = True
         self.reconnect_thread.start()
 
     def start(self):
-        """Inicia el stream de velas"""
+        """Inicia el stream de velas en un hilo separado"""
+        if self.running:
+            self._log("Stream ya está ejecutándose", 'yellow')
+            return
+            
         self.running = True
+        
         # Precargar histórico antes de iniciar el stream en vivo
         try:
             self._seed_historical(limit=min(self.max_plot, 500))
@@ -1329,28 +1431,58 @@ class CandleStreamer:
             if self.debug_mode:
                 self._log(f"No se pudo iniciar opacity reveal automáticamente: {_e}", 'yellow')
 
-        self.ws = websocket.WebSocketApp(
-            self.url,
-            on_message=self._on_message,
-            on_error=self._on_error,
-            on_close=self._on_close,
-            on_open=self._on_open
-        )
-        self.ws.run_forever(ping_interval=70, ping_timeout=60)
-
-        if self.reconnect_attempts < self.max_reconnect_attempts:
-            self._reconnect()
-        else:
-            self._log("Máximo número de reintentos alcanzado. Deteniendo el stream.", 'red')
-            self.stop()
+        # Ejecutar WebSocket en hilo separado para evitar bloqueo de UI
+        self.thread = threading.Thread(target=self._run_websocket, daemon=True)
+        self.thread.start()
+        
+    def _run_websocket(self):
+        """Ejecuta el WebSocket en un hilo separado"""
+        try:
+            self.ws = websocket.WebSocketApp(
+                self.url,
+                on_message=self._on_message,
+                on_error=self._on_error,
+                on_close=self._on_close,
+                on_open=self._on_open
+            )
+            # run_forever bloquea este hilo, no el principal
+            self.ws.run_forever(ping_interval=70, ping_timeout=60)
+        except Exception as e:
+            if self.running:
+                self._log(f"Error en WebSocket: {e}", 'red')
+        finally:
+            # Solo reconectar si aún estamos corriendo y no hemos excedido intentos
+            if self.running and self.reconnect_attempts < self.max_reconnect_attempts:
+                self._reconnect()
+            elif self.running:
+                self._log("Máximo número de reintentos alcanzado. Deteniendo el stream.", 'red')
+                self.stop()
 
     def stop(self):
         """Detiene el stream de velas y limpia los recursos"""
         self.running = False
         self._pending_refresh = False
         
+        # Detener opacity reveal
+        self.stop_opacity_reveal()
+        
+        # Cerrar WebSocket de forma segura
         if hasattr(self, 'ws') and self.ws:
-            self.ws.close()
+            try:
+                self.ws.close()
+            except Exception:
+                pass
+            
+        # Esperar a que termine el hilo WebSocket
+        if hasattr(self, 'thread') and self.thread and self.thread.is_alive():
+            self.thread.join(timeout=3.0)
+            
+        # Cancelar timer de reconexión si existe
+        if hasattr(self, 'reconnect_thread') and self.reconnect_thread:
+            try:
+                self.reconnect_thread.cancel()
+            except Exception:
+                pass
             
         # Cerrar la figura de matplotlib
         if hasattr(self, 'fig') and self.fig:
