@@ -1267,13 +1267,29 @@ class CandleStreamer:
             print(f"Error en _log: {e}")
 
     def _on_error(self, ws, error):
-        self._log(f"Error: {error}", 'red')
+        # Always show connection errors, not just in debug mode
+        self._log(f"Error WebSocket: {error}", 'red')
+        if "Connection to remote host was lost" in str(error):
+            self._log("Conexión perdida. Preparando reconexión...", 'orange')
 
     def _on_close(self, ws, close_status_code, close_msg):
-        self._log("Conexión WebSocket cerrada", 'yellow')
+        # Always show close status with more detail
+        if close_status_code:
+            self._log(f"Conexión WebSocket cerrada (código: {close_status_code})", 'yellow')
+        else:
+            self._log("Conexión WebSocket cerrada", 'yellow')
+        
+        # Show reconnection status if we're still running
+        if self.running and self.reconnect_attempts < self.max_reconnect_attempts:
+            self._log(f"Intento de reconexión {self.reconnect_attempts + 1}/{self.max_reconnect_attempts}", 'cyan')
 
     def _on_open(self, ws):
-        self._log("Conexión WebSocket establecida", 'green')
+        # Always show connection established
+        if self.reconnect_attempts > 0:
+            self._log(f"✓ Reconexión exitosa (intento {self.reconnect_attempts})", 'green')
+            self.reconnect_attempts = 0  # Reset counter on successful reconnection
+        else:
+            self._log("✓ Conexión WebSocket establecida", 'green')
         # Convert symbol to lowercase and remove any separators for Binance WebSocket
         binance_symbol = self.symbol.lower().replace('/', '').replace('-', '')
         if self.debug_mode:
@@ -1288,7 +1304,10 @@ class CandleStreamer:
     def _reconnect(self):
         self.reconnect_attempts += 1
         delay = min(self.reconnect_delay * (2 ** (self.reconnect_attempts - 1)), self.max_reconnect_delay)
-        self._log(f"Intentando reconectar en {delay} segundos...", 'yellow')
+        
+        # Always show reconnection attempts with clear status
+        self._log(f"🔄 Reconectando en {delay}s... (intento {self.reconnect_attempts}/{self.max_reconnect_attempts})", 'yellow')
+        
         self.reconnect_thread = threading.Timer(delay, self.start)
         self.reconnect_thread.start()
 
@@ -1316,7 +1335,7 @@ class CandleStreamer:
             on_close=self._on_close,
             on_open=self._on_open
         )
-        self.ws.run_forever(ping_interval=20, ping_timeout=10)
+        self.ws.run_forever(ping_interval=30, ping_timeout=60)
 
         if self.reconnect_attempts < self.max_reconnect_attempts:
             self._reconnect()
