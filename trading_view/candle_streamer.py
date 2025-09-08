@@ -739,6 +739,7 @@ class CandleStreamer:
                 self._hover_marker.set_visible(False)
         except Exception as e:
             self._log(f"Error creando anotación de hover: {e}", 'red')
+
     def _force_canvas_draw(self):
         """Fuerza el redibujado del canvas de manera robusta"""
         try:
