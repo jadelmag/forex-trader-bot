@@ -596,46 +596,31 @@ class CandleStreamer:
                 body_bottom = min(open_price, close_price)
                 
                 if body_height > 0:
-                    # Vela con cuerpo
-                    candle_rect = Rectangle((date_num - width/2, body_bottom), width, body_height,
+                    # Vela con cuerpo - posicionada en su timestamp exacto
+                    candle_rect = Rectangle((date_num, body_bottom), width, body_height,
                                           facecolor=candle_color, edgecolor='black', 
                                           alpha=alpha, linewidth=0.5, zorder=2)
                 else:
-                    # Doji - línea horizontal
-                    candle_rect = Rectangle((date_num - width/2, open_price - 0.00001), width, 0.00002,
+                    # Doji - línea horizontal posicionada en su timestamp exacto
+                    candle_rect = Rectangle((date_num, open_price - 0.00001), width, 0.00002,
                                           facecolor=candle_color, edgecolor='black',
                                           alpha=alpha, linewidth=0.5, zorder=2)
                 
                 self.ax_price.add_patch(candle_rect)
                 self._candle_patches.append(candle_rect)
                 
-                # Dibujar volumen si existe el eje
+                # Dibujar volumen si existe el eje - posicionado en timestamp exacto
                 if hasattr(self, 'ax_volume') and self.ax_volume is not None:
-                    volume_rect = Rectangle((date_num - width/2, 0), width, volume,
+                    volume_rect = Rectangle((date_num, 0), width, volume,
                                           facecolor='#1f77b4', alpha=alpha * 0.7, zorder=1)
                     self.ax_volume.add_patch(volume_rect)
                     self._volume_patches.append(volume_rect)
             
-            # Configurar límites de los ejes
+            # Configurar límites de los ejes - mostrar todas las velas sin zoom inicial
             if len(dates) > 0:
-                # Centrar solo las velas visibles en lugar de mostrar todas
-                visible_count = min(self.visible_candles, len(dates))
-                if visible_count > 0:
-                    # Calcular el rango para centrar las velas visibles
-                    start_idx = 0
-                    end_idx = visible_count - 1
-                    
-                    # Obtener las fechas de inicio y fin de las velas visibles
-                    start_date = dates[start_idx]
-                    end_date = dates[end_idx]
-                    
-                    # Agregar un pequeño margen a ambos lados para mejor visualización
-                    margin = (end_date - start_date) * 0.1 if end_date > start_date else width * 2
-                    
-                    self.ax_price.set_xlim(start_date - margin, end_date + margin)
-                else:
-                    # Fallback al comportamiento anterior si no hay velas visibles
-                    self.ax_price.set_xlim(dates[0] - width, dates[-1] + width)
+                # Mostrar todas las velas disponibles con un pequeño margen
+                margin = width * 2
+                self.ax_price.set_xlim(dates[0] - margin, dates[-1] + margin)
                 
                 # Límites Y para precios
                 all_prices = []
