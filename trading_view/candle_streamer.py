@@ -92,6 +92,11 @@ class CandleStreamer:
         self._candle_patches = []  # Lista de patches de velas para control de opacidad
         self._volume_patches = []  # Lista de patches de volumen para control de opacidad
         
+        # Temporizador para "revelar" velas ocultas (aumentar opacidad)
+        self._opacity_reveal_enabled = False
+        self._opacity_reveal_timer_id = None
+        self._opacity_reveal_interval_ms = 5000  # cada 5 segundos
+        
         # Si se proporciona un frame padre, usamos FigureCanvasTkAgg
         if self.parent_frame:
             from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -230,6 +235,83 @@ class CandleStreamer:
             
         except Exception as e:
             self._log(f"Error en tooltip de prueba: {e}", 'red')
+
+    # =====================
+    # Opacity reveal (alpha)
+    # =====================
+    def start_opacity_reveal(self):
+        """Inicia el proceso de revelar velas ocultas (alpha=0 -> alpha=1) cada 5s.
+        Incrementa self.visible_candles en +1 hasta mostrar todas las velas disponibles.
+        """
+        try:
+            self._opacity_reveal_enabled = True
+            # No reiniciamos visible_candles aquí para respetar el valor actual como punto de partida
+            self._schedule_opacity_reveal_step()
+            if self.debug_mode:
+                self._log("Opacity reveal iniciado (cada 5s)", 'green')
+        except Exception as e:
+            self._log(f"Error iniciando opacity reveal: {e}", 'red')
+
+    def stop_opacity_reveal(self):
+        """Detiene el proceso de revelar velas ocultas."""
+        self._opacity_reveal_enabled = False
+        try:
+            if self._opacity_reveal_timer_id is not None and hasattr(self, 'parent_frame') and self.parent_frame:
+                self.parent_frame.after_cancel(self._opacity_reveal_timer_id)
+            self._opacity_reveal_timer_id = None
+        except Exception:
+            pass
+        if self.debug_mode:
+            self._log("Opacity reveal detenido", 'yellow')
+
+    def _schedule_opacity_reveal_step(self):
+        """Agenda el siguiente incremento de visibilidad en 5s."""
+        if not self._opacity_reveal_enabled:
+            return
+        try:
+            if hasattr(self, 'parent_frame') and self.parent_frame:
+                self._opacity_reveal_timer_id = self.parent_frame.after(self._opacity_reveal_interval_ms, self._opacity_reveal_step)
+            else:
+                threading.Timer(self._opacity_reveal_interval_ms / 1000.0, self._opacity_reveal_step).start()
+        except Exception as e:
+            self._log(f"Error programando opacity reveal: {e}", 'red')
+
+    def _opacity_reveal_step(self):
+        """Incrementa en +1 las velas visibles (alpha=1) y refresca el gráfico."""
+        if not self._opacity_reveal_enabled:
+            return
+        try:
+            # Determinar cuántas velas tenemos disponibles para mostrar
+            total = 0
+            if hasattr(self, '_last_df') and self._last_df is not None:
+                total = len(self._last_df)
+            elif hasattr(self, 'df') and self.df is not None:
+                total = len(self.df)
+
+            if total <= 0:
+                # No hay nada que revelar todavía, reintentar luego
+                self._schedule_opacity_reveal_step()
+                return
+
+            # Incrementar visible_candles sin exceder el total disponible ni max_plot
+            new_visible = min(self.visible_candles + 1, total, self.max_plot)
+
+            if new_visible > self.visible_candles:
+                self.visible_candles = new_visible
+                # Redibujar para que la nueva vela tenga alpha=1 y permita hover
+                self._refresh_plot()
+                # Continuar si aún quedan velas por revelar
+                if self.visible_candles < min(total, self.max_plot):
+                    self._schedule_opacity_reveal_step()
+                else:
+                    # Todas reveladas
+                    self.stop_opacity_reveal()
+            else:
+                # Nada que revelar (ya estamos al máximo)
+                self.stop_opacity_reveal()
+        except Exception as e:
+            self._log(f"Error en opacity reveal step: {e}", 'red')
+            self.stop_opacity_reveal()
 
     def on_candle_update(self, callback):
         """Permite registrar un callback que será llamado con el DataFrame
@@ -1233,6 +1315,14 @@ class CandleStreamer:
             self._seed_historical(limit=min(self.max_plot, 500))
         except Exception as e:
             self._log(f"No se pudo precargar histórico: {e}", 'red')
+        
+        # Iniciar revelado progresivo de velas (opacidad) automáticamente
+        try:
+            if not getattr(self, '_opacity_reveal_enabled', False):
+                self.start_opacity_reveal()
+        except Exception as _e:
+            if self.debug_mode:
+                self._log(f"No se pudo iniciar opacity reveal automáticamente: {_e}", 'yellow')
 
         self.ws = websocket.WebSocketApp(
             self.url,
