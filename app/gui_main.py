@@ -1523,11 +1523,6 @@ class GUIPrincipal:
                 self.candle_streamer.symbol = config["symbol"]
                 self.candle_streamer.csv_file = os.path.join(self.candle_streamer.csv_folder, f'{self.candle_streamer.symbol}_data.csv')
             
-            # Activar modo revelado incremental por defecto para mostrar velas progresivamente
-            # Esto hará que inicialmente solo se muestren las velas especificadas en visible_candles
-            # y luego se revelen más cada 5 segundos
-            self.candle_streamer.enable_incremental_reveal(enable=True)
-            
             # Iniciar el streamer en un hilo separado
             def start_streamer():
                 try:
