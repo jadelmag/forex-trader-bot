@@ -99,7 +99,7 @@ class RiskManager:
         
         # Sistema de seguimiento de estrategias por vela con limpieza automática
         self.estrategias_por_vela = {}  # {timestamp: [estrategia1, estrategia2, ...]}
-        self.max_estrategias_por_vela = 3
+        self.max_estrategias_por_vela = 20  # Aumentado para permitir más estrategias por vela
         self.max_velas_historial = 1000  # Límite para evitar memory leaks
         self.ultima_limpieza = time.time()
         self.intervalo_limpieza = 300  # 5 minutos
@@ -177,10 +177,10 @@ class RiskManager:
                 self.last_error = f"La estrategia '{estrategia}' ya fue aplicada {veces_aplicada} veces en esta vela (máximo: 3)"
                 return False
             
-            # Verificar si ya se alcanzó el máximo total de estrategias por vela
-            if len(estrategias_en_vela) >= self.max_estrategias_por_vela:
-                self.last_error = f"Máximo de {self.max_estrategias_por_vela} estrategias por vela alcanzado"
-                return False
+            # Sin límite máximo de estrategias por vela - comentado para permitir ilimitadas
+            # if len(estrategias_en_vela) >= self.max_estrategias_por_vela:
+            #     self.last_error = f"Máximo de {self.max_estrategias_por_vela} estrategias por vela alcanzado"
+            #     return False
             
             return True
     

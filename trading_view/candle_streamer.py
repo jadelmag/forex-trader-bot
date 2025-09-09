@@ -337,13 +337,14 @@ class CandleStreamer:
         try:
             if callable(callback) and callback not in self._candle_update_callbacks:
                 self._candle_update_callbacks.append(callback)
+                if self.debug_mode:
+                    self._log(f"✅ Callback registrado: {callback.__name__ if hasattr(callback, '__name__') else str(callback)}", 'green')
         except Exception as e:
             if self.debug_mode:
                 self._log(f"Error registrando callback: {e}", 'red')
 
-    def _notify_candle_update(self):
-        """Notifica a los suscriptores entregando un DataFrame que incluye la vela
-        actual (si existe)."""
+    def setup_pattern_detection(self, risk_manager=None, candle_strategies=None):
+        """Configura automáticamente la detección de patrones y estrategias"""
         try:
             df_current = self.df.copy()
             if self.current_candle is not None:
