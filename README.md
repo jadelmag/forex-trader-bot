@@ -606,11 +606,9 @@ Ve a 👉 https://my.telegram.org
 
 ## Videos
 
-<video src="./videos/backtesting.mp4" controls width="600">Como realizar backtesting</video>
+[Como realizar backtesting](https://youtu.be/NNO-L6AWeSM)
 
-<video src="./videos/tiempo_real.mp4" controls width="600">Como realizar operaciones en tiempo real seleccionando las estrategias</video>
-
-
+[Como realizar operaciones en tiempo real seleccionando las estrategias](https://youtu.be/QaaT-ywXcuU)
 
 
 ## TODO
