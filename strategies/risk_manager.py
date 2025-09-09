@@ -4,9 +4,11 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import threading
+import time
 from typing import Dict, List, Optional
 import logging
 import warnings
+from collections import defaultdict
 warnings.filterwarnings('ignore')
 
 # Configuración de logging
@@ -72,7 +74,7 @@ class Operacion:
 
 # ---------------- Clase RiskManager ----------------
 class RiskManager:
-    """Gestiona la apertura y cierre de operaciones con límite máximo - Mismos nombres"""
+    """Gestiona la apertura y cierre de operaciones con límite máximo - Optimizado"""
     
     def __init__(self, capital_inicial=10000, max_operaciones_activas=5, debug_mode=False):
         # Mismos parámetros que original
@@ -95,26 +97,65 @@ class RiskManager:
         self.ultima_vela_buy = None
         self.ultima_vela_mensaje_buy_duplicada = None
         
-        # Sistema de seguimiento de estrategias por vela
+        # Sistema de seguimiento de estrategias por vela con limpieza automática
         self.estrategias_por_vela = {}  # {timestamp: [estrategia1, estrategia2, ...]}
         self.max_estrategias_por_vela = 3
+        self.max_velas_historial = 1000  # Límite para evitar memory leaks
+        self.ultima_limpieza = time.time()
+        self.intervalo_limpieza = 300  # 5 minutos
         
-        # Thread safety para estado compartido
+        # Cache para operaciones activas (optimización de rendimiento)
+        self._operaciones_activas_count = 0
+        self._cache_dirty = True
+        
+        # Thread safety completo para todas las estructuras compartidas
+        self._main_lock = threading.RLock()  # Lock principal para operaciones críticas
         self._estrategias_lock = threading.Lock()
+        self._cache_lock = threading.Lock()
+        
+        # Sistema de métricas de rendimiento
+        self.performance_metrics = {
+            'operaciones_abiertas': 0,
+            'operaciones_cerradas_total': 0,
+            'tiempo_promedio_apertura': 0.0,
+            'tiempo_promedio_cierre': 0.0,
+            'cache_hits': 0,
+            'cache_misses': 0,
+            'limpiezas_realizadas': 0,
+            'errores_thread_safety': 0
+        }
+        self._tiempos_operacion = []
 
-    # ---------- Mismos métodos de estado que original ----------
+    # ---------- Métodos optimizados con cache ----------
+    def _actualizar_cache_operaciones_activas(self):
+        """Actualiza el cache de operaciones activas"""
+        with self._cache_lock:
+            if self._cache_dirty:
+                self._operaciones_activas_count = len([op for op in self.operaciones_activas if op.estado == 'ACTIVA'])
+                self._cache_dirty = False
+                self.performance_metrics['cache_misses'] += 1
+            else:
+                self.performance_metrics['cache_hits'] += 1
+
+    def _invalidar_cache(self):
+        """Marca el cache como sucio"""
+        with self._cache_lock:
+            self._cache_dirty = True
+
     def puede_abrir_operacion(self):
-        """Mismo método que original"""
+        """Optimizado con cache"""
         if self.max_operaciones_activas is None or self.max_operaciones_activas <= 0:
             return True
-        return len([op for op in self.operaciones_activas if op.estado == 'ACTIVA']) < self.max_operaciones_activas
+        self._actualizar_cache_operaciones_activas()
+        return self._operaciones_activas_count < self.max_operaciones_activas
 
     def get_operaciones_activas_count(self):
-        """Mismo método que original"""
-        return len([op for op in self.operaciones_activas if op.estado == 'ACTIVA'])
+        """Optimizado con cache"""
+        self._actualizar_cache_operaciones_activas()
+        return self._operaciones_activas_count
 
     def get_slots_disponibles(self):
-        """Mismo método que original"""
+        """Optimizado con cache"""
         if self.max_operaciones_activas is None or self.max_operaciones_activas <= 0:
             return 1_000_000_000
         return self.max_operaciones_activas - self.get_operaciones_activas_count()
@@ -152,6 +193,31 @@ class RiskManager:
             
             if estrategia not in self.estrategias_por_vela[timestamp_key]:
                 self.estrategias_por_vela[timestamp_key].append(estrategia)
+            
+            # Limpieza automática para evitar memory leaks
+            self._limpiar_estrategias_antiguas()
+
+    def _limpiar_estrategias_antiguas(self):
+        """Sistema de limpieza automática para estrategias_por_vela"""
+        tiempo_actual = time.time()
+        
+        # Solo limpiar cada cierto intervalo
+        if tiempo_actual - self.ultima_limpieza < self.intervalo_limpieza:
+            return
+        
+        # Si hay demasiadas velas, eliminar las más antiguas
+        if len(self.estrategias_por_vela) > self.max_velas_historial:
+            # Ordenar por timestamp y mantener solo las más recientes
+            timestamps_ordenados = sorted(self.estrategias_por_vela.keys())
+            velas_a_eliminar = len(timestamps_ordenados) - self.max_velas_historial
+            
+            for i in range(velas_a_eliminar):
+                del self.estrategias_por_vela[timestamps_ordenados[i]]
+            
+            self.performance_metrics['limpiezas_realizadas'] += 1
+            logger.info(f"Limpieza automática: eliminadas {velas_a_eliminar} velas antiguas")
+        
+        self.ultima_limpieza = tiempo_actual
 
     def _validar_parametros_operacion(self, tipo, precio, stop_loss, estrategia):
         """Método centralizado para validar parámetros de operación"""
@@ -212,47 +278,68 @@ class RiskManager:
         return lote_size, riesgo_dinero
 
     def abrir_operacion(self, tipo, precio, timestamp, stop_loss, take_profit, riesgo_por_operacion=0.01, estrategia: Optional[str] = None):
-        """Mismo método que original - mismos parámetros"""
-        # Validar parámetros usando método centralizado
-        if not self._validar_parametros_operacion(tipo, precio, stop_loss, (estrategia, timestamp) if estrategia else None):
-            return None
-
-        # Calcular lote usando método centralizado
-        lote_size, riesgo_dinero = self._calcular_lote_size(tipo, precio, stop_loss, riesgo_por_operacion)
-        if lote_size is None:
-            self.last_error = riesgo_dinero  # riesgo_dinero contiene el mensaje de error
-            return None
-
-        # Crear operación con soporte completo BUY/SELL
-        self.contador_operaciones += 1
-        operacion = Operacion(
-            id_operacion=self.contador_operaciones,
-            tipo=tipo,
-            precio_apertura=precio,
-            timestamp=timestamp,
-            stop_loss=stop_loss,
-            take_profit=take_profit,
-            lote_size=lote_size,
-            estrategia=estrategia
-        )
-        operacion.riesgo_reservado = float(riesgo_dinero)
-
-        # Gestión de capital para ambos tipos de operación
-        if tipo == 'BUY':
-            operacion.valor_posicion = float(precio) * float(lote_size)
-            self.capital -= riesgo_dinero
-            self.ultima_vela_buy = timestamp
-        elif tipo == 'SELL':
-            operacion.valor_posicion = float(precio) * float(lote_size)
-            self.capital -= riesgo_dinero  # También reservar capital para SELL
-
-        # Registrar la estrategia en esta vela
-        self._registrar_estrategia_en_vela(timestamp, estrategia)
+        """Optimizado con thread safety y métricas"""
+        inicio_tiempo = time.time()
         
-        self.operaciones_activas.append(operacion)
-        self.last_error = None
-        
-        return operacion
+        with self._main_lock:
+            try:
+                # Validar parámetros usando método centralizado
+                if not self._validar_parametros_operacion(tipo, precio, stop_loss, (estrategia, timestamp) if estrategia else None):
+                    return None
+
+                # Calcular lote usando método centralizado
+                lote_size, riesgo_dinero = self._calcular_lote_size(tipo, precio, stop_loss, riesgo_por_operacion)
+                if lote_size is None:
+                    self.last_error = riesgo_dinero  # riesgo_dinero contiene el mensaje de error
+                    return None
+
+                # Crear operación con soporte completo BUY/SELL
+                self.contador_operaciones += 1
+                operacion = Operacion(
+                    id_operacion=self.contador_operaciones,
+                    tipo=tipo,
+                    precio_apertura=precio,
+                    timestamp=timestamp,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                    lote_size=lote_size,
+                    estrategia=estrategia
+                )
+                operacion.riesgo_reservado = float(riesgo_dinero)
+
+                # Gestión de capital para ambos tipos de operación
+                if tipo == 'BUY':
+                    operacion.valor_posicion = float(precio) * float(lote_size)
+                    self.capital -= riesgo_dinero
+                    self.ultima_vela_buy = timestamp
+                elif tipo == 'SELL':
+                    operacion.valor_posicion = float(precio) * float(lote_size)
+                    self.capital -= riesgo_dinero  # También reservar capital para SELL
+
+                # Registrar la estrategia en esta vela
+                self._registrar_estrategia_en_vela(timestamp, estrategia)
+                
+                self.operaciones_activas.append(operacion)
+                self._invalidar_cache()  # Invalidar cache después de agregar operación
+                self.last_error = None
+                
+                # Métricas de rendimiento
+                tiempo_operacion = time.time() - inicio_tiempo
+                self._tiempos_operacion.append(tiempo_operacion)
+                self.performance_metrics['operaciones_abiertas'] += 1
+                
+                # Mantener solo los últimos 100 tiempos para el promedio
+                if len(self._tiempos_operacion) > 100:
+                    self._tiempos_operacion = self._tiempos_operacion[-100:]
+                
+                self.performance_metrics['tiempo_promedio_apertura'] = sum(self._tiempos_operacion) / len(self._tiempos_operacion)
+                
+                return operacion
+                
+            except Exception as e:
+                self.performance_metrics['errores_thread_safety'] += 1
+                logger.error(f"Error en abrir_operacion: {e}")
+                return None
 
     def verificar_cierre_operaciones(self, precio_actual, timestamp):
         """Mismo método que original"""
@@ -297,63 +384,91 @@ class RiskManager:
                 self.operaciones_cerradas.append(operacion)
 
         self.operaciones_activas = [op for op in self.operaciones_activas if op.estado == 'ACTIVA']
+        self._invalidar_cache()
         return operaciones_cerradas
+
+    def _cerrar_operacion_comun(self, operacion, precio_cierre, timestamp, motivo="AUTO_CLOSE"):
+        """Método centralizado para cerrar operaciones - elimina duplicación"""
+        inicio_tiempo = time.time()
+        
+        profit = operacion.cerrar(precio_cierre, timestamp)
+        
+        # Gestión de capital unificada
+        if operacion.tipo in ['BUY', 'SELL']:
+            self.capital += operacion.riesgo_reservado + profit
+        else:
+            self.capital += profit
+        
+        # Actualizar estadísticas
+        self.beneficio_total += profit
+        if profit >= 0:
+            self.operaciones_ganadas += 1
+            self.ganancia_ganadoras_total += profit
+        else:
+            self.operaciones_perdidas += 1
+            self.perdida_perdedoras_total += profit
+
+        # Limpiar notificaciones de estrategia
+        if operacion.estrategia:
+            self.estrategias_buy_activa_notificadas.discard(operacion.estrategia)
+
+        # Agregar motivo de cierre si no existe
+        if not hasattr(operacion, 'motivo_cierre'):
+            operacion.motivo_cierre = motivo
+        
+        # Métricas de rendimiento
+        tiempo_cierre = time.time() - inicio_tiempo
+        self.performance_metrics['operaciones_cerradas_total'] += 1
+        
+        # Actualizar tiempo promedio de cierre
+        if hasattr(self, '_tiempos_cierre'):
+            self._tiempos_cierre.append(tiempo_cierre)
+            if len(self._tiempos_cierre) > 100:
+                self._tiempos_cierre = self._tiempos_cierre[-100:]
+            self.performance_metrics['tiempo_promedio_cierre'] = sum(self._tiempos_cierre) / len(self._tiempos_cierre)
+        else:
+            self._tiempos_cierre = [tiempo_cierre]
+            self.performance_metrics['tiempo_promedio_cierre'] = tiempo_cierre
+        
+        return profit
 
     def cerrar_operacion_por_estrategia(self, estrategia_nombre, precio_cierre, timestamp, motivo="EXIT_SIGNAL"):
-        """Mismo método que original"""
-        operaciones_cerradas = []
-        for operacion in self.operaciones_activas[:]:
-            if operacion.estado == 'ACTIVA' and operacion.estrategia == estrategia_nombre:
-                profit = operacion.cerrar(precio_cierre, timestamp)
-                if operacion.tipo == 'BUY':
-                    self.capital += operacion.riesgo_reservado + profit
-                elif operacion.tipo == 'SELL':
-                    self.capital += operacion.riesgo_reservado + profit
-                else:
-                    self.capital += profit
-
-                self.beneficio_total += profit
-                if profit >= 0:
-                    self.operaciones_ganadas += 1
-                    self.ganancia_ganadoras_total += profit
-                else:
-                    self.operaciones_perdidas += 1
-                    self.perdida_perdedoras_total += profit
-
-                if operacion.estrategia:
-                    self.estrategias_buy_activa_notificadas.discard(operacion.estrategia)
-
-                operacion.motivo_cierre = motivo
-                operaciones_cerradas.append(operacion)
-                self.operaciones_cerradas.append(operacion)
-                self.operaciones_activas.remove(operacion)
-        return operaciones_cerradas
+        """Optimizado con thread safety y método centralizado"""
+        with self._main_lock:
+            try:
+                operaciones_cerradas = []
+                for operacion in self.operaciones_activas[:]:
+                    if operacion.estado == 'ACTIVA' and operacion.estrategia == estrategia_nombre:
+                        self._cerrar_operacion_comun(operacion, precio_cierre, timestamp, motivo)
+                        operaciones_cerradas.append(operacion)
+                        self.operaciones_cerradas.append(operacion)
+                        self.operaciones_activas.remove(operacion)
+                
+                self._invalidar_cache()
+                return operaciones_cerradas
+                
+            except Exception as e:
+                self.performance_metrics['errores_thread_safety'] += 1
+                logger.error(f"Error en cerrar_operacion_por_estrategia: {e}")
+                return []
 
     def cerrar_operacion_manual(self, id_operacion, precio_cierre, timestamp):
-        """Mismo método que original"""
-        for operacion in self.operaciones_activas:
-            if operacion.id == id_operacion and operacion.estado == 'ACTIVA':
-                profit = operacion.cerrar(precio_cierre, timestamp)
-                if operacion.tipo == 'BUY':
-                    self.capital += operacion.riesgo_reservado + profit
-                else:
-                    self.capital += profit
-                self.beneficio_total += profit
-
-                if profit >= 0:
-                    self.operaciones_ganadas += 1
-                    self.ganancia_ganadoras_total += profit
-                else:
-                    self.operaciones_perdidas += 1
-                    self.perdida_perdedoras_total += profit
-
-                if operacion.estrategia:
-                    self.estrategias_buy_activa_notificadas.discard(operacion.estrategia)
-
-                self.operaciones_cerradas.append(operacion)
-                self.operaciones_activas.remove(operacion)
-                return operacion, profit
-        return None, 0
+        """Optimizado con thread safety y método centralizado"""
+        with self._main_lock:
+            try:
+                for operacion in self.operaciones_activas:
+                    if operacion.id == id_operacion and operacion.estado == 'ACTIVA':
+                        profit = self._cerrar_operacion_comun(operacion, precio_cierre, timestamp, "MANUAL")
+                        self.operaciones_cerradas.append(operacion)
+                        self.operaciones_activas.remove(operacion)
+                        self._invalidar_cache()
+                        return operacion, profit
+                return None, 0
+                
+            except Exception as e:
+                self.performance_metrics['errores_thread_safety'] += 1
+                logger.error(f"Error en cerrar_operacion_manual: {e}")
+                return None, 0
 
     # ---------- Mismos métodos de estadísticas que original ----------
     def get_estadisticas(self):
@@ -377,19 +492,50 @@ class RiskManager:
         """Mismo método que original"""
         return self.get_estadisticas()
 
+    def get_performance_metrics(self):
+        """Obtiene métricas de rendimiento del RiskManager"""
+        return {
+            **self.performance_metrics,
+            'operaciones_activas_actuales': self.get_operaciones_activas_count(),
+            'velas_en_historial': len(self.estrategias_por_vela),
+            'cache_hit_rate': (self.performance_metrics['cache_hits'] / 
+                             max(1, self.performance_metrics['cache_hits'] + self.performance_metrics['cache_misses'])) * 100
+        }
+
     def reset(self):
-        """Mismo método que original"""
-        self.capital = self.capital_inicial
-        self.operaciones_activas = []
-        self.operaciones_cerradas = []
-        self.contador_operaciones = 0
-        self.beneficio_total = 0
-        self.operaciones_ganadas = 0
-        self.operaciones_perdidas = 0
-        self.ganancia_ganadoras_total = 0.0
-        self.perdida_perdedoras_total = 0.0
-        self.estrategias_buy_activa_notificadas.clear()
-        self.ultima_vela_buy = None
-        self.ultima_vela_mensaje_buy_duplicada = None
-        self.estrategias_por_vela.clear()
-        self.last_error = None
+        """Optimizado con thread safety y limpieza completa"""
+        with self._main_lock:
+            self.capital = self.capital_inicial
+            self.operaciones_activas = []
+            self.operaciones_cerradas = []
+            self.contador_operaciones = 0
+            self.beneficio_total = 0
+            self.operaciones_ganadas = 0
+            self.operaciones_perdidas = 0
+            self.ganancia_ganadoras_total = 0.0
+            self.perdida_perdedoras_total = 0.0
+            self.estrategias_buy_activa_notificadas.clear()
+            self.ultima_vela_buy = None
+            self.ultima_vela_mensaje_buy_duplicada = None
+            self.estrategias_por_vela.clear()
+            self.last_error = None
+            
+            # Reset de cache y métricas
+            self._invalidar_cache()
+            self._tiempos_operacion = []
+            if hasattr(self, '_tiempos_cierre'):
+                self._tiempos_cierre = []
+            
+            # Reset de métricas de rendimiento
+            self.performance_metrics = {
+                'operaciones_abiertas': 0,
+                'operaciones_cerradas_total': 0,
+                'tiempo_promedio_apertura': 0.0,
+                'tiempo_promedio_cierre': 0.0,
+                'cache_hits': 0,
+                'cache_misses': 0,
+                'limpiezas_realizadas': 0,
+                'errores_thread_safety': 0
+            }
+            
+            self.ultima_limpieza = time.time()
