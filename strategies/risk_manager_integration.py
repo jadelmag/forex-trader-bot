@@ -312,12 +312,12 @@ class RiskManagerIntegration:
 
             # Validar niveles calculados
             if tipo == 'BUY' and (stop_loss >= precio_actual or take_profit <= precio_actual):
-                self.logger.error(f"Niveles inválidos para BUY: Precio={precio_actual}, SL={stop_loss}, TP={take_profit}")
-                self.metrics.errors += 1
+                logger.error(f"Niveles inválidos para BUY: Precio={precio_actual}, SL={stop_loss}, TP={take_profit}")
+                self.metrics.errors_count += 1
                 return None
             elif tipo == 'SELL' and (stop_loss <= precio_actual or take_profit >= precio_actual):
-                self.logger.error(f"Niveles inválidos para SELL: Precio={precio_actual}, SL={stop_loss}, TP={take_profit}")
-                self.metrics.errors += 1
+                logger.error(f"Niveles inválidos para SELL: Precio={precio_actual}, SL={stop_loss}, TP={take_profit}")
+                self.metrics.errors_count += 1
                 return None
 
             # Crear operación usando RiskManager
@@ -338,20 +338,20 @@ class RiskManagerIntegration:
                     operacion.trailing_stop_enabled = True
                     operacion.trailing_stop_distance = atr_value * candle_config.get('trailing_stop_atr_multiplier', 2.0)
                     if self.debug_mode:
-                        self.logger.info(f"Trailing stop configurado para operación {operacion.id_operacion}")
+                        logger.info(f"Trailing stop configurado para operación {operacion.id_operacion}")
 
                 self.metrics.signals_processed += 1
-                self.logger.info(f"Señal {tipo} procesada: {estrategia_nombre} - Precio: {precio_actual}, SL: {stop_loss:.5f}, TP: {take_profit:.5f}")
+                logger.info(f"Señal {tipo} procesada: {estrategia_nombre} - Precio: {precio_actual}, SL: {stop_loss:.5f}, TP: {take_profit:.5f}")
             else:
-                self.metrics.errors += 1
+                self.metrics.errors_count += 1
                 error_msg = self.risk_manager.last_error or "Error desconocido"
-                self.logger.warning(f"Error procesando señal {tipo} {estrategia_nombre}: {error_msg}")
+                logger.warning(f"Error procesando señal {tipo} {estrategia_nombre}: {error_msg}")
 
             return operacion
 
         except Exception as e:
-            self.metrics.errors += 1
-            self.logger.error(f"Error en _process_single_signal: {str(e)}")
+            self.metrics.errors_count += 1
+            logger.error(f"Error en _process_single_signal: {str(e)}")
             return None
 
     def procesar_dataframe(self, df: pd.DataFrame, atr_period=None, rr_ratio=None, 
@@ -559,8 +559,8 @@ class RiskManagerIntegration:
             logger.info(f"Configuración actualizada: {self.config}")
 
     def stop(self):
-        """Detiene todos los workers de manera graceful"""
-        logger.info("Iniciando shutdown graceful...")
+        """Detiene todos los workers de manera satisfactoria"""
+        logger.info("Iniciando shutdown satisfactoriamente...")
         
         self._running = False
         self._shutdown_event.set()
@@ -576,7 +576,7 @@ class RiskManagerIntegration:
         for thread in self._processing_threads:
             thread.join(timeout=2.0)
             if thread.is_alive():
-                logger.warning(f"Thread {thread.name} no terminó gracefully")
+                logger.warning(f"Thread {thread.name} no terminó satisfactoriamente")
         
         # Shutdown de executors
         self.signal_workers.shutdown(wait=True)
@@ -586,7 +586,7 @@ class RiskManagerIntegration:
         if self._enable_persistence:
             self._save_state()
         
-        logger.info("RiskManagerIntegration detenido gracefully")
+        logger.info("RiskManagerIntegration detenido satisfactoriamente")
 
     def __del__(self):
         """Destructor para limpieza"""

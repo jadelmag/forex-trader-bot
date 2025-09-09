@@ -41,21 +41,30 @@ class Operacion:
         self.timestamp_cierre = timestamp
         self.estado = 'CERRADA'
 
-        # Misma lógica de cálculo que original
-        if (np.isnan(self.precio_apertura) or np.isnan(precio_cierre) or
+        # Calcular profit usando método centralizado
+        profit = self.calcular_profit(precio_cierre)
+        self.resultado = 'GANANCIA' if profit >= 0 else 'PERDIDA'
+        return profit
+
+    def calcular_profit(self, precio_actual):
+        """Método centralizado para calcular profit/loss de una operación"""
+        # Validaciones básicas
+        if (np.isnan(self.precio_apertura) or np.isnan(precio_actual) or
             np.isnan(self.lote_size) or self.lote_size <= 0):
-            self.resultado = 'PERDIDA'
             return 0.0
 
+        # Cálculo según tipo de operación
         if self.tipo == 'BUY':
-            profit = (precio_cierre - self.precio_apertura) * self.lote_size
+            profit = (precio_actual - self.precio_apertura) * self.lote_size
+        elif self.tipo == 'SELL':
+            profit = (self.precio_apertura - precio_actual) * self.lote_size
         else:
-            profit = (self.precio_apertura - precio_cierre) * self.lote_size
+            return 0.0
 
+        # Validar resultado
         if np.isnan(profit) or np.isinf(profit):
             profit = 0.0
 
-        self.resultado = 'GANANCIA' if profit >= 0 else 'PERDIDA'
         return profit
 
     def __str__(self):
@@ -89,6 +98,9 @@ class RiskManager:
         # Sistema de seguimiento de estrategias por vela
         self.estrategias_por_vela = {}  # {timestamp: [estrategia1, estrategia2, ...]}
         self.max_estrategias_por_vela = 3
+        
+        # Thread safety para estado compartido
+        self._estrategias_lock = threading.Lock()
 
     # ---------- Mismos métodos de estado que original ----------
     def puede_abrir_operacion(self):
@@ -109,80 +121,106 @@ class RiskManager:
     
     def _puede_aplicar_estrategia_en_vela(self, timestamp, estrategia):
         """Verifica si se puede aplicar una estrategia en una vela específica"""
-        # Convertir timestamp a string para usar como clave
-        timestamp_key = str(timestamp)
-        
-        # Obtener estrategias ya aplicadas en esta vela
-        estrategias_en_vela = self.estrategias_por_vela.get(timestamp_key, [])
-        
-        # Verificar si ya se aplicó esta estrategia en esta vela
-        if estrategia in estrategias_en_vela:
-            self.last_error = f"La estrategia '{estrategia}' ya fue aplicada en esta vela"
-            return False
-        
-        # Verificar si ya se alcanzó el máximo de estrategias por vela
-        if len(estrategias_en_vela) >= self.max_estrategias_por_vela:
-            self.last_error = f"Máximo de {self.max_estrategias_por_vela} estrategias por vela alcanzado"
-            return False
-        
-        return True
+        with self._estrategias_lock:
+            # Convertir timestamp a string para usar como clave
+            timestamp_key = str(timestamp)
+            
+            # Obtener estrategias ya aplicadas en esta vela
+            estrategias_en_vela = self.estrategias_por_vela.get(timestamp_key, [])
+            
+            # Verificar si ya se aplicó esta estrategia en esta vela
+            if estrategia in estrategias_en_vela:
+                self.last_error = f"La estrategia '{estrategia}' ya fue aplicada en esta vela"
+                return False
+            
+            # Verificar si ya se alcanzó el máximo de estrategias por vela
+            if len(estrategias_en_vela) >= self.max_estrategias_por_vela:
+                self.last_error = f"Máximo de {self.max_estrategias_por_vela} estrategias por vela alcanzado"
+                return False
+            
+            return True
     
     def _registrar_estrategia_en_vela(self, timestamp, estrategia):
         """Registra que una estrategia fue aplicada en una vela específica"""
         if estrategia is None:
             return
         
-        timestamp_key = str(timestamp)
-        if timestamp_key not in self.estrategias_por_vela:
-            self.estrategias_por_vela[timestamp_key] = []
-        
-        if estrategia not in self.estrategias_por_vela[timestamp_key]:
-            self.estrategias_por_vela[timestamp_key].append(estrategia)
+        with self._estrategias_lock:
+            timestamp_key = str(timestamp)
+            if timestamp_key not in self.estrategias_por_vela:
+                self.estrategias_por_vela[timestamp_key] = []
+            
+            if estrategia not in self.estrategias_por_vela[timestamp_key]:
+                self.estrategias_por_vela[timestamp_key].append(estrategia)
 
-    def abrir_operacion(self, tipo, precio, timestamp, stop_loss, take_profit, riesgo_por_operacion=0.01, estrategia: Optional[str] = None):
-        """Mismo método que original - mismos parámetros"""
+    def _validar_parametros_operacion(self, tipo, precio, stop_loss, estrategia):
+        """Método centralizado para validar parámetros de operación"""
+        # Validar disponibilidad de slots
         if not self.puede_abrir_operacion():
             self.last_error = "Sin slots disponibles para abrir nueva operación"
-            return None
+            return False
 
-        # Verificar límites de estrategias por vela
+        # Validar límites de estrategias por vela
         if estrategia is not None:
-            if not self._puede_aplicar_estrategia_en_vela(timestamp, estrategia):
-                return None
+            if not self._puede_aplicar_estrategia_en_vela(estrategia[1], estrategia[0]):  # (timestamp, estrategia)
+                return False
 
-        # Restricciones de unicidad por estrategia (misma lógica)
+        # Validar unicidad por estrategia
         if estrategia is not None:
             for op in self.operaciones_activas:
-                if op.estado == 'ACTIVA' and op.estrategia == estrategia:
-                    if estrategia not in self.estrategias_buy_activa_notificadas:
-                        self.last_error = f"Ya existe operación ACTIVA para la estrategia '{estrategia}'"
-                        self.estrategias_buy_activa_notificadas.add(estrategia)
-                    return None
+                if op.estado == 'ACTIVA' and op.estrategia == estrategia[0]:
+                    if estrategia[0] not in self.estrategias_buy_activa_notificadas:
+                        self.last_error = f"Ya existe operación ACTIVA para la estrategia '{estrategia[0]}'"
+                        self.estrategias_buy_activa_notificadas.add(estrategia[0])
+                    return False
 
-        # Cálculo de lote mejorado para BUY y SELL
+        # Validar tipo de operación
+        if tipo not in ['BUY', 'SELL']:
+            if self.debug_mode:
+                self.last_error = f"Tipo de operación inválido: {tipo}"
+            return False
+
+        # Validar capital mínimo
+        if self.capital < 100:
+            self.last_error = f"Capital insuficiente: ${self.capital:,.2f}"
+            return False
+
+        return True
+
+    def _calcular_lote_size(self, tipo, precio, stop_loss, riesgo_por_operacion):
+        """Método centralizado para calcular tamaño de lote"""
         if tipo == 'BUY':
             riesgo_por_pip = abs(precio - stop_loss)
         elif tipo == 'SELL':
             riesgo_por_pip = abs(stop_loss - precio)
         else:
-            if self.debug_mode:
-                self.last_error = f"Tipo de operación inválido: {tipo}"
-            return None
+            return None, "Tipo de operación inválido"
 
         if riesgo_por_pip <= 0:
             if self.debug_mode:
-                self.last_error = "Parámetros de riesgo inválidos (riesgo_por_pip <= 0)"
-            return None
-
-        if self.capital < 100:
-            self.last_error = f"Capital insuficiente: ${self.capital:,.2f}"
-            return None
+                return None, "Parámetros de riesgo inválidos (riesgo_por_pip <= 0)"
+            return None, "Riesgo por pip inválido"
 
         riesgo_dinero = self.capital * riesgo_por_operacion
         lote_size = riesgo_dinero / riesgo_por_pip
+        
         if lote_size <= 0:
             if self.debug_mode:
-                self.last_error = "Tamaño de lote inválido"
+                return None, "Tamaño de lote inválido"
+            return None, "Lote size inválido"
+
+        return lote_size, riesgo_dinero
+
+    def abrir_operacion(self, tipo, precio, timestamp, stop_loss, take_profit, riesgo_por_operacion=0.01, estrategia: Optional[str] = None):
+        """Mismo método que original - mismos parámetros"""
+        # Validar parámetros usando método centralizado
+        if not self._validar_parametros_operacion(tipo, precio, stop_loss, (estrategia, timestamp) if estrategia else None):
+            return None
+
+        # Calcular lote usando método centralizado
+        lote_size, riesgo_dinero = self._calcular_lote_size(tipo, precio, stop_loss, riesgo_por_operacion)
+        if lote_size is None:
+            self.last_error = riesgo_dinero  # riesgo_dinero contiene el mensaje de error
             return None
 
         # Crear operación con soporte completo BUY/SELL

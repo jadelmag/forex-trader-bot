@@ -730,9 +730,7 @@ class GUIPrincipal:
                 operaciones_cerradas = self.risk_manager.verificar_cierre_operaciones(row['Close'], idx)
 
                 for op in operaciones_cerradas:
-                    profit = (op.precio_cierre - op.precio_apertura) * op.lote_size if op.tipo == 'BUY' else (op.precio_apertura - op.precio_cierre) * op.lote_size
-                    if np.isnan(profit) or np.isinf(profit):
-                        profit = 0.0
+                    profit = op.calcular_profit(op.precio_cierre)
                     if profit >= 0:
                         beneficios_totales += profit
                         # Actualizar beneficios acumulados en la UI inmediatamente
@@ -785,9 +783,7 @@ class GUIPrincipal:
 
                         if operaciones_cerradas_estrategia and isinstance(operaciones_cerradas_estrategia, list):
                             for op in operaciones_cerradas_estrategia:
-                                profit = (op.precio_cierre - op.precio_apertura) * op.lote_size if op.tipo == 'BUY' else (op.precio_apertura - op.precio_cierre) * op.lote_size
-                                if np.isnan(profit) or np.isinf(profit):
-                                    profit = 0.0
+                                profit = op.calcular_profit(op.precio_cierre)
                                 if profit >= 0:
                                     beneficios_totales += profit
                                     try:
@@ -923,8 +919,6 @@ class GUIPrincipal:
             for op in self.risk_manager.operaciones_activas[:]:
                 if op.estado == 'ACTIVA':
                     profit = op.cerrar(precio_cierre_final, df_new.index[-1])
-                    if np.isnan(profit) or np.isinf(profit):
-                        profit = 0.0
                     if profit >= 0:
                         beneficios_totales += profit
                     else:
@@ -1950,9 +1944,14 @@ class GUIPrincipal:
             # ATR simple: rolling 14 sobre df del streamer; fallback a rango * 0.1
             try:
                 atr_series = (self.candle_streamer.df['High'] - self.candle_streamer.df['Low']).rolling(14).mean()
-                atr_value = float(atr_series.iloc[-1]) if not np.isnan(atr_series.iloc[-1]) else float((self.candle_streamer.df['High'] - self.candle_streamer.df['Low']).mean() * 0.1)
+                atr_value = float(atr_series.iloc[-1]) if not np.isnan(atr_series.iloc[-1]) else float((self.candle_streamer.df['High'] - self.candle_streamer.df['Low']).mean())
             except Exception:
-                atr_value = float((self.candle_streamer.df['High'] - self.candle_streamer.df['Low']).mean() * 0.1) if hasattr(self, 'candle_streamer') else price * 0.001
+                # Fallback mejorado: usar rango promedio de las últimas velas
+                try:
+                    high_low_range = (self.candle_streamer.df['High'] - self.candle_streamer.df['Low']).tail(20).mean()
+                    atr_value = float(high_low_range) if not np.isnan(high_low_range) else price * 0.002
+                except Exception:
+                    atr_value = price * 0.002  # Fallback más conservador
 
             operacion = self.risk_integration.procesar_senal(
                 senal=1,
@@ -2011,9 +2010,7 @@ class GUIPrincipal:
             operaciones_cerradas = self.risk_manager.verificar_cierre_operaciones(current_price, ts)
 
             for op in operaciones_cerradas:
-                profit = (op.precio_cierre - op.precio_apertura) * op.lote_size if op.tipo == 'BUY' else (op.precio_apertura - op.precio_cierre) * op.lote_size
-                if np.isnan(profit) or np.isinf(profit):
-                    profit = 0.0
+                profit = op.calcular_profit(op.precio_cierre)
                 if profit >= 0:
                     try:
                         self.beneficios = float(getattr(self, 'beneficios', 0.0) or 0.0) + float(profit)
