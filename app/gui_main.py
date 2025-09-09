@@ -1922,11 +1922,51 @@ class GUIPrincipal:
 
                             if signals is not None and not signals.empty and len(signals) > 0:
                                 current_signal = signals.iloc[-1]
+                                # Procesar primero señales de salida (-1)
+                                if current_signal == -1:
+                                    try:
+                                        # Cerrar operaciones abiertas por esta estrategia en RiskManager
+                                        cerradas = self.risk_integration.procesar_senal(
+                                            senal=-1,
+                                            precio_actual=float(last_candle['Close']),
+                                            timestamp=last_candle.name if hasattr(last_candle, 'name') else datetime.now(),
+                                            rr_ratio=2.0,
+                                            estrategia_nombre=f"candle_{strategy_name}",
+                                            sync_mode=True
+                                        )
+                                        # Registrar cierres y actualizar métricas/labels si aplica
+                                        if isinstance(cerradas, list) and cerradas:
+                                            for op in cerradas:
+                                                try:
+                                                    profit = op.calcular_profit(op.precio_cierre)
+                                                    color = 'green' if profit >= 0 else 'red'
+                                                    self.log(f"CIERRE POR ESTRATEGIA {op.estrategia}: {op} | Profit: ${profit:+.2f}", color=color)
+                                                    if profit >= 0:
+                                                        self.beneficios = float(getattr(self, 'beneficios', 0.0) or 0.0) + float(profit)
+                                                        self.label_beneficios.config(text=f"Beneficios: {self.beneficios:,.2f}$")
+                                                    else:
+                                                        self.perdidas = float(getattr(self, 'perdidas', 0.0) or 0.0) + float(abs(profit))
+                                                        self.label_perdidas.config(text=f"Pérdidas: {self.perdidas:,.2f}$")
+                                                except Exception:
+                                                    pass
+                                            # Refrescar equity/cash tras cierres
+                                            try:
+                                                self._actualizar_dinero_visible(float(last_candle['Close']))
+                                                cash_now = float(getattr(self.risk_manager, 'capital', self.dinero_ficticio))
+                                                self.label_cash.config(text=f"Dinero: {cash_now:,.2f}$")
+                                                self.root.update_idletasks()
+                                            except Exception:
+                                                pass
+                                    except Exception as e:
+                                        self.log(f"Error cerrando por estrategia {strategy_name}: {str(e)}", color='red')
+                                
+                                # Luego procesar potenciales entradas (+1)
                                 if current_signal == 1:
                                     self.log(f"SEÑAL DETECTADA: {strategy_name} = {current_signal}", color="cyan")
                                     if self._procesar_senal_compra_risk_manager(last_candle, f"candle_{strategy_name}", 0.01, 2.0):
                                         candle_orders_opened += 1
                                 elif current_signal != 0:
+                                    # Señales distintas de 1 y -1 (por ejemplo, 2 o valores especiales)
                                     self.log(f"Señal {strategy_name}: {current_signal}", color="gray")
                             else:
                                 self.log(f"No hay señales válidas para {strategy_name}", color="gray")
