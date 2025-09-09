@@ -343,8 +343,8 @@ class CandleStreamer:
             if self.debug_mode:
                 self._log(f"Error registrando callback: {e}", 'red')
 
-    def setup_pattern_detection(self, risk_manager=None, candle_strategies=None):
-        """Configura automáticamente la detección de patrones y estrategias"""
+    def _notify_candle_update_callbacks(self):
+        """Notifica a todos los callbacks registrados sobre actualizaciones de velas"""
         try:
             df_current = self.df.copy()
             if self.current_candle is not None:
@@ -375,6 +375,81 @@ class CandleStreamer:
         except Exception as e:
             if self.debug_mode:
                 self._log(f"Error en notificación de vela: {e}", 'red')
+
+    def setup_pattern_detection(self, risk_manager=None, candle_strategies=None):
+        """Configura automáticamente la detección de patrones y estrategias"""
+        try:
+            if self.debug_mode:
+                self._log("🔧 Configurando detección de patrones...", 'cyan')
+            
+            # Importar las clases necesarias
+            from patterns.candlestickpatterns import CandlestickPatterns
+            from strategies.candle_strategies import CandleStrategies
+            
+            # Crear detector de patrones si no se proporciona
+            if candle_strategies is None and hasattr(self, 'df') and not self.df.empty:
+                candle_strategies = CandleStrategies(self.df)
+                if self.debug_mode:
+                    self._log("📊 CandleStrategies inicializado", 'green')
+            
+            # Registrar callback para detección de patrones
+            if candle_strategies:
+                def pattern_detector_callback(df):
+                    try:
+                        if df.empty or len(df) < 5:
+                            return
+                        
+                        # Actualizar datos en CandleStrategies
+                        candle_strategies.data = df
+                        
+                        # Detectar patrón marubozu_trend
+                        result = candle_strategies.marubozu_trend()
+                        if not result.empty and 'Signal' in result.columns:
+                            last_signal = result['Signal'].iloc[-1]
+                            if last_signal != 0:
+                                timestamp = df.index[-1]
+                                price = df['Close'].iloc[-1]
+                                
+                                self._log(f"🎯 SEÑAL DETECTADA: marubozu_trend = {last_signal}", 'yellow')
+                                
+                                # Abrir operación si hay risk_manager
+                                if risk_manager and last_signal > 0:  # Señal de compra
+                                    stop_loss = price * 0.99  # 1% stop loss
+                                    take_profit = price * 1.02  # 2% take profit
+                                    
+                                    operacion = risk_manager.abrir_operacion(
+                                        tipo='BUY',
+                                        precio=price,
+                                        timestamp=timestamp,
+                                        stop_loss=stop_loss,
+                                        take_profit=take_profit,
+                                        estrategia='candle_marubozu_trend'
+                                    )
+                                    
+                                    if operacion:
+                                        self._log(f"✅ OPERACIÓN ABIERTA: BUY #{operacion.id} a precio {price:.5f}", 'green')
+                                        self._log(f"📊 Capital restante: ${risk_manager.capital:,.2f}", 'blue')
+                                        self._log(f"🎯 Stop Loss: {stop_loss:.5f} | Take Profit: {take_profit:.5f}", 'blue')
+                                    else:
+                                        error_msg = risk_manager.last_error or "Error desconocido"
+                                        self._log(f"❌ OPEN BUY FALLÓ (candle_marubozu_trend) -> {error_msg}", 'red')
+                                        
+                    except Exception as e:
+                        if self.debug_mode:
+                            self._log(f"Error en detector de patrones: {e}", 'red')
+                
+                self.on_candle_update(pattern_detector_callback)
+                if self.debug_mode:
+                    self._log("🎯 Detector de patrones registrado", 'green')
+            
+            # Activar modo debug automáticamente
+            self.set_debug_mode(True)
+            
+            if self.debug_mode:
+                self._log("✅ Detección de patrones configurada correctamente", 'green')
+                
+        except Exception as e:
+            self._log(f"❌ Error configurando detección de patrones: {e}", 'red')
 
     @classmethod
     def _load_or_fetch_symbols(cls):
@@ -456,7 +531,7 @@ class CandleStreamer:
                     # Programar refresco del gráfico en lugar de refrescar inmediatamente
                     self._schedule_refresh()
                     # Notificar actualización de vela
-                    self._notify_candle_update()
+                    self._notify_candle_update_callbacks()
                 else:
                     prev_high = self.current_candle['High']
                     prev_low = self.current_candle['Low']
@@ -474,7 +549,7 @@ class CandleStreamer:
                     # Programar refresco del gráfico
                     self._schedule_refresh()
                     # Notificar actualización intra-intervalo
-                    self._notify_candle_update()
+                    self._notify_candle_update_callbacks()
         except Exception as e:
             self._log(f"Error en _add_trade_to_candle: {e}", 'red')
 
