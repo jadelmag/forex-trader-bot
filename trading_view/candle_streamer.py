@@ -1536,8 +1536,9 @@ class CandleStreamer:
                 self._log(f"Error WebSocket: {error}", 'red')
                 self._log("Conexión perdida. Preparando reconexión...", 'orange')
         else:
-            # Otros errores se muestran siempre
-            self._log(f"Error WebSocket: {error}", 'red')
+            # Otros errores 'Error WebSocket:' solo en modo debug
+            if self.debug_mode:
+                self._log(f"Error WebSocket: {error}", 'red')
 
     def _on_close(self, ws, close_status_code, close_msg):
         # Always show close status with more detail
