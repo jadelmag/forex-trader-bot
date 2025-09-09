@@ -6,7 +6,6 @@ setup(
     description="Visualizador avanzado de datos Forex CSV con gráficos de velas",
     author="jadelmag",
     author_email="kientienemibarraespaciadora@gmail.com",
-    
     # Paquetes a incluir
     packages=find_packages(where="."),
     package_dir={"": "."},
@@ -19,20 +18,28 @@ setup(
     
     # Dependencias optimizadas
     install_requires=[
-        "pandas==2.2.3",           # Manejo de datos CSV
-        "numpy==1.26.4",           # Operaciones numéricas
-        "matplotlib==3.8.0",       # Gráficos básicos
-        "mplfinance==0.12.10b0",   # Gráficos de velas
-        "scikit-learn==1.3.0",     # Para análisis técnico futuro
+        "pandas==2.2.3",             # Manejo de datos CSV
+        "numpy==1.26.4",             # Operaciones numéricas
+        "matplotlib==3.8.0",         # Gráficos básicos
+        "mplfinance==0.12.10b0",     # Gráficos de velas
+        "scikit-learn==1.3.0",       # Para análisis técnico futuro
+        "stable-baselines3>=2.7.0",  # Dependencias de Reinforcement Learning
+        "gymnasium>=0.30.0",         # Dependencias de Reinforcement Learning
+        "torch>=2.0.0",              # Dependencias de Reinforcement Learning
+        "black==23.11.0",            # Dependencias de desarrollo (opcionales)
+        "flake8==6.1.0",             # Dependencias de desarrollo (opcionales)
+        "pytest==7.4.3",             # Dependencias de desarrollo (opcionales)
+        "telethon==1.28.5",          # Telegram
+        "pyarrow>=14.0.0 ",          # PyArrow
+        "websocket-client>=1.7.0",   # Websocket
+        "requests>=2.31.0"           # Requests para llamadas HTTP
     ],
-    
     # Scripts de consola
     entry_points={
         "console_scripts": [
             "forex-viewer=app.main:main"          # Viewer principal
         ]
     },
-    
     # Metadatos adicionales
     classifiers=[
         "Programming Language :: Python :: 3.11",

@@ -571,11 +571,6 @@ Ve a 👉 https://my.telegram.org
     * **API_HASH** → una cadena larga de letras y números.
 
 
-## Licencia
-
-Commons Clause + Apache/MIT
-
-
 ## Funcionalidades Principales
 
 ### 📧 Sistema de Reportes Automáticos por Email
@@ -608,11 +603,22 @@ Commons Clause + Apache/MIT
 - Se detiene correctamente al cerrar la aplicación
 - Manejo robusto de errores de conexión SMTP
 
----
+
+## Videos
+
+<video src="./videos/backtesting.mp4" controls width="600">Como realizar backtesting</video>
+
+<video src="./videos/tiempo_real.mp4" controls width="600">Como realizar operaciones en tiempo real seleccionando las estrategias</video>
+
+
+
 
 ## TODO
-----
+
 * Optimizar las estrategias [DOING] 
 * Conectar con metatrader [TODO]
 
 
+## Licencia
+
+Commons Clause + Apache/MIT
