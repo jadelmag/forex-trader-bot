@@ -46,12 +46,15 @@ class ProcessedDataModal(tk.Toplevel):
         self.var_first_n = tk.StringVar(value="20000")
         self.var_last_n = tk.StringVar(value="20000")
         self.var_mes = tk.StringVar(value=MESES[0][0])
+        self.var_range_start = tk.StringVar(value="1")
+        self.var_range_end = tk.StringVar(value="500")
 
         # Checkboxes (mutuamente excluyentes por lógica)
         self.var_opt_all = tk.BooleanVar(value=True)
         self.var_opt_first = tk.BooleanVar(value=False)
         self.var_opt_last = tk.BooleanVar(value=False)
         self.var_opt_month = tk.BooleanVar(value=False)
+        self.var_opt_range = tk.BooleanVar(value=False)
 
         container = ttk.Frame(self)
         container.pack(fill="both", expand=True, padx=18, pady=16)
@@ -106,6 +109,30 @@ class ProcessedDataModal(tk.Toplevel):
         self.cmb_mes = ttk.Combobox(frm_month, state="readonly", values=[m[0] for m in MESES], textvariable=self.var_mes, width=14)
         self.cmb_mes.pack(side="left", padx=(8,0))
 
+        # Range
+        frm_range = ttk.Frame(opts)
+        frm_range.pack(fill="x", pady=(6,0))
+        chk_range = ttk.Checkbutton(frm_range, text="Seleccionar por rango:", variable=self.var_opt_range, command=lambda: self._select_only("range"))
+        chk_range.pack(side="left")
+        
+        # Range inputs container
+        range_container = ttk.Frame(frm_range)
+        range_container.pack(side="left", padx=(8,0))
+        
+        # Start range
+        ttk.Label(range_container, text="Inicio:").pack(side="left")
+        self.entry_range_start = ttk.Entry(range_container, textvariable=self.var_range_start, width=8, validate="key", validatecommand=(self.register(self._validate_range_input), '%P'))
+        self.entry_range_start.pack(side="left", padx=(4,8))
+        
+        # End range
+        ttk.Label(range_container, text="Fin:").pack(side="left")
+        self.entry_range_end = ttk.Entry(range_container, textvariable=self.var_range_end, width=8, validate="key", validatecommand=(self.register(self._validate_range_input), '%P'))
+        self.entry_range_end.pack(side="left", padx=(4,0))
+        
+        # Bind events to validate range relationship
+        self.var_range_start.trace('w', self._validate_range_relationship)
+        self.var_range_end.trace('w', self._validate_range_relationship)
+
         # Estado simple (sin barra de progreso)
         status_row = ttk.Frame(container)
         status_row.pack(fill="x", pady=(10,0))
@@ -132,6 +159,7 @@ class ProcessedDataModal(tk.Toplevel):
         self.var_opt_first.set(which == "first")
         self.var_opt_last.set(which == "last")
         self.var_opt_month.set(which == "month")
+        self.var_opt_range.set(which == "range")
         self._apply_option_states()
 
     def _apply_option_states(self):
@@ -139,6 +167,43 @@ class ProcessedDataModal(tk.Toplevel):
         self.entry_first.config(state=("normal" if self.var_opt_first.get() else "disabled"))
         self.entry_last.config(state=("normal" if self.var_opt_last.get() else "disabled"))
         self.cmb_mes.config(state=("readonly" if self.var_opt_month.get() else "disabled"))
+        
+        # Range entries
+        range_state = "normal" if self.var_opt_range.get() else "disabled"
+        self.entry_range_start.config(state=range_state)
+        self.entry_range_end.config(state=range_state)
+    
+    def _validate_range_input(self, value):
+        """Validate that input is a positive integer or empty"""
+        if value == "":
+            return True
+        try:
+            num = int(value)
+            return num >= 1  # Must be positive (1 or greater)
+        except ValueError:
+            return False
+    
+    def _validate_range_relationship(self, *args):
+        """Validate that start < end and both are positive"""
+        try:
+            start_str = self.var_range_start.get().strip()
+            end_str = self.var_range_end.get().strip()
+            
+            if not start_str or not end_str:
+                return  # Allow empty fields during editing
+            
+            start = int(start_str)
+            end = int(end_str)
+            
+            # Ensure both are positive
+            if start < 1 or end < 1:
+                return
+            
+            # If start >= end, adjust end to be start + 1
+            if start >= end:
+                self.var_range_end.set(str(start + 1))
+        except ValueError:
+            pass  # Invalid numbers, let the key validation handle it
 
     def _select_file(self):
         initial_dir = self._last_dir
@@ -196,6 +261,10 @@ class ProcessedDataModal(tk.Toplevel):
                 self.var_last_n.set(str(min(max(n,0), total)))
             except Exception:
                 self.var_last_n.set("20000")
+            
+            # Update range defaults based on total rows
+            default_end = min(500, total)
+            self.var_range_end.set(str(default_end))
         else:
             self.var_total_label.set("No se pudo determinar filas del archivo")
             self.btn_accept.config(state="disabled")
@@ -343,6 +412,16 @@ class ProcessedDataModal(tk.Toplevel):
                 return df[idx.month == mes_num]
             # fallback: nada
             return df
+        if self.var_opt_range.get():
+            try:
+                start = int(self.var_range_start.get() or '1')
+                end = int(self.var_range_end.get() or '500')
+                start_idx = max(0, start - 1)  # Convert to 0-based index
+                end_idx = min(len(df), end)     # End is inclusive
+                if start_idx < end_idx:
+                    return df.iloc[start_idx:end_idx]
+            except ValueError:
+                pass  # Invalid range values, return full df
         return df
 
     def _load_parquet(self, fp: str) -> pd.DataFrame:
@@ -429,6 +508,49 @@ class ProcessedDataModal(tk.Toplevel):
                     parts.append(df)
                 processed += t.num_rows
             return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(columns=cols)
+        
+        if self.var_opt_range.get():
+            try:
+                start = int(self.var_range_start.get() or '1')
+                end = int(self.var_range_end.get() or '500')
+                start_idx = max(0, start - 1)  # Convert to 0-based index
+                end_idx = min(total, end)       # End is inclusive
+                if start_idx >= end_idx:
+                    return pd.DataFrame(columns=cols)
+                
+                # Read range using row groups
+                parts = []
+                current_row = 0
+                for rg in range(pf.num_row_groups):
+                    rg_rows = pf.metadata.row_group(rg).num_rows
+                    rg_end = current_row + rg_rows
+                    
+                    # Skip if this row group is before our range
+                    if rg_end <= start_idx:
+                        current_row = rg_end
+                        continue
+                    
+                    # Stop if this row group is after our range
+                    if current_row >= end_idx:
+                        break
+                    
+                    # Read the row group
+                    t = pf.read_row_group(rg, columns=cols)
+                    df = t.to_pandas()
+                    
+                    # Slice the dataframe to our range
+                    local_start = max(0, start_idx - current_row)
+                    local_end = min(rg_rows, end_idx - current_row)
+                    
+                    if local_start < local_end:
+                        parts.append(df.iloc[local_start:local_end])
+                    
+                    current_row = rg_end
+                
+                return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(columns=cols)
+            except ValueError:
+                pass  # Invalid range values, fallback to all data
+        
         # fallback all
         table = pf.read(columns=cols)
         return table.to_pandas()
