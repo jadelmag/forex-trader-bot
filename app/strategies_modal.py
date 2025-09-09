@@ -12,7 +12,8 @@ import inspect
 from strategies.strategy_utils import resolve_strategy_name
 from strategies.strategies import ForexStrategies
 from strategies.candle_strategies import CandleStrategies
-from strategies.risk_manager import RiskManager, RiskManagerIntegration
+from strategies.risk_manager import RiskManager
+from strategies.risk_manager_integration import RiskManagerIntegration, RiskConfig
 from .binance_modal import CandleConfigModal
 
 class EstrategiasModal(tk.Toplevel):

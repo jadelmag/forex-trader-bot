@@ -54,7 +54,8 @@ from strategies import ForexStrategies, CandleStrategies
 from strategies.strategy_utils import get_available_strategies, resolve_strategy_name
 from backtesting.backtester import ForexBacktester
 from rl.rl_agent import RLTradingAgent
-from strategies.risk_manager import RiskManager, RiskManagerIntegration, Operacion  
+from strategies.risk_manager import RiskManager, Operacion
+from strategies.risk_manager_integration import RiskManagerIntegration, RiskConfig  
 
 class GUIPrincipal:
     def __init__(self, root):
@@ -1818,7 +1819,8 @@ class GUIPrincipal:
                     capital_inicial = float(self.entry_dinero.get())
                 except Exception:
                     capital_inicial = float(getattr(self, 'dinero_ficticio', 10000))
-                from strategies.risk_manager import RiskManager, RiskManagerIntegration
+                from strategies.risk_manager import RiskManager
+                from strategies.risk_manager_integration import RiskManagerIntegration, RiskConfig
                 # Obtener modo debug del candle_streamer si existe
                 debug_mode = bool(getattr(getattr(self, 'candle_streamer', None), 'debug_mode', False))
                 self.risk_manager = RiskManager(max_operaciones_activas=int(self.simulation_config.get('max_orders', 5)), capital_inicial=capital_inicial, debug_mode=debug_mode)
@@ -1958,6 +1960,7 @@ class GUIPrincipal:
                 timestamp=candle.name if hasattr(candle, 'name') else datetime.now(),
                 atr_value=atr_value,
                 rr_ratio=rr_ratio,
+                risk_percent=risk * 100,  # Convert to percentage
                 estrategia_nombre=strategy_name,
                 sync_mode=True
             )

@@ -12,7 +12,8 @@ import numpy as np
 import pandas as pd
 
 from strategies import ForexStrategies, CandleStrategies
-from strategies.risk_manager import RiskManager, RiskManagerIntegration
+from strategies.risk_manager import RiskManager
+from strategies.risk_manager_integration import RiskManagerIntegration, RiskConfig
 from rl.rl_agent import RLTradingAgent
 from ia.smart_order_analyzer import SmartOrderAnalyzer
 

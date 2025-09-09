@@ -1,21 +1,17 @@
-# strategies/risk_manager_integration.py
+# strategies/risk_manager.py
 
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import threading
-import queue
-import concurrent.futures
-import time
-from typing import Dict, List, Optional, Callable, Union
+from typing import Dict, List, Optional
 import logging
-from collections import deque
 import warnings
 warnings.filterwarnings('ignore')
 
 # Configuración de logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger('RiskManagerIntegration')
+logger = logging.getLogger('RiskManager')
 
 # ---------------- Clase Operacion ----------------
 class Operacion:
@@ -163,11 +159,15 @@ class RiskManager:
                         self.estrategias_buy_activa_notificadas.add(estrategia)
                     return None
 
-        # Cálculo de lote (misma lógica)
+        # Cálculo de lote mejorado para BUY y SELL
         if tipo == 'BUY':
             riesgo_por_pip = abs(precio - stop_loss)
-        else:
+        elif tipo == 'SELL':
             riesgo_por_pip = abs(stop_loss - precio)
+        else:
+            if self.debug_mode:
+                self.last_error = f"Tipo de operación inválido: {tipo}"
+            return None
 
         if riesgo_por_pip <= 0:
             if self.debug_mode:
@@ -185,7 +185,7 @@ class RiskManager:
                 self.last_error = "Tamaño de lote inválido"
             return None
 
-        # Crear operación (misma lógica)
+        # Crear operación con soporte completo BUY/SELL
         self.contador_operaciones += 1
         operacion = Operacion(
             id_operacion=self.contador_operaciones,
@@ -199,10 +199,14 @@ class RiskManager:
         )
         operacion.riesgo_reservado = float(riesgo_dinero)
 
+        # Gestión de capital para ambos tipos de operación
         if tipo == 'BUY':
             operacion.valor_posicion = float(precio) * float(lote_size)
             self.capital -= riesgo_dinero
             self.ultima_vela_buy = timestamp
+        elif tipo == 'SELL':
+            operacion.valor_posicion = float(precio) * float(lote_size)
+            self.capital -= riesgo_dinero  # También reservar capital para SELL
 
         # Registrar la estrategia en esta vela
         self._registrar_estrategia_en_vela(timestamp, estrategia)
@@ -235,6 +239,8 @@ class RiskManager:
                 profit = operacion.cerrar(precio_cierre, timestamp)
                 if operacion.tipo == 'BUY':
                     self.capital += operacion.riesgo_reservado + profit
+                elif operacion.tipo == 'SELL':
+                    self.capital += operacion.riesgo_reservado + profit
                 else:
                     self.capital += profit
                 self.beneficio_total += profit
@@ -246,7 +252,7 @@ class RiskManager:
                     self.operaciones_perdidas += 1
                     self.perdida_perdedoras_total += profit
 
-                if operacion.tipo == 'BUY' and operacion.estrategia:
+                if operacion.estrategia:
                     self.estrategias_buy_activa_notificadas.discard(operacion.estrategia)
 
                 operaciones_cerradas.append(operacion)
@@ -263,6 +269,8 @@ class RiskManager:
                 profit = operacion.cerrar(precio_cierre, timestamp)
                 if operacion.tipo == 'BUY':
                     self.capital += operacion.riesgo_reservado + profit
+                elif operacion.tipo == 'SELL':
+                    self.capital += operacion.riesgo_reservado + profit
                 else:
                     self.capital += profit
 
@@ -274,7 +282,7 @@ class RiskManager:
                     self.operaciones_perdidas += 1
                     self.perdida_perdedoras_total += profit
 
-                if operacion.tipo == 'BUY' and operacion.estrategia:
+                if operacion.estrategia:
                     self.estrategias_buy_activa_notificadas.discard(operacion.estrategia)
 
                 operacion.motivo_cierre = motivo
@@ -301,7 +309,7 @@ class RiskManager:
                     self.operaciones_perdidas += 1
                     self.perdida_perdedoras_total += profit
 
-                if operacion.tipo == 'BUY' and operacion.estrategia:
+                if operacion.estrategia:
                     self.estrategias_buy_activa_notificadas.discard(operacion.estrategia)
 
                 self.operaciones_cerradas.append(operacion)
@@ -346,281 +354,4 @@ class RiskManager:
         self.ultima_vela_buy = None
         self.ultima_vela_mensaje_buy_duplicada = None
         self.estrategias_por_vela.clear()
-
-# ---------------- Clase RiskManagerIntegration ----------------
-class RiskManagerIntegration:
-    """Integra RiskManager con señales de estrategia - Versión Optimizada"""
-    
-    def __init__(self, risk_manager, debug_mode=False):
-        self.risk_manager = risk_manager
-        self.debug_mode = debug_mode
-        
-        # Sistema de colas para procesamiento paralelo
-        self.signal_queue = queue.Queue(maxsize=2000)
-        self.dataframe_queue = queue.Queue(maxsize=100)
-        
-        # Thread pools optimizados
-        self.signal_workers = concurrent.futures.ThreadPoolExecutor(
-            max_workers=4, thread_name_prefix='SignalWorker'
-        )
-        self.dataframe_workers = concurrent.futures.ThreadPoolExecutor(
-            max_workers=2, thread_name_prefix='DataFrameWorker'
-        )
-        
-        # Flags de control
-        self._running = True
-        self._processing_threads = []
-        
-        # Iniciar workers
-        self._start_workers()
-        
-        logger.info("RiskManagerIntegration optimizado iniciado")
-
-    def _start_workers(self):
-        """Inicia todos los workers de procesamiento"""
-        # Worker de procesamiento de señales
-        for i in range(2):
-            thread = threading.Thread(target=self._signal_processing_worker, daemon=True, name=f"SignalProcessor-{i}")
-            thread.start()
-            self._processing_threads.append(thread)
-        
-        # Worker de procesamiento de dataframes
-        thread = threading.Thread(target=self._dataframe_processing_worker, daemon=True, name="DataFrameProcessor")
-        thread.start()
-        self._processing_threads.append(thread)
-
-    def _signal_processing_worker(self):
-        """Worker para procesamiento de señales individuales"""
-        while self._running:
-            try:
-                signal_data = self.signal_queue.get(timeout=0.1)
-                self._process_single_signal(signal_data)
-                self.signal_queue.task_done()
-            except queue.Empty:
-                continue
-            except Exception as e:
-                logger.error(f"Error en signal processing worker: {e}")
-
-    def _dataframe_processing_worker(self):
-        """Worker para procesamiento de dataframes completos"""
-        while self._running:
-            try:
-                df_data = self.dataframe_queue.get(timeout=0.1)
-                self._process_dataframe_batch(df_data)
-                self.dataframe_queue.task_done()
-            except queue.Empty:
-                continue
-            except Exception as e:
-                logger.error(f"Error en dataframe processing worker: {e}")
-
-    def procesar_senal(self, senal, precio_actual, timestamp, atr_value, rr_ratio=2, estrategia_nombre=None,
-                       stop_loss_override=None, take_profit_override=None, sync_mode=False):
-        """Procesa una señal de trading de manera asíncrona o síncrona - Mismo nombre que original"""
-        if not self._running:
-            return None
-
-        signal_data = {
-            'senal': senal,
-            'precio_actual': float(precio_actual),
-            'timestamp': timestamp,
-            'atr_value': float(atr_value),
-            'rr_ratio': float(rr_ratio),
-            'estrategia_nombre': estrategia_nombre,
-            'stop_loss_override': float(stop_loss_override) if stop_loss_override else None,
-            'take_profit_override': float(take_profit_override) if take_profit_override else None
-        }
-
-        # Si se solicita modo síncrono (para GUI), procesar inmediatamente
-        if sync_mode:
-            return self._process_single_signal(signal_data)
-
-        try:
-            self.signal_queue.put_nowait(signal_data)
-            return "SENAL_ENCOLADA"
-        except queue.Full:
-            if self.debug_mode:
-                logger.warning("Cola de señales llena")
-            return None
-
-    def _process_single_signal(self, signal_data: Dict):
-        """Procesa una señal individual de manera optimizada"""
-        try:
-            senal = signal_data['senal']
-            precio_actual = signal_data['precio_actual']
-            timestamp = signal_data['timestamp']
-            atr_value = signal_data['atr_value']
-            rr_ratio = signal_data['rr_ratio']
-            estrategia_nombre = signal_data['estrategia_nombre']
-            stop_loss_override = signal_data['stop_loss_override']
-            take_profit_override = signal_data['take_profit_override']
-
-            # Señal de salida (-1) - Misma lógica que original
-            if senal == -1 and estrategia_nombre is not None:
-                operaciones_cerradas = self.risk_manager.cerrar_operacion_por_estrategia(
-                    estrategia_nombre, precio_actual, timestamp, motivo="EXIT_SIGNAL"
-                )
-                return operaciones_cerradas
-
-            # Señal de entrada (1) - Misma lógica que original
-            if senal == 1 and self.risk_manager.puede_abrir_operacion():
-                tipo = 'BUY'
-                
-                # Usar niveles override si están disponibles
-                if stop_loss_override is not None and take_profit_override is not None:
-                    stop_loss = stop_loss_override
-                    take_profit = take_profit_override
-                else:
-                    stop_loss = precio_actual - (atr_value * 2)
-                    take_profit = precio_actual + (atr_value * 2 * rr_ratio)
-                
-                # Abrir operación usando el risk manager
-                operacion = self.risk_manager.abrir_operacion(
-                    tipo=tipo,
-                    precio=precio_actual,
-                    timestamp=timestamp,
-                    stop_loss=stop_loss,
-                    take_profit=take_profit,
-                    riesgo_por_operacion=0.01,
-                    estrategia=estrategia_nombre
-                )
-                
-                return operacion
-                
-            return None
-
-        except Exception as e:
-            logger.error(f"Error procesando señal individual: {e}")
-            return None
-
-    def procesar_dataframe(self, df: pd.DataFrame, atr_period=14, rr_ratio=2, estrategia_nombre=None):
-        """Procesa un dataframe completo de manera asíncrona - Mismo nombre que original"""
-        if not self._running:
-            return []
-
-        # Preparar datos para procesamiento batch
-        df_data = {
-            'df': df.copy(),
-            'atr_period': atr_period,
-            'rr_ratio': rr_ratio,
-            'estrategia_nombre': estrategia_nombre
-        }
-
-        try:
-            self.dataframe_queue.put_nowait(df_data)
-            return [{'status': 'DATAFRAME_ENCOLADO'}]
-        except queue.Full:
-            if self.debug_mode:
-                logger.warning("Cola de señales llena")
-            return [{'status': 'COLA_LLENA'}]
-
-    def _process_dataframe_batch(self, df_data: Dict):
-        """Procesa un dataframe completo de manera optimizada"""
-        try:
-            df = df_data['df']
-            atr_period = df_data['atr_period']
-            rr_ratio = df_data['rr_ratio']
-            estrategia_nombre = df_data['estrategia_nombre']
-            
-            resultados = []
-
-            # Calcular ATR si no existe - Misma lógica que original
-            if 'ATR' not in df.columns:
-                high = df['High'].astype(float)
-                low = df['Low'].astype(float)
-                close = df['Close'].astype(float)
-                
-                tr1 = high - low
-                tr2 = abs(high - close.shift())
-                tr3 = abs(low - close.shift())
-                tr = np.maximum(np.maximum(tr1, tr2), tr3)
-                
-                df['ATR'] = tr.rolling(window=atr_period).mean()
-
-            # Procesar cada fila del dataframe - Misma lógica que original
-            for idx, row in df.iterrows():
-                # Verificar cierre por SL/TP (usando risk manager)
-                operaciones_cerradas = self.risk_manager.verificar_cierre_operaciones(row['Close'], idx)
-                
-                for op in operaciones_cerradas:
-                    resultados.append({
-                        'timestamp': idx, 
-                        'tipo': 'CIERRE_SL_TP', 
-                        'operacion': op, 
-                        'precio': row['Close'], 
-                        'resultado': op.resultado
-                    })
-
-                # Procesar señales del dataframe - Misma lógica que original
-                signal_value = 0
-                if 'ExecSignal' in df.columns and not pd.isna(row.get('ExecSignal', np.nan)):
-                    signal_value = int(row['ExecSignal'])
-                elif 'Signal' in df.columns and not pd.isna(row.get('Signal', np.nan)):
-                    signal_value = int(row['Signal'])
-
-                if signal_value != 0:
-                    atr_value = row.get('ATR', max(row['High'] - row['Low'], 0.0001))
-                    
-                    stop_loss_override = None
-                    take_profit_override = None
-                    if 'StopLoss' in df.columns and not pd.isna(row.get('StopLoss', np.nan)):
-                        stop_loss_override = row['StopLoss']
-                    if 'TakeProfit' in df.columns and not pd.isna(row.get('TakeProfit', np.nan)):
-                        take_profit_override = row['TakeProfit']
-
-                    # Procesar señal individual
-                    resultado_senal = self.procesar_senal(
-                        senal=signal_value,
-                        precio_actual=row['Close'],
-                        timestamp=idx,
-                        atr_value=atr_value,
-                        rr_ratio=rr_ratio,
-                        estrategia_nombre=estrategia_nombre,
-                        stop_loss_override=stop_loss_override,
-                        take_profit_override=take_profit_override
-                    )
-                    
-                    if resultado_senal is not None:
-                        if signal_value == 1 and hasattr(resultado_senal, 'id'):
-                            resultados.append({
-                                'timestamp': idx, 
-                                'tipo': 'APERTURA', 
-                                'operacion': resultado_senal, 
-                                'precio': row['Close']
-                            })
-                        elif signal_value == -1 and isinstance(resultado_senal, list):
-                            for op in resultado_senal:
-                                resultados.append({
-                                    'timestamp': idx, 
-                                    'tipo': 'CIERRE_ESTRATEGIA', 
-                                    'operacion': op, 
-                                    'precio': row['Close'], 
-                                    'resultado': op.resultado
-                                })
-
-            return resultados
-
-        except Exception as e:
-            logger.error(f"Error procesando dataframe: {e}")
-            return []
-
-    def stop(self):
-        """Detiene todos los workers - Nuevo método para limpieza"""
-        self._running = False
-        
-        # Esperar a que las colas se procesen
-        time.sleep(0.2)
-        
-        # Shutdown de executors
-        self.signal_workers.shutdown(wait=False)
-        self.dataframe_workers.shutdown(wait=False)
-        
-        logger.info("RiskManagerIntegration detenido")
-
-    # Métodos de compatibilidad para mantener la misma interfaz
-    def __del__(self):
-        """Destructor para limpieza"""
-        self.stop()
-
-
-        """Destructor para limpieza"""
-        self.detener_procesamiento()
+        self.last_error = None
