@@ -169,12 +169,15 @@ class RiskManager:
             # Obtener estrategias ya aplicadas en esta vela
             estrategias_en_vela = self.estrategias_por_vela.get(timestamp_key, [])
             
-            # Verificar si ya se aplicó esta estrategia en esta vela
-            if estrategia in estrategias_en_vela:
-                self.last_error = f"La estrategia '{estrategia}' ya fue aplicada en esta vela"
+            # Contar cuántas veces se ha aplicado esta estrategia en esta vela
+            veces_aplicada = estrategias_en_vela.count(estrategia)
+            
+            # Permitir hasta 3 aplicaciones de la misma estrategia por vela
+            if veces_aplicada >= 3:
+                self.last_error = f"La estrategia '{estrategia}' ya fue aplicada {veces_aplicada} veces en esta vela (máximo: 3)"
                 return False
             
-            # Verificar si ya se alcanzó el máximo de estrategias por vela
+            # Verificar si ya se alcanzó el máximo total de estrategias por vela
             if len(estrategias_en_vela) >= self.max_estrategias_por_vela:
                 self.last_error = f"Máximo de {self.max_estrategias_por_vela} estrategias por vela alcanzado"
                 return False
@@ -191,8 +194,8 @@ class RiskManager:
             if timestamp_key not in self.estrategias_por_vela:
                 self.estrategias_por_vela[timestamp_key] = []
             
-            if estrategia not in self.estrategias_por_vela[timestamp_key]:
-                self.estrategias_por_vela[timestamp_key].append(estrategia)
+            # Permitir múltiples aplicaciones de la misma estrategia
+            self.estrategias_por_vela[timestamp_key].append(estrategia)
             
             # Limpieza automática para evitar memory leaks
             self._limpiar_estrategias_antiguas()
