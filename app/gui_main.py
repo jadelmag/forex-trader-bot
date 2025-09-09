@@ -1879,34 +1879,62 @@ class GUIPrincipal:
             
             # Aplicar estrategias de velas (máximo 2 por vela)
             from strategies.candle_strategies import CandleStrategies
-            candle_strategies = CandleStrategies(df)
-            for strat in self.simulation_config.get('candle_strategies', []):
-                if candle_orders_opened >= max_orders_per_type:
-                    break
+            
+            # SOLUCIÓN: Asegurar que el DataFrame tiene suficiente contexto histórico
+            # Usar exactamente el valor configurado por el usuario
+            min_candles_required = int(self.simulation_config.get('wait_candles', 20))
+            if len(df) < min_candles_required:
+                # Si no hay suficientes velas, saltar estrategias de velas en esta iteración
+                self.log(f"Esperando más velas para estrategias de velas (actual: {len(df)}, configurado: {min_candles_required})", color="yellow")
+            else:
+                candle_strategies = CandleStrategies(df)
+                for strat in self.simulation_config.get('candle_strategies', []):
+                    if candle_orders_opened >= max_orders_per_type:
+                        break
 
-                try:
-                    # Soportar tanto formato string como dict {'name': ..., 'config': ...}
-                    if isinstance(strat, dict):
-                        strategy_name = strat.get('name')
-                        strategy_config = strat.get('config')
-                    else:
-                        strategy_name = str(strat)
-                        strategy_config = None
-
-                    metodo = getattr(candle_strategies, strategy_name, None)
-                    if callable(metodo):
-                        df_res = metodo(strategy_config)
-                        # Usar ExecSignal si está disponible; fallback a Signal
-                        if 'ExecSignal' in df_res.columns:
-                            signals = df_res['ExecSignal']
+                    try:
+                        # Soportar tanto formato string como dict {'name': ..., 'config': ...}
+                        if isinstance(strat, dict):
+                            strategy_name = strat.get('name')
+                            strategy_config = strat.get('config')
                         else:
-                            signals = df_res['Signal'] if 'Signal' in df_res.columns else None
+                            strategy_name = str(strat)
+                            strategy_config = None
 
-                        if signals is not None and not signals.empty and signals.iloc[-1] == 1:
-                            if self._procesar_senal_compra_risk_manager(last_candle, f"candle_{strategy_name}", 0.01, 2.0):
-                                candle_orders_opened += 1
-                except Exception as e:
-                    self.log(f"Error aplicando estrategia de vela {strat}: {str(e)}", color="red")
+                        metodo = getattr(candle_strategies, strategy_name, None)
+                        if callable(metodo):
+                            # Intentar pasar configuración si el método lo acepta
+                            try:
+                                df_res = metodo(config=strategy_config)
+                            except TypeError:
+                                df_res = metodo()
+                            
+                            # Verificar que el resultado tenga datos
+                            if df_res is None or df_res.empty:
+                                self.log(f"Estrategia {strategy_name} no generó señales", color="yellow")
+                                continue
+                                
+                            # Usar ExecSignal si está disponible; fallback a Signal
+                            if 'ExecSignal' in df_res.columns:
+                                signals = df_res['ExecSignal']
+                            else:
+                                signals = df_res['Signal'] if 'Signal' in df_res.columns else None
+
+                            if signals is not None and not signals.empty and len(signals) > 0:
+                                current_signal = signals.iloc[-1]
+                                if current_signal == 1:
+                                    self.log(f"SEÑAL DETECTADA: {strategy_name} = {current_signal}", color="cyan")
+                                    if self._procesar_senal_compra_risk_manager(last_candle, f"candle_{strategy_name}", 0.01, 2.0):
+                                        candle_orders_opened += 1
+                                elif current_signal != 0:
+                                    self.log(f"Señal {strategy_name}: {current_signal}", color="gray")
+                            else:
+                                self.log(f"No hay señales válidas para {strategy_name}", color="gray")
+                                
+                    except Exception as e:
+                        self.log(f"Error aplicando estrategia de vela {strat}: {str(e)}", color="red")
+                        import traceback
+                        self.log(f"Traceback: {traceback.format_exc()}", color="red")
             
             # Aplicar patrones (máximo 2 por vela)
             try:
