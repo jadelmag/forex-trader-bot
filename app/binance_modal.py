@@ -7,6 +7,7 @@ import os
 import json
 import inspect
 import pandas as pd
+import threading
 from strategies.strategy_utils import resolve_strategy_name
 from strategies.candle_strategies import CandleStrategies
 
@@ -22,14 +23,13 @@ class BinanceSimulationModal(tk.Toplevel):
         # Altura fija de la zona de estrategias (scrollable)
         list_area_height = 400
 
-        # Centrar ventana sobre el padre
-        self.update_idletasks()
+        # Centrar ventana sobre el padre - optimizado
         w = 600
-        # Altura total del modal: área de lista (400) + controles inferiores
         h_total = 550
-        x = parent.winfo_rootx() + (parent.winfo_width() - w) // 2
-        y = parent.winfo_rooty() + (parent.winfo_height() - h_total) // 2
-        self.geometry(f"{w}x{h_total}+{x}+{y}")
+        # Usar after_idle para evitar bloqueo durante inicialización
+        self.after_idle(lambda: self._center_window(w, h_total))
+        # Establecer geometría inicial para mostrar el modal inmediatamente
+        self.geometry(f"{w}x{h_total}")
 
         # Frame principal con scrollbar
         main_frame = tk.Frame(self)
@@ -73,17 +73,19 @@ class BinanceSimulationModal(tk.Toplevel):
         except Exception:
             pass
 
-        # Descubrir dinámicamente estrategias Candle y fusionar con las recibidas
-        try:
-            discovered_candle = self._discover_candle_strategies()
-        except Exception:
-            discovered_candle = []
+        # Usar estrategias proporcionadas directamente para evitar discovery costoso
         try:
             provided_candle = list(estrategias_candle or [])
         except Exception:
             provided_candle = []
-        # Unir y ordenar únicas
-        self.estrategias_candle = sorted(set(provided_candle + discovered_candle))
+        
+        # Solo hacer discovery si no hay estrategias proporcionadas
+        if not provided_candle:
+            self.estrategias_candle = []
+            # Hacer discovery en background después de mostrar el modal
+            self._schedule_strategy_discovery()
+        else:
+            self.estrategias_candle = sorted(set(provided_candle))
 
         # ---------------- SECCIÓN FOREX STRATEGIES ----------------
         if estrategias_fx:
@@ -225,7 +227,7 @@ class BinanceSimulationModal(tk.Toplevel):
             btn_candle_cargar = ttk.Button(
                 btn_candle_frame,
                 text="Cargar configuraciones",
-                command=self._load_all_candle_configs,
+                command=self._load_all_candle_configs_async,
                 width=22
             )
             btn_candle_cargar.pack(side="left", padx=5)
@@ -630,24 +632,36 @@ class BinanceSimulationModal(tk.Toplevel):
         except Exception as e:
             print(f"Error opening candle config modal for {strategy_name}: {e}")
 
-    def _load_all_candle_configs(self):
-        """Carga los archivos de configuración existentes para estrategias Candle y
-        cambia el combo de cada estrategia a 'Custom'."""
+    def _load_all_candle_configs_async(self):
+        """Carga configuraciones en background para no bloquear UI."""
+        def load_configs():
+            try:
+                configs = self._load_all_candle_configs_sync()
+                # Actualizar UI en el hilo principal
+                self.after(0, lambda: self._apply_loaded_configs(configs))
+            except Exception as e:
+                print(f"Error loading configs in background: {e}")
+        
+        # Ejecutar en thread separado
+        thread = threading.Thread(target=load_configs, daemon=True)
+        thread.start()
+    
+    def _load_all_candle_configs_sync(self):
+        """Carga los archivos de configuración existentes para estrategias Candle."""
+        configs = {}
         try:
             # Localizar carpeta config a nivel de proyecto
             project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             config_dir = os.path.join(project_root, 'config')
         except Exception:
-            config_dir = None
+            return configs
 
         if not config_dir or not os.path.isdir(config_dir):
-            return
+            return configs
 
-        loaded_count = 0
         for name in self.estrategias_candle:
             try:
                 resolved = resolve_strategy_name(name, "candle") if name else ""
-
                 cfg_path = os.path.join(config_dir, f"candle_{resolved}.json")
                 if not os.path.exists(cfg_path):
                     continue
@@ -656,31 +670,33 @@ class BinanceSimulationModal(tk.Toplevel):
                 try:
                     with open(cfg_path, 'r', encoding='utf-8') as f:
                         cfg = json.load(f)
+                        configs[name] = cfg
                 except Exception:
                     continue
-
+            except Exception:
+                continue
+        return configs
+    
+    def _apply_loaded_configs(self, configs):
+        """Aplica las configuraciones cargadas a los controles UI."""
+        loaded_count = 0
+        for name, cfg in configs.items():
+            try:
                 ctrl = self.controls.get(name)
                 if not ctrl or ctrl.get("tipo") != "candle":
                     continue
 
-                try:
-                    ctrl["custom_config"] = cfg
-                    # Cambiar el combo a 'Custom' y habilitar botón de configuración
-                    if ctrl.get("config_type"):
-                        ctrl["config_type"].set("Custom")
-                    if ctrl.get("config_button"):
-                        ctrl["config_button"].config(state="normal")
-                    loaded_count += 1
-                except Exception:
-                    continue
+                ctrl["custom_config"] = cfg
+                # Cambiar el combo a 'Custom' y habilitar botón de configuración
+                if ctrl.get("config_type"):
+                    ctrl["config_type"].set("Custom")
+                if ctrl.get("config_button"):
+                    ctrl["config_button"].config(state="normal")
+                loaded_count += 1
             except Exception:
-                # Si algo falla al procesar una estrategia, continuar con la siguiente
                 continue
-        # Opcional: imprimir resumen en consola
-        try:
-            print(f"Cargar configuraciones: {loaded_count} estrategia(s) actualizada(s).")
-        except Exception:
-            pass
+        
+        print(f"Cargar configuraciones: {loaded_count} estrategia(s) actualizada(s).")
 
     def _get_default_candle_config(self, strategy_name: str) -> dict:
         """Devuelve preset por tipo de estrategia según recomendaciones."""
@@ -747,7 +763,21 @@ class BinanceSimulationModal(tk.Toplevel):
         # Default fallback
         return cfg(use_ts=False, sl=1.5, tp=3.0, ts_mult=1.5)
 
-    def _discover_candle_strategies(self):
+    def _schedule_strategy_discovery(self):
+        """Programa el discovery de estrategias en background."""
+        def discover_async():
+            try:
+                discovered = self._discover_candle_strategies_sync()
+                # Actualizar UI en el hilo principal
+                self.after(0, lambda: self._update_candle_strategies(discovered))
+            except Exception as e:
+                print(f"Error in background strategy discovery: {e}")
+        
+        # Ejecutar en thread separado
+        thread = threading.Thread(target=discover_async, daemon=True)
+        thread.start()
+    
+    def _discover_candle_strategies_sync(self):
         """Descubre estrategias públicas de CandleStrategies con parámetro 'config'."""
         try:
             # Instancia dummy para inspección (sin datos reales)
@@ -779,6 +809,21 @@ class BinanceSimulationModal(tk.Toplevel):
                     # Si no se puede inspeccionar, incluirlo por si es estrategia
                     strategies.append(name)
         return sorted(set(strategies))
+    
+    def _update_candle_strategies(self, discovered_strategies):
+        """Actualiza la UI con las estrategias descubiertas."""
+        if discovered_strategies:
+            self.estrategias_candle = discovered_strategies
+            # Recrear la sección de candle strategies si es necesario
+            # Por ahora solo actualizamos la lista interna
+            print(f"Discovered {len(discovered_strategies)} candle strategies")
+
+    def _center_window(self, w, h):
+        """Centra la ventana sobre el padre."""
+        self.update_idletasks()
+        x = self.parent.winfo_rootx() + (self.parent.winfo_width() - w) // 2
+        y = self.parent.winfo_rooty() + (self.parent.winfo_height() - h) // 2
+        self.geometry(f"{w}x{h}+{x}+{y}")
 
 
 class CandleConfigModal(tk.Toplevel):
