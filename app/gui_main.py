@@ -63,7 +63,7 @@ class GUIPrincipal:
         self.root.title("Trading Bot - Forex Market")
         self.root.geometry("1600x1000")
         self.root.configure(bg="#F0F0F0")
-        self.root.attributes('-toolwindow', 1)
+        # self.root.attributes('-toolwindow', 1)
         self.root.resizable(True, True)
 
         # Configurar estilo para botones más compactos
@@ -3104,20 +3104,113 @@ class GUIPrincipal:
     def on_closing(self):
         """Método llamado al cerrar la aplicación para limpiar recursos"""
         try:
-            # Detener el scheduler de reportes
-            if hasattr(self, 'scheduler'):
-                self.scheduler.stop()
-                self.log("📧 Scheduler de reportes detenido", color="orange")
+            self.log("🔄 Iniciando cierre de aplicación...", color="yellow")
             
-            # Detener candle streamer si está activo
-            if self.candle_streamer:
-                self.candle_streamer.stop()
-                self.log("🔌 Conexión Binance cerrada", color="orange")
-                
+            # 1. Detener simulaciones activas
+            if hasattr(self, '_simulation_running') and self._simulation_running:
+                self.log("⏹️ Deteniendo simulación activa...", color="orange")
+                self._simulation_running = False
+            
+            # 2. Detener el scheduler de reportes
+            if hasattr(self, 'scheduler') and self.scheduler:
+                try:
+                    self.scheduler.stop()
+                    self.log("📧 Scheduler de reportes detenido", color="orange")
+                except Exception as e:
+                    print(f"Error deteniendo scheduler: {e}")
+            
+            # 3. Detener candle streamer y conexiones WebSocket
+            if hasattr(self, 'candle_streamer') and self.candle_streamer:
+                try:
+                    self.candle_streamer.stop()
+                    self.log("🔌 Conexión Binance cerrada", color="orange")
+                    # Dar tiempo para que se cierre la conexión WebSocket
+                    import time
+                    time.sleep(0.5)
+                except Exception as e:
+                    print(f"Error cerrando candle streamer: {e}")
+            
+            # 4. Cerrar operaciones activas del RiskManager
+            if hasattr(self, 'risk_manager') and self.risk_manager:
+                try:
+                    operaciones_activas = getattr(self.risk_manager, 'operaciones_activas', [])
+                    if operaciones_activas:
+                        self.log(f"💼 Cerrando {len(operaciones_activas)} operaciones activas...", color="orange")
+                        # Cerrar todas las operaciones activas
+                        for op in operaciones_activas[:]:  # Copia para evitar modificación durante iteración
+                            if hasattr(op, 'estado') and op.estado == 'ACTIVA':
+                                try:
+                                    # Usar último precio disponible para cerrar
+                                    precio_cierre = getattr(op, 'precio_entrada', 1.0)
+                                    if hasattr(self, 'df_actual') and self.df_actual is not None and not self.df_actual.empty:
+                                        precio_cierre = self.df_actual['Close'].iloc[-1]
+                                    op.cerrar(precio_cierre, "CIERRE_APLICACION")
+                                except Exception as e:
+                                    print(f"Error cerrando operación {op}: {e}")
+                except Exception as e:
+                    print(f"Error procesando operaciones del RiskManager: {e}")
+            
+            # 5. Detener procesos de entrenamiento IA/RL
+            if hasattr(self, 'rl_agent') and self.rl_agent:
+                try:
+                    self.log("🤖 Deteniendo agente RL...", color="orange")
+                    # Si el agente tiene método de limpieza, llamarlo
+                    if hasattr(self.rl_agent, 'cleanup'):
+                        self.rl_agent.cleanup()
+                except Exception as e:
+                    print(f"Error deteniendo RL agent: {e}")
+            
+            # 6. Terminar threads activos
+            import threading
+            active_threads = threading.active_count()
+            if active_threads > 1:  # Main thread + otros
+                self.log(f"🧵 Esperando {active_threads-1} threads activos...", color="orange")
+                # Dar tiempo a los threads para terminar
+                import time
+                time.sleep(1.0)
+            
+            # 7. Limpiar recursos de gráficos
+            if hasattr(self, 'grafico_manager') and self.grafico_manager:
+                try:
+                    # Cerrar figuras de matplotlib si existen
+                    import matplotlib.pyplot as plt
+                    plt.close('all')
+                except Exception as e:
+                    print(f"Error cerrando gráficos: {e}")
+            
+            # 8. Guardar configuración final si es necesario
+            try:
+                # Aquí se podría guardar estado de la aplicación si fuera necesario
+                pass
+            except Exception as e:
+                print(f"Error guardando configuración: {e}")
+            
+            self.log("✅ Limpieza completada. Cerrando aplicación...", color="green")
+            
         except Exception as e:
-            print(f"Error durante limpieza: {e}")
+            print(f"Error durante limpieza general: {e}")
         finally:
-            self.root.destroy()
+            # Forzar cierre de la ventana principal
+            try:
+                self.root.quit()  # Salir del mainloop
+            except:
+                pass
+            try:
+                self.root.destroy()  # Destruir la ventana
+            except:
+                pass
+            
+            # Forzar salida del proceso si es necesario
+            import sys
+            import os
+            try:
+                # Dar un momento para que se complete la limpieza
+                import time
+                time.sleep(0.2)
+                # Salida limpia del proceso
+                os._exit(0)
+            except:
+                sys.exit(0)
     
     # ---------------- Run ----------------
     def run(self):
