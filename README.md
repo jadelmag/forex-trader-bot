@@ -612,9 +612,7 @@ Commons Clause + Apache/MIT
 
 ## TODO
 ----
-* Fix train AI [DOING]* Optimizar las estrategias [ALWAYS DOING]
-* Arreglar error de reconexion [DOING] 
-* Conectar con Metatrader [TODO VERSION FINAL] [ERROR ✅]
-
+* Optimizar las estrategias [DOING] 
+* Conectar con metatrader [TODO]
 
 

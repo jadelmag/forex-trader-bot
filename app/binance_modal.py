@@ -10,6 +10,7 @@ import pandas as pd
 import threading
 from strategies.strategy_utils import resolve_strategy_name
 from strategies.candle_strategies import CandleStrategies
+from patterns.candlestickpatterns import CandlestickPatterns
 
 class BinanceSimulationModal(tk.Toplevel):
     def __init__(self, parent, estrategias_fx, estrategias_candle, callback, patrones_list=None):
@@ -236,6 +237,7 @@ class BinanceSimulationModal(tk.Toplevel):
             ttk.Label(self.scrollable_frame, text="Estrategia", width=20, anchor="w").grid(row=start_row+2, column=0, padx=5)
             ttk.Label(self.scrollable_frame, text="Configuración", width=15).grid(row=start_row+2, column=1, padx=5)
             ttk.Label(self.scrollable_frame, text="", width=15).grid(row=start_row+2, column=2, padx=5)
+            ttk.Label(self.scrollable_frame, text="Velas", width=10, anchor="center").grid(row=start_row+2, column=3, padx=5)
 
             # Estrategias Candle (con configuración personalizada)
             for idx, nombre in enumerate(self.estrategias_candle, start=start_row+3):
@@ -265,6 +267,17 @@ class BinanceSimulationModal(tk.Toplevel):
                     width=14
                 )
                 btn_config.grid(row=idx, column=2, padx=5, sticky="w")
+                
+                # Etiqueta de número de velas
+                candle_count_text = self._get_candle_count_for_strategy(nombre)
+                candle_count_label = ttk.Label(
+                    self.scrollable_frame,
+                    text=candle_count_text,
+                    anchor="center",
+                    font=('Arial', 8, 'bold'),
+                    foreground="blue"
+                )
+                candle_count_label.grid(row=idx, column=3, padx=5)
 
                 # Cambiar estado del botón según selección del combo
                 def on_combo_change(event, n=nombre):
@@ -697,6 +710,61 @@ class BinanceSimulationModal(tk.Toplevel):
                 continue
         
         print(f"Cargar configuraciones: {loaded_count} estrategia(s) actualizada(s).")
+
+    def _get_candle_count_for_strategy(self, strategy_name):
+        """Obtiene el número de velas que usa una estrategia basándose en el patrón subyacente."""
+        # Mapear nombres de estrategias a patrones de velas
+        strategy_to_pattern = {
+            'hammer_reversal_strategy': 'hammer',
+            'bullish_engulfing_strategy': 'bullish_engulfing',
+            'bearish_engulfing_strategy': 'bearish_engulfing',
+            'morning_star_strategy': 'morning_star',
+            'evening_star_strategy': 'evening_star',
+            'hanging_man_strategy': 'hanging_man',
+            'three_white_soldiers_strategy': 'three_white_soldiers',
+            'three_black_crows_strategy': 'three_black_crows',
+            'doji_reversal_strategy': 'doji',
+            'shooting_star_strategy': 'shooting_star',
+            'spinning_top_strategy': 'spinning_top',
+            'inverted_hammer_strategy': 'inverted_hammer',
+            'piercing_line_strategy': 'piercing_line',
+            'dark_cloud_cover_strategy': 'dark_cloud_cover',
+            'tweezer_top_strategy': 'tweezer_top',
+            'tweezer_bottom_strategy': 'tweezer_bottom',
+            # Estrategias compuestas que usan múltiples patrones
+            'scalping_reversal_strategy': 'multiple',
+            'aggressive_reversal_strategy': 'multiple',
+            'conservative_swing_strategy': 'multiple'
+        }
+        
+        pattern_name = strategy_to_pattern.get(strategy_name)
+        if pattern_name == 'multiple':
+            return 'Múltiple'
+        elif pattern_name and pattern_name in CandlestickPatterns.PATTERN_CANDLE_COUNTS:
+            count = CandlestickPatterns.PATTERN_CANDLE_COUNTS[pattern_name]
+            if count == 1:
+                return '1 vela'
+            elif count == 2:
+                return '2 velas'
+            elif count == 3:
+                return '3 velas'
+            else:
+                return f'{count} velas'
+        else:
+            # Estrategias específicas no basadas en patrones de velas clásicos
+            specific_strategies = {
+                'rsi_divergence_strategy': 'RSI+Div',
+                'macd_crossover_strategy': 'MACD',
+                'bollinger_squeeze_strategy': 'BB+Vol',
+                'volume_breakout_strategy': 'Vol+BO',
+                'trend_reversal_strategy': 'Trend+Rev',
+                'momentum_strategy': 'Momentum',
+                'price_action_strategy': 'PA',
+                'support_resistance_strategy': 'S/R',
+                'fibonacci_strategy': 'Fibonacci',
+                'ichimoku_strategy': 'Ichimoku'
+            }
+            return specific_strategies.get(strategy_name, 'Técnico')
 
     def _get_default_candle_config(self, strategy_name: str) -> dict:
         """Devuelve preset por tipo de estrategia según recomendaciones."""
