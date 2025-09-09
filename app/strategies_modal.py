@@ -580,16 +580,11 @@ class EstrategiasModal(tk.Toplevel):
             except (ValueError, TypeError):
                 capital_inicial = 10000
             
-            if capital_inicial <= 100:
-                capital_inicial = 10000
-            
             risk_manager = RiskManager(capital_inicial=capital_inicial, max_operaciones_activas=max_orders)
-            risk_integration = RiskManagerIntegration(risk_manager)
+            risk_integration = RiskManagerIntegration(risk_manager, debug_mode=False)
             risk_manager.reset()
 
             # Log inicio
-            self._log_to_parent("============================================================", 'cyan')
-            self._log_to_parent("INICIANDO SIMULACIÓN CONTINUA DE ESTRATEGIAS", 'cyan')
             self._log_to_parent("============================================================", 'cyan')
             self._log_to_parent(f"Capital inicial: ${capital_inicial:,.2f}", 'white')
             self._log_to_parent(f"Estrategias seleccionadas: {len(seleccion)}", 'white')

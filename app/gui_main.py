@@ -95,7 +95,7 @@ class GUIPrincipal:
 
         # Iniciar RiskManager con el mismo capital ficticio inicial (0 al inicio)
         self.risk_manager = RiskManager(capital_inicial=self.dinero_ficticio, max_operaciones_activas=5)
-        self.risk_integration = RiskManagerIntegration(self.risk_manager)
+        self.risk_integration = RiskManagerIntegration(self.risk_manager, debug_mode=False)
         
         # Inicializar el scheduler de reportes automáticos
         self.scheduler = get_scheduler_instance(self.risk_manager)
@@ -487,15 +487,15 @@ class GUIPrincipal:
     def actualizar_labels(self):
         print(f"DEBUG: actualizar labels: {self.dinero_ficticio}")
         # Por defecto, tratamos dinero_ficticio como equity inicial
-        self.label_dinero.config(text=f"Equidad: {self.dinero_ficticio:,.2f}$")
+        self.label_dinero.config(text=f"Equidad: ${self.dinero_ficticio:,.2f}")
         # Cash inicial (sin reservado ni PnL en este punto)
         try:
             capital = float(self.risk_manager.capital)
         except Exception:
             capital = float(self.dinero_ficticio)
-        self.label_cash.config(text=f"Dinero: {capital:,.2f}$")
-        self.label_beneficios.config(text=f"Beneficios: {self.beneficios:,.2f}$")
-        self.label_perdidas.config(text=f"Pérdidas: {self.perdidas:,.2f}$")
+        self.label_cash.config(text=f"Dinero: ${capital:,.2f}")
+        self.label_beneficios.config(text=f"Beneficios: ${self.beneficios:,.2f}")
+        self.label_perdidas.config(text=f"Pérdidas: ${self.perdidas:,.2f}")
 
     # ---------------- Dinero en tiempo real (capital - riesgo reservado + PnL flotante) ----------------
     def _calcular_dinero_visible(self, precio_actual: float) -> float:
@@ -614,7 +614,7 @@ class GUIPrincipal:
 
         # Configurar Risk Manager
         self.risk_manager = RiskManager(max_operaciones_activas=max_orders, capital_inicial=capital_inicial)
-        self.risk_integration = RiskManagerIntegration(self.risk_manager)
+        self.risk_integration = RiskManagerIntegration(self.risk_manager, debug_mode=False)
         self.risk_manager.reset()
 
         # Asegurar que las instancias existen
@@ -870,44 +870,39 @@ class GUIPrincipal:
                         if operacion:
                             resultados.append({'timestamp': idx, 'operacion': operacion, 'tipo': 'APERTURA'})
                             self.log(f"APERTURA: {operacion} | Estrategia: {signal_info['estrategia']}", color='green')
-                            operaciones_abiertas += 1
-                            # Marcar que ya se abrió BUY para esta estrategia en esta vela
-                            if signal_info['senal'] == 1 and tipo_estrategia == 'forex':
-                                opened_buy_for_strategy.add(estrategia_id)
-                                opened_buy_any_forex = True
-                            # Refrescar dinero visible inmediatamente tras abrir
+                    
+                        # Marcar que ya se abrió BUY para esta estrategia en esta vela
+                        if signal_info['senal'] == 1 and tipo_estrategia == 'forex':
+                            opened_buy_for_strategy.add(estrategia_id)
+                            opened_buy_any_forex = True
+                        # Refrescar dinero visible inmediatamente tras abrir
+                        try:
+                            self._actualizar_dinero_visible(row['Close'])
+                        except Exception:
+                            pass
+                        # Refresco directo de Cash como respaldo
+                        try:
+                            cash_now = float(getattr(self.risk_manager, 'capital', self.dinero_ficticio))
+                            self.label_cash.config(text=f"Dinero: {cash_now:,.2f}$")
                             try:
-                                self._actualizar_dinero_visible(row['Close'])
+                                self.root.update_idletasks()
                             except Exception:
                                 pass
-                            # Refresco directo de Cash como respaldo
+                            # Log de verificación de cash y nocional
                             try:
-                                cash_now = float(getattr(self.risk_manager, 'capital', self.dinero_ficticio))
-                                self.label_cash.config(text=f"Dinero: {cash_now:,.2f}$")
-                                try:
-                                    self.root.update_idletasks()
-                                except Exception:
-                                    pass
-                                # Log de verificación de cash y nocional
-                                try:
-                                    if getattr(operacion, 'tipo', '') == 'BUY':
-                                        self.log(f"Dinero tras apertura BUY: ${cash_now:,.2f} (Nocional: ${operacion.valor_posicion:,.2f})", color='cyan')
-                                    else:
-                                        self.log(f"Dinero tras apertura {operacion.tipo}: ${cash_now:,.2f}", color='cyan')
-                                except Exception:
-                                    pass
-                            except Exception:
-                                pass
-                        else:
-                            # Si falló la apertura, reportar el motivo si existe
-                            try:
-                                err = getattr(operacion, 'error', 'Error desconocido')
-                                if 'Fondos insuficientes' in err:
-                                    self.log(f"OPERACIÓN SALTADA ({estrategia_id}) -> {err}", color='yellow')
+                                if getattr(operacion, 'tipo', '') == 'BUY':
+                                    self.log(f"Dinero tras apertura BUY: ${cash_now:,.2f} (Nocional: ${operacion.valor_posicion:,.2f})", color='cyan')
                                 else:
-                                    self.log(f"OPEN BUY FALLÓ ({estrategia_id}) -> {err}", color='red')
+                                    self.log(f"Dinero tras apertura {operacion.tipo}: ${cash_now:,.2f}", color='cyan')
                             except Exception:
                                 pass
+                        except Exception:
+                            pass
+                        # Actualizar dinero visible en tiempo real (capital - riesgo reservado + PnL flotante)
+                        try:
+                            self._actualizar_dinero_visible(row['Close'])
+                        except Exception:
+                            pass
 
                 ops_activas = self.risk_manager.get_operaciones_activas_count()
                 if ops_activas != operaciones_abiertas:
@@ -1199,7 +1194,7 @@ class GUIPrincipal:
             # Configurar Risk Manager
             capital_inicial = float(self.dinero_ficticio)
             self.risk_manager = RiskManager(capital_inicial=capital_inicial, max_operaciones_activas=max_operations)
-            self.risk_integration = RiskManagerIntegration(self.risk_manager)
+            self.risk_integration = RiskManagerIntegration(self.risk_manager, debug_mode=False)
             self.risk_manager.reset()
 
             # Log inicio de simulación
@@ -1261,14 +1256,15 @@ class GUIPrincipal:
                 
                 # Verificar cierres automáticos (SL/TP)
                 operaciones_cerradas = self.risk_manager.verificar_cierre_operaciones(current_price, idx)
-                for op_cerrada in operaciones_cerradas:
-                    beneficio = op_cerrada.cerrar(current_price, idx)
+
+                for op in operaciones_cerradas:
+                    beneficio = op.cerrar(current_price, idx)
                     if beneficio > 0:
                         self.beneficios += beneficio
-                        self.log(f"CIERRE AUTOMÁTICO (TP): +${beneficio:.2f} | {op_cerrada.estrategia}", color='green')
+                        self.log(f"CIERRE AUTOMÁTICO (TP): +${beneficio:.2f} | {op.estrategia}", color='green')
                     else:
                         self.perdidas += abs(beneficio)
-                        self.log(f"CIERRE AUTOMÁTICO (SL): ${beneficio:.2f} | {op_cerrada.estrategia}", color='red')
+                        self.log(f"CIERRE AUTOMÁTICO (SL): ${beneficio:.2f} | {op.estrategia}", color='red')
 
                 # Evaluar señales pre-calculadas para cada estrategia
                 for strategy_name, signals in strategy_signals.items():
@@ -1625,8 +1621,8 @@ class GUIPrincipal:
                         # Actualizar labels para mostrar el nuevo dinero
                         self.actualizar_labels()
                         self.log(f"Dinero inicial actualizado a: ${initial_money:,.2f}", color="green")
-                except Exception as e:
-                    print(f"Error actualizando dinero inicial: {e}")
+                except Exception:
+                    pass
                 self._start_streamer_with_config(config)
 
             CandleStreamerConfigModal(
@@ -1826,7 +1822,7 @@ class GUIPrincipal:
                 # Obtener modo debug del candle_streamer si existe
                 debug_mode = bool(getattr(getattr(self, 'candle_streamer', None), 'debug_mode', False))
                 self.risk_manager = RiskManager(max_operaciones_activas=int(self.simulation_config.get('max_orders', 5)), capital_inicial=capital_inicial, debug_mode=debug_mode)
-                self.risk_integration = RiskManagerIntegration(self.risk_manager)
+                self.risk_integration = RiskManagerIntegration(self.risk_manager, debug_mode=debug_mode)
                 try:
                     self.risk_manager.reset()
                 except Exception:
@@ -1962,7 +1958,8 @@ class GUIPrincipal:
                 timestamp=candle.name if hasattr(candle, 'name') else datetime.now(),
                 atr_value=atr_value,
                 rr_ratio=rr_ratio,
-                estrategia_nombre=strategy_name
+                estrategia_nombre=strategy_name,
+                sync_mode=True
             )
 
             if operacion:

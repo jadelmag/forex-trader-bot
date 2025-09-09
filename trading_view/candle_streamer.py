@@ -55,9 +55,10 @@ class CandleStreamer:
         self.thread = None
         self.running = False
         
-        # WebSocket reconnection parameters
+        # WebSocket connection parameters
+        self.connection_established = False  # Track if connection was established once
         self.reconnect_attempts = 0
-        self.max_reconnect_attempts = 10
+        self.max_reconnect_attempts = 0  # Disabled automatic reconnection
         self.reconnect_delay = 1  # Initial delay in seconds
         self.max_reconnect_delay = 300  # Maximum delay (5 minutes)
         self.reconnect_thread = None
@@ -306,16 +307,25 @@ class CandleStreamer:
             if new_visible > self.visible_candles:
                 self.visible_candles = new_visible
                 # Redibujar para que la nueva vela tenga alpha=1 y permita hover
-                self._refresh_plot()
+                # Usar render síncrono para no depender de flags de refresco
+                self._plot_last_candles()
                 # Continuar si aún quedan velas por revelar
                 if self.visible_candles < min(total, self.max_plot):
                     self._schedule_opacity_reveal_step()
                 else:
                     # Todas reveladas
                     self.stop_opacity_reveal()
+                    try:
+                        self._log("Analizadas todas las velas", 'green')
+                    except Exception:
+                        pass
             else:
                 # Nada que revelar (ya estamos al máximo)
                 self.stop_opacity_reveal()
+                try:
+                    self._log("Analizadas todas las velas", 'green')
+                except Exception:
+                    pass
         except Exception as e:
             self._log(f"Error en opacity reveal step: {e}", 'red')
             self.stop_opacity_reveal()
@@ -1453,7 +1463,7 @@ class CandleStreamer:
 
             symbol = self.symbol.replace('/', '').replace('-', '')
             url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={k_interval}&limit={min(max(limit,1),1000)}"
-            resp = requests.get(url, timeout=10)
+            resp = requests.get(url)
             resp.raise_for_status()
             data = resp.json()
             if not isinstance(data, list) or len(data) == 0:
@@ -1518,29 +1528,37 @@ class CandleStreamer:
             print(f"Error en _log: {e}")
 
     def _on_error(self, ws, error):
-        # Always show connection errors, not just in debug mode
-        self._log(f"Error WebSocket: {error}", 'red')
-        if "Connection to remote host was lost" in str(error):
-            self._log("Conexión perdida. Preparando reconexión...", 'orange')
+        # Mostrar el error genérico siempre, excepto el caso específico
+        # 'Connection to remote host was lost' que debe mostrarse solo en debug
+        error_str = str(error)
+        if "Connection to remote host was lost" in error_str:
+            if self.debug_mode:
+                self._log(f"Error WebSocket: {error}", 'red')
+                self._log("Conexión perdida. Preparando reconexión...", 'orange')
+        else:
+            # Otros errores se muestran siempre
+            self._log(f"Error WebSocket: {error}", 'red')
 
     def _on_close(self, ws, close_status_code, close_msg):
         # Always show close status with more detail
-        if close_status_code:
-            self._log(f"Conexión WebSocket cerrada (código: {close_status_code})", 'yellow')
-        else:
-            self._log("Conexión WebSocket cerrada", 'yellow')
+        if self.debug_mode:
+            if close_status_code:
+                self._log(f"Conexión WebSocket cerrada (código: {close_status_code})", 'yellow')
+            else:
+                self._log("Conexión WebSocket cerrada", 'yellow')
         
-        # Show reconnection status if we're still running
-        if self.running and self.reconnect_attempts < self.max_reconnect_attempts:
-            self._log(f"Intento de reconexión {self.reconnect_attempts + 1}/{self.max_reconnect_attempts}", 'cyan')
+        # No automatic reconnection - just log the disconnection
+        if self.running and self.debug_mode:
+            self._log("WebSocket desconectado. No se intentará reconectar automáticamente.", 'orange')
 
     def _on_open(self, ws):
-        # Always show connection established
-        if self.reconnect_attempts > 0:
-            self._log(f"✓ Reconexión exitosa (intento {self.reconnect_attempts})", 'green')
-            self.reconnect_attempts = 0  # Reset counter on successful reconnection
-        else:
+        # Show connection message only once
+        if not self.connection_established:
             self._log("✓ Conexión WebSocket establecida", 'green')
+            self.connection_established = True
+        
+        # Reset reconnection attempts on successful connection
+        self.reconnect_attempts = 0
         # Convert symbol to lowercase and remove any separators for Binance WebSocket
         binance_symbol = self.symbol.lower().replace('/', '').replace('-', '')
         if self.debug_mode:
@@ -1613,12 +1631,9 @@ class CandleStreamer:
             if self.running:
                 self._log(f"Error en WebSocket: {e}", 'red')
         finally:
-            # Solo reconectar si aún estamos corriendo y no hemos excedido intentos
-            if self.running and self.reconnect_attempts < self.max_reconnect_attempts:
-                self._reconnect()
-            elif self.running:
-                self._log("Máximo número de reintentos alcanzado. Deteniendo el stream.", 'red')
-                self.stop()
+            # No automatic reconnection - WebSocket will remain disconnected
+            if self.running and self.debug_mode:
+                self._log("WebSocket terminado. Para reconectar, detenga e inicie el stream nuevamente.", 'yellow')
 
     def stop(self):
         """Detiene el stream de velas y limpia los recursos"""
