@@ -351,6 +351,14 @@ class CandleStreamer:
                 df_current = pd.concat([df_current, cur])
                 if not df_current.empty:
                     df_current.sort_index(inplace=True)
+            
+            # LOGGING PARA DETECCIÓN DE PATRONES: Verificar datos OHLC
+            if self.debug_mode and not df_current.empty:
+                last_candles = df_current.tail(5)  # Últimas 5 velas para análisis
+                self._log(f"DATOS PARA PATRONES - Total velas: {len(df_current)}", 'blue')
+                for i, (timestamp, row) in enumerate(last_candles.iterrows()):
+                    self._log(f"  Vela {i+1}: {timestamp} | O:{row['Open']:.5f} H:{row['High']:.5f} L:{row['Low']:.5f} C:{row['Close']:.5f}", 'gray')
+            
             for cb in list(self._candle_update_callbacks):
                 try:
                     cb(df_current)
@@ -716,7 +724,7 @@ class CandleStreamer:
             _update_plot()
 
     def _plot_candles_with_opacity(self, df):
-        """Dibuja velas con control de opacidad - solo las primeras visible_candles son completamente visibles"""
+        """Dibuja velas con control de opacidad - TODAS las velas son visibles para correcta detección de patrones"""
         if df.empty:
             return
             
@@ -731,7 +739,7 @@ class CandleStreamer:
                 # Para una sola vela, usar un ancho fijo
                 width = 0.0005
             
-            # Dibujar velas con opacidad controlada
+            # Dibujar velas - TODAS completamente visibles para detección correcta de patrones
             for i, (idx, row) in enumerate(df.iterrows()):
                 date_num = dates[i]
                 open_price = float(row['Open'])
@@ -740,8 +748,9 @@ class CandleStreamer:
                 close_price = float(row['Close'])
                 volume = float(row['Volume'])
                 
-                # Determinar opacidad: 1.0 para las primeras visible_candles, 0.0 para el resto
-                alpha = 1.0 if i < self.visible_candles else 0.0
+                # CORRECCIÓN: Todas las velas son completamente visibles (alpha=1.0)
+                # Esto asegura que los detectores de patrones tengan acceso a todos los datos
+                alpha = 1.0
                 
                 # Color de la vela
                 is_bullish = close_price >= open_price
@@ -752,27 +761,27 @@ class CandleStreamer:
                                                 color='black', linewidth=1, alpha=alpha, zorder=1)[0]
                 self._candle_patches.append(shadow_line)
                 
-                # Dibujar cuerpo de la vela
+                # Dibujar cuerpo de la vela con posicionamiento preciso
                 body_height = abs(close_price - open_price)
                 body_bottom = min(open_price, close_price)
                 
                 if body_height > 0:
-                    # Vela con cuerpo - posicionada en su timestamp exacto
-                    candle_rect = Rectangle((date_num, body_bottom), width, body_height,
+                    # Vela con cuerpo - posicionada exactamente en timestamp sin desplazamiento
+                    candle_rect = Rectangle((date_num - width/2, body_bottom), width, body_height,
                                           facecolor=candle_color, edgecolor='black', 
                                           alpha=alpha, linewidth=0.5, zorder=2)
                 else:
-                    # Doji - línea horizontal posicionada en su timestamp exacto
-                    candle_rect = Rectangle((date_num, open_price - 0.00001), width, 0.00002,
+                    # Doji - línea horizontal centrada en timestamp
+                    candle_rect = Rectangle((date_num - width/2, open_price - 0.00001), width, 0.00002,
                                           facecolor=candle_color, edgecolor='black',
                                           alpha=alpha, linewidth=0.5, zorder=2)
                 
                 self.ax_price.add_patch(candle_rect)
                 self._candle_patches.append(candle_rect)
                 
-                # Dibujar volumen si existe el eje - posicionado en timestamp exacto
+                # Dibujar volumen si existe el eje - centrado en timestamp
                 if hasattr(self, 'ax_volume') and self.ax_volume is not None:
-                    volume_rect = Rectangle((date_num, 0), width, volume,
+                    volume_rect = Rectangle((date_num - width/2, 0), width, volume,
                                           facecolor='#1f77b4', alpha=alpha * 0.7, zorder=1)
                     self.ax_volume.add_patch(volume_rect)
                     self._volume_patches.append(volume_rect)
