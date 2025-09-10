@@ -64,13 +64,21 @@ class CandlestickPatterns:
 
     def _get_pattern_confidence(self, pattern_type, current_idx):
         df = self.data
-        if current_idx >= len(df):
+        # Si current_idx es un array/series, usar el primer elemento
+        if hasattr(current_idx, '__len__') and len(current_idx) > 0:
+            idx = 0  # Usar el primer índice para calcular confianza general
+        elif isinstance(current_idx, (int, np.integer)):
+            idx = current_idx
+        else:
+            idx = 0
+            
+        if idx >= len(df):
             return 0.5
         confidence = 1.0
-        if df['Volume_Ratio'].iloc[current_idx] < 0.8:
+        if df['Volume_Ratio'].iloc[idx] < 0.8:
             confidence *= 0.7
-        current_volatility = df['Volatility'].iloc[current_idx]
-        if current_volatility > df['Volatility'].rolling(50).mean().iloc[current_idx] * 1.5:
+        current_volatility = df['Volatility'].iloc[idx]
+        if current_volatility > df['Volatility'].rolling(50).mean().iloc[idx] * 1.5:
             confidence *= 0.6
         return max(0.1, min(1.0, confidence))
 

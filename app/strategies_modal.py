@@ -37,7 +37,7 @@ class EstrategiasModal(tk.Toplevel):
 
         # Centrar ventana sobre el padre
         self.update_idletasks()
-        w = 600
+        w = 700  # Aumentar ancho para acomodar ambos botones
         # Altura total del modal: área de lista (400) + controles inferiores
         h_total = 500
         # Usar gui_parent.root para obtener coordenadas si es necesario
@@ -244,6 +244,20 @@ class EstrategiasModal(tk.Toplevel):
                 width=20
             )
             btn_pattern_detection.pack(side="left", padx=5)
+            
+            # Botón para cargar configuraciones desde archivos JSON
+            try:
+                all_exist = self._can_load_all_candle_configs(self.estrategias_candle)
+            except Exception:
+                all_exist = False
+            self.btn_load_candle_configs = ttk.Button(
+                btn_candle_frame,
+                text="Cargar configuraciones",
+                command=self._load_all_candle_configs,
+                width=23,
+                state=("normal" if all_exist else "disabled")
+            )
+            self.btn_load_candle_configs.pack(side="left", padx=5)
 
             ttk.Label(self.scrollable_frame, text="Velas", width=10, anchor="center").grid(row=start_row+2, column=3, padx=5)
 
