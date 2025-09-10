@@ -29,7 +29,7 @@ class CandleStreamerConfigModal:
         self.max_candles_var = tk.StringVar(value=str(initial_values.get("max_plot", 500)) if initial_values else "500")
         self.symbol_var = tk.StringVar(value=initial_values.get("symbol", "") if initial_values and "symbol" in initial_values else (symbols[0] if symbols else ""))
         self.initial_money_var = tk.StringVar(value=str(initial_values.get("initial_money", "1000")) if initial_values else "1000")
-        self.visible_candles_var = tk.StringVar(value=str(initial_values.get("visible_candles", 20)) if initial_values else "20")
+        self.visible_candles_var = tk.StringVar(value=str(initial_values.get("visible_candles", 5)) if initial_values else "5")
         
         # Estilo
         style = ttk.Style()
