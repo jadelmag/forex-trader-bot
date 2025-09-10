@@ -11,28 +11,9 @@ class CandlestickPatterns:
         'morning_star': 3, 'evening_star': 3, 'three_white_soldiers': 3, 'three_black_crows': 3
     }
 
-    def __init__(self, data, atr_period=14, trend_period=20, volatility_period=20, config=None):
+    def __init__(self, data, atr_period=14, trend_period=20, volatility_period=20):
         self.data = data.copy()
-        
-        # Aplicar configuración personalizada si se proporciona
-        self.config = config or {}
-        
-        # Parámetros configurables con valores por defecto
-        self.atr_period = self.config.get('atr_period', atr_period)
-        self.trend_period = self.config.get('trend_period', trend_period)
-        self.volatility_period = self.config.get('volatility_period', volatility_period)
-        
-        # Parámetros específicos de patrones
-        self.doji_threshold = self.config.get('doji_threshold', 0.05)
-        self.tweezer_tolerance = self.config.get('tweezer_tolerance', 0.001)
-        self.min_confidence = self.config.get('min_confidence', 0.6)
-        self.partial_factor = self.config.get('partial_factor', 0.5)
-        self.hammer_body_ratio = self.config.get('hammer_body_ratio', 1.5)
-        self.shooting_star_ratio = self.config.get('shooting_star_ratio', 2.0)
-        self.spinning_top_ratio = self.config.get('spinning_top_ratio', 0.3)
-        self.marubozu_ratio = self.config.get('marubozu_ratio', 0.8)
-        
-        self._calculate_indicators(self.atr_period, self.trend_period, self.volatility_period)
+        self._calculate_indicators(atr_period, trend_period, volatility_period)
 
     # ---------------- Indicadores ----------------
 
@@ -76,28 +57,24 @@ class CandlestickPatterns:
 
     # ---------------- Señales anticipadas ----------------
 
-    def _get_partial_signal(self, pattern_type, condition_mask, partial_factor=None, direction=1):
+    def _get_partial_signal(self, pattern_type, condition_mask, partial_factor=0.5, direction=1):
         df = self.data.copy()
-        if partial_factor is None:
-            partial_factor = self.partial_factor
-        partial_close = df['Open'] + (df['High'] - df['Open']) * partial_factor
+        partial_close = df['Open'] + (df['High'] - df['Open']) * partial_factor  # MODIFICAR AQUÍ
         partial_cond = condition_mask.copy()
         partial_cond = partial_cond & ((direction == 1) & (partial_close > df['Open']) |
                                        (direction == -1) & (partial_close < df['Open']))
-        confidence = self._get_pattern_confidence(pattern_type, df.index) * 0.7
+        confidence = self._get_pattern_confidence(pattern_type, df.index) * 0.7  # MODIFICAR AQUÍ
         signal = np.where(partial_cond, confidence * direction, 0)
         return signal
 
     # ---------------- Patrones de 1 vela ----------------
 
-    def doji(self, threshold=None):
-        if threshold is None:
-            threshold = self.doji_threshold
+    def doji(self, threshold=0.05):
         df = self.data.copy()
         body = abs(df['Close'] - df['Open'])
         total_range = df['High'] - df['Low']
         cond = body / total_range <= threshold
-        df['Signal'] = self._get_partial_signal('neutral', cond, direction=1)
+        df['Signal'] = self._get_partial_signal('neutral', cond, partial_factor=0.5, direction=1)
         return df
 
     def hammer(self):
@@ -105,8 +82,8 @@ class CandlestickPatterns:
         body = abs(df['Close'] - df['Open'])
         lower_shadow = np.minimum(df['Open'], df['Close']) - df['Low']
         upper_shadow = df['High'] - np.maximum(df['Open'], df['Close'])
-        cond = (lower_shadow >= self.hammer_body_ratio*body) & (upper_shadow <= body) & (body > 0)
-        df['Signal'] = self._get_partial_signal('bullish', cond, direction=1)
+        cond = (lower_shadow >= 1.5*body) & (upper_shadow <= body) & (body > 0)
+        df['Signal'] = self._get_partial_signal('bullish', cond, partial_factor=0.5, direction=1)
         return df
 
     def hanging_man(self):
@@ -114,8 +91,8 @@ class CandlestickPatterns:
         body = abs(df['Close'] - df['Open'])
         lower_shadow = np.minimum(df['Open'], df['Close']) - df['Low']
         upper_shadow = df['High'] - np.maximum(df['Open'], df['Close'])
-        cond = (lower_shadow >= self.hammer_body_ratio*body) & (upper_shadow <= body) & (body > 0)
-        df['Signal'] = self._get_partial_signal('bearish', cond, direction=-1)
+        cond = (lower_shadow >= 1.5*body) & (upper_shadow <= body) & (body > 0)
+        df['Signal'] = self._get_partial_signal('bearish', cond, partial_factor=0.5, direction=-1)
         return df
 
     def shooting_star(self):
@@ -123,8 +100,8 @@ class CandlestickPatterns:
         body = abs(df['Close'] - df['Open'])
         upper_shadow = df['High'] - np.maximum(df['Open'], df['Close'])
         lower_shadow = np.minimum(df['Open'], df['Close']) - df['Low']
-        cond = (upper_shadow >= self.shooting_star_ratio*body) & (lower_shadow <= body)
-        df['Signal'] = self._get_partial_signal('bearish', cond, direction=-1)
+        cond = (upper_shadow >= 2*body) & (lower_shadow <= body)
+        df['Signal'] = self._get_partial_signal('bearish', cond, partial_factor=0.5, direction=-1)
         return df
 
     def spinning_top(self):
@@ -133,8 +110,8 @@ class CandlestickPatterns:
         total_range = df['High'] - df['Low']
         upper_shadow = df['High'] - np.maximum(df['Open'], df['Close'])
         lower_shadow = np.minimum(df['Open'], df['Close']) - df['Low']
-        cond = (body <= total_range*self.spinning_top_ratio) & (upper_shadow >= body) & (lower_shadow >= body)
-        df['Signal'] = self._get_partial_signal('neutral', cond, direction=1)
+        cond = (body <= total_range*0.3) & (upper_shadow >= body) & (lower_shadow >= body)
+        df['Signal'] = self._get_partial_signal('neutral', cond, partial_factor=0.5, direction=1)
         return df
 
     def inverted_hammer(self):
@@ -142,8 +119,8 @@ class CandlestickPatterns:
         body = abs(df['Close'] - df['Open'])
         upper_shadow = df['High'] - np.maximum(df['Open'], df['Close'])
         lower_shadow = np.minimum(df['Open'], df['Close']) - df['Low']
-        cond = (upper_shadow >= self.shooting_star_ratio*body) & (lower_shadow <= body)
-        df['Signal'] = self._get_partial_signal('bullish', cond, direction=1)
+        cond = (upper_shadow >= 2*body) & (lower_shadow <= body)
+        df['Signal'] = self._get_partial_signal('bullish', cond, partial_factor=0.5, direction=1)
         return df
 
     def marubozu(self):
@@ -152,8 +129,8 @@ class CandlestickPatterns:
         total_range = df['High'] - df['Low']
         upper_shadow = df['High'] - np.maximum(df['Open'], df['Close'])
         lower_shadow = np.minimum(df['Open'], df['Close']) - df['Low']
-        cond = (body > total_range*self.marubozu_ratio) & (upper_shadow <= body*0.1) & (lower_shadow <= body*0.1)
-        df['Signal'] = self._get_partial_signal('trend', cond, direction=np.sign(df['Close'] - df['Open']))
+        cond = (body > total_range*0.8) & (upper_shadow <= body*0.1) & (lower_shadow <= body*0.1)
+        df['Signal'] = self._get_partial_signal('trend', cond, partial_factor=0.5, direction=np.sign(df['Close'] - df['Open']))
         return df
 
     # ---------------- Patrones de 2 velas ----------------
@@ -162,62 +139,14 @@ class CandlestickPatterns:
         df = self.data.copy()
         cond = (df['Close'] > df['Open']) & (df['Close'].shift(1) < df['Open'].shift(1)) & \
                (df['Open'] < df['Close'].shift(1)) & (df['Close'] > df['Open'].shift(1))
-        df['Signal'] = self._get_partial_signal('bullish', cond, direction=1)
+        df['Signal'] = self._get_partial_signal('bullish', cond, partial_factor=0.5, direction=1)
         return df
 
     def bearish_engulfing(self):
         df = self.data.copy()
         cond = (df['Close'] < df['Open']) & (df['Close'].shift(1) > df['Open'].shift(1)) & \
                (df['Open'] > df['Close'].shift(1)) & (df['Close'] < df['Open'].shift(1))
-        df['Signal'] = self._get_partial_signal('bearish', cond, direction=-1)
-        return df
-
-    def piercing_line(self):
-        df = self.data.copy()
-        cond = (df['Close'] > df['Open']) & (df['Close'].shift(1) < df['Open'].shift(1)) & \
-               (df['Open'] < df['Close'].shift(1)) & (df['Close'] > (df['Open'].shift(1) + df['Close'].shift(1))/2)
-        df['Signal'] = self._get_partial_signal('bullish', cond, direction=1)
-        return df
-
-    def dark_cloud_cover(self):
-        df = self.data.copy()
-        cond = (df['Close'] < df['Open']) & (df['Close'].shift(1) > df['Open'].shift(1)) & \
-               (df['Open'] > df['Close'].shift(1)) & (df['Close'] < (df['Open'].shift(1) + df['Close'].shift(1))/2)
-        df['Signal'] = self._get_partial_signal('bearish', cond, direction=-1)
-        return df
-
-    def morning_star(self):
-        df = self.data.copy()
-        cond = (df['Close'].shift(2) < df['Open'].shift(2)) & \
-               (abs(df['Close'].shift(1) - df['Open'].shift(1)) < abs(df['Close'].shift(2) - df['Open'].shift(2))/2) & \
-               (df['Close'] > df['Open'])
-        df['Signal'] = self._get_partial_signal('bullish', cond, direction=1)
-        return df
-
-    def evening_star(self):
-        df = self.data.copy()
-        cond = (df['Close'].shift(2) > df['Open'].shift(2)) & \
-               (abs(df['Close'].shift(1) - df['Open'].shift(1)) < abs(df['Close'].shift(2) - df['Open'].shift(2))/2) & \
-               (df['Close'] < df['Open'])
-        df['Signal'] = self._get_partial_signal('bearish', cond, direction=-1)
-        return df
-
-    def tweezer_top(self, tolerance=None):
-        if tolerance is None:
-            tolerance = self.tweezer_tolerance
-        df = self.data.copy()
-        cond = (df['Close'] < df['Open']) & (df['Close'].shift(1) > df['Open'].shift(1)) & \
-               (abs(df['High'] - df['High'].shift(1)) <= df['High'] * tolerance)
-        df['Signal'] = self._get_partial_signal('bearish', cond, direction=-1)
-        return df
-
-    def tweezer_bottom(self, tolerance=None):
-        if tolerance is None:
-            tolerance = self.tweezer_tolerance
-        df = self.data.copy()
-        cond = (df['Close'] > df['Open']) & (df['Close'].shift(1) < df['Open'].shift(1)) & \
-               (abs(df['Low'] - df['Low'].shift(1)) <= df['Low'] * tolerance)
-        df['Signal'] = self._get_partial_signal('bullish', cond, direction=1)
+        df['Signal'] = self._get_partial_signal('bearish', cond, partial_factor=0.5, direction=-1)
         return df
 
     # ---------------- Patrones de 3 velas ----------------
@@ -226,14 +155,14 @@ class CandlestickPatterns:
         df = self.data.copy()
         cond = (df['Close'] > df['Open']) & (df['Close'].shift(1) > df['Open'].shift(1)) & \
                (df['Close'].shift(2) > df['Open'].shift(2)) & (df['Close'] > df['Close'].shift(1)) & (df['Close'].shift(1) > df['Close'].shift(2))
-        df['Signal'] = self._get_partial_signal('bullish', cond, direction=1)
+        df['Signal'] = self._get_partial_signal('bullish', cond, partial_factor=0.5, direction=1)
         return df
 
     def three_black_crows(self):
         df = self.data.copy()
         cond = (df['Close'] < df['Open']) & (df['Close'].shift(1) < df['Open'].shift(1)) & \
                (df['Close'].shift(2) < df['Open'].shift(2)) & (df['Close'] < df['Close'].shift(1)) & (df['Close'].shift(1) < df['Close'].shift(2))
-        df['Signal'] = self._get_partial_signal('bearish', cond, direction=-1)
+        df['Signal'] = self._get_partial_signal('bearish', cond, partial_factor=0.5, direction=-1)
         return df
 
     # ---------------- Señales combinadas ----------------
@@ -250,11 +179,7 @@ class CandlestickPatterns:
                 df[method] = 0
         return df
 
-    def combined_signal_optimized(self, min_patterns=None, min_confidence=None):
-        if min_patterns is None:
-            min_patterns = self.config.get('min_patterns', 1)
-        if min_confidence is None:
-            min_confidence = self.min_confidence
+    def combined_signal_optimized(self, min_patterns=1, min_confidence=0.6):
         df = self.detect_all_patterns()
         bullish_patterns = ['hammer', 'bullish_engulfing', 'piercing_line', 'morning_star', 'three_white_soldiers', 'tweezer_bottom']
         bearish_patterns = ['hanging_man', 'bearish_engulfing', 'dark_cloud_cover', 'evening_star', 'three_black_crows', 'tweezer_top']
@@ -265,11 +190,7 @@ class CandlestickPatterns:
         df.loc[df['Bearish_Score'] >= min_patterns, 'Final_Signal'] = -1
         return df
 
-    def get_trading_signals(self, min_confidence=None, min_patterns=None):
-        if min_confidence is None:
-            min_confidence = self.min_confidence
-        if min_patterns is None:
-            min_patterns = self.config.get('min_patterns', 1)
+    def get_trading_signals(self, min_confidence=0.6, min_patterns=1):
         df = self.combined_signal_optimized(min_patterns=min_patterns, min_confidence=min_confidence)
         df['Trading_Signal'] = df['Final_Signal']
         return df
