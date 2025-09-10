@@ -160,7 +160,9 @@ class CandleStreamerConfigModal:
             "max_plot": int(self.max_candles_var.get()),
             "symbol": self.symbol_var.get(),
             "initial_money": initial_money,
-            "visible_candles": visible_candles
+            "visible_candles": visible_candles,
+            "auto_disconnect_after_candles": True,  # Flag para desconectar automáticamente
+            "target_candles": int(self.max_candles_var.get())  # Número de velas objetivo
         }
         self.on_connect(config)
         self.window.destroy()

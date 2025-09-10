@@ -1532,6 +1532,11 @@ class GUIPrincipal:
                 self.candle_streamer.symbol = config["symbol"]
                 self.candle_streamer.csv_file = os.path.join(self.candle_streamer.csv_folder, f'{self.candle_streamer.symbol}_data.csv')
             
+            # Configurar auto-desconexión si está habilitada
+            if config.get("auto_disconnect_after_candles", False):
+                target_candles = config.get("target_candles", 500)
+                self.candle_streamer.configure_auto_disconnect(True, target_candles)
+            
             # Iniciar el streamer en un hilo separado
             def start_streamer():
                 try:

@@ -65,6 +65,15 @@ class CandleStreamer:
         self.max_reconnect_delay = 300  # Maximum delay (5 minutes)
         self.reconnect_thread = None
         
+        # Auto-disconnect parameters
+        self.auto_disconnect_enabled = False
+        self.target_candles = 0
+        self.auto_disconnect_triggered = False
+        
+        # Simulation parameters
+        self.simulation_mode = False
+        self.simulation_index = 0
+        
         # Thread pool for background tasks
         self._thread_pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix="CandleStreamer")
         self._plot_queue = queue.Queue(maxsize=1)  # Queue for plot updates
@@ -172,6 +181,131 @@ class CandleStreamer:
         """Activa o desactiva el debug específico para hover"""
         self.debug_hover = debug
         self._log(f"Debug hover {'activado' if debug else 'desactivado'}", 'blue')
+    
+    def configure_auto_disconnect(self, enabled: bool, target_candles: int = 0):
+        """Configura la desconexión automática después de alcanzar el número objetivo de velas"""
+        self.auto_disconnect_enabled = enabled
+        self.target_candles = target_candles
+        self.auto_disconnect_triggered = False
+        # No mostrar mensaje de configuración para mantener el log limpio
+    
+    def _check_auto_disconnect(self):
+        """Verifica si se debe desconectar automáticamente"""
+        if not self.auto_disconnect_enabled or self.auto_disconnect_triggered:
+            return
+        
+        current_candle_count = len(self.df) if hasattr(self, 'df') and self.df is not None else 0
+        
+        if current_candle_count >= self.target_candles:
+            self.auto_disconnect_triggered = True
+            # Desconectar después de un breve delay para permitir que se complete el procesamiento
+            if hasattr(self, 'parent_frame') and self.parent_frame:
+                self.parent_frame.after(1000, self._perform_auto_disconnect)  # 1 segundo de delay
+            else:
+                threading.Timer(1.0, self._perform_auto_disconnect).start()
+    
+    def _perform_auto_disconnect(self):
+        """Ejecuta la desconexión automática y comienza simulación con datos CSV"""
+        try:
+            current_candle_count = len(self.df) if hasattr(self, 'df') and self.df is not None else 0
+            self._log(f"✅ Descarga completada: se alcanzaron {current_candle_count} velas", 'green')
+            
+            # Deshabilitar reconexiones automáticas
+            self.max_reconnect_attempts = 0
+            
+            # Cerrar WebSocket de forma segura
+            if hasattr(self, 'ws') and self.ws:
+                try:
+                    self.ws.close()
+                except Exception:
+                    pass
+            
+            # Esperar a que termine el hilo WebSocket
+            if hasattr(self, 'thread') and self.thread and self.thread.is_alive():
+                self.thread.join(timeout=2.0)
+            
+            # Cancelar timer de reconexión si existe
+            if hasattr(self, 'reconnect_thread') and self.reconnect_thread:
+                try:
+                    self.reconnect_thread.cancel()
+                except Exception:
+                    pass
+            
+            # Iniciar simulación con datos descargados
+            self._start_csv_simulation()
+            
+        except Exception as e:
+            self._log(f"Error durante la desconexión: {e}", 'red')
+    
+    def _start_csv_simulation(self):
+        """Inicia simulación progresiva con los datos CSV descargados"""
+        try:
+            if self.df is None or self.df.empty:
+                self._log("No hay datos para simular", 'red')
+                return
+            
+            # Cambiar a modo simulación
+            self.running = False  # WebSocket desconectado
+            self.simulation_mode = True
+            self.simulation_index = 0
+            
+            # Iniciar simulación progresiva
+            self._schedule_next_simulation_step()
+            
+        except Exception as e:
+            self._log(f"Error iniciando simulación CSV: {e}", 'red')
+    
+    def _schedule_next_simulation_step(self):
+        """Programa el siguiente paso de la simulación"""
+        if not hasattr(self, 'simulation_mode') or not self.simulation_mode:
+            return
+        
+        if not hasattr(self, 'simulation_index'):
+            self.simulation_index = 0
+        
+        # Verificar si hay más datos para simular
+        if self.simulation_index >= len(self.df):
+            self._log("Simulación completada", 'green')
+            return
+        
+        # Programar siguiente paso
+        if hasattr(self, 'parent_frame') and self.parent_frame:
+            self.parent_frame.after(1000, self._execute_simulation_step)  # 1 segundo por vela
+        else:
+            threading.Timer(1.0, self._execute_simulation_step).start()
+    
+    def _execute_simulation_step(self):
+        """Ejecuta un paso de la simulación (procesa una vela)"""
+        try:
+            if not hasattr(self, 'simulation_mode') or not self.simulation_mode:
+                return
+            
+            if self.simulation_index >= len(self.df):
+                return
+            
+            # Obtener la vela actual
+            current_row = self.df.iloc[self.simulation_index]
+            current_timestamp = self.df.index[self.simulation_index]
+            
+            # Crear DataFrame hasta la vela actual (simulando progreso temporal)
+            df_current = self.df.iloc[:self.simulation_index + 1].copy()
+            
+            # Notificar a los callbacks (esto activa la detección de patrones y trading)
+            for cb in list(self._candle_update_callbacks):
+                try:
+                    cb(df_current)
+                except Exception as e:
+                    if self.debug_mode:
+                        self._log(f"Error en callback de simulación: {e}", 'red')
+            
+            # Incrementar índice para siguiente vela
+            self.simulation_index += 1
+            
+            # Programar siguiente paso
+            self._schedule_next_simulation_step()
+            
+        except Exception as e:
+            self._log(f"Error en paso de simulación: {e}", 'red')
     
     def test_tooltip_visibility(self):
         """Método de prueba para verificar si el tooltip está funcionando"""
@@ -339,8 +473,6 @@ class CandleStreamer:
         try:
             if callable(callback) and callback not in self._candle_update_callbacks:
                 self._candle_update_callbacks.append(callback)
-                if self.debug_mode:
-                    self._log(f"✅ Callback registrado: {callback.__name__ if hasattr(callback, '__name__') else str(callback)}", 'green')
         except Exception as e:
             if self.debug_mode:
                 self._log(f"Error registrando callback: {e}", 'red')
@@ -441,8 +573,6 @@ class CandleStreamer:
                             self._log(f"Error en detector de patrones: {e}", 'red')
                 
                 self.on_candle_update(pattern_detector_callback)
-                if self.debug_mode:
-                    self._log("🎯 Detector de patrones registrado", 'green')
             
             # Activar modo debug automáticamente
             self.set_debug_mode(True)
@@ -517,6 +647,8 @@ class CandleStreamer:
                             self.df = pd.concat([self.df, new_candle])
                         if self.debug_mode:
                             self._log(f"DataFrame actualizado. Total de velas: {len(self.df)}", 'gray')
+                        # Verificar auto-desconexión después de agregar nueva vela
+                        self._check_auto_disconnect()
                         # Actualizar CSV en background
                         self._thread_pool.submit(self._update_csv_threaded)
 
