@@ -310,12 +310,13 @@ class RiskManager:
                     operacion.valor_posicion = float(precio) * float(lote_size)
                     self.capital -= riesgo_dinero  # También reservar capital para SELL
 
-                # Registrar la estrategia en esta vela
-                self._registrar_estrategia_en_vela(timestamp, estrategia)
-                
                 self.operaciones_activas.append(operacion)
                 self._invalidar_cache()  # Invalidar cache después de agregar operación
                 self.last_error = None
+                
+                # CORRECCIÓN: Registrar la estrategia SOLO después de confirmar éxito
+                # Esto evita que se marque como "aplicada" si la operación falla
+                self._registrar_estrategia_en_vela(timestamp, estrategia)
                 
                 # Métricas de rendimiento
                 tiempo_operacion = time.time() - inicio_tiempo
@@ -333,6 +334,7 @@ class RiskManager:
             except Exception as e:
                 self.performance_metrics['errores_thread_safety'] += 1
                 logger.error(f"Error en abrir_operacion: {e}")
+                self.last_error = f"Error interno: {str(e)}"
                 return None
 
     def verificar_cierre_operaciones(self, precio_actual, timestamp):

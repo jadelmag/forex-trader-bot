@@ -408,6 +408,34 @@ class CandleStreamer:
         if self.debug_mode:
             self._log("Opacity reveal detenido", 'yellow')
 
+    def enable_incremental_reveal(self, enable=True):
+        """Activa o desactiva el modo de revelado incremental de velas.
+        
+        Args:
+            enable (bool): True para activar revelado incremental, False para mostrar todas las velas
+        """
+        try:
+            if enable:
+                # Activar modo revelado incremental
+                self.load_all_candles = False
+                if self.debug_mode:
+                    self._log(f"Modo revelado incremental ACTIVADO - Velas visibles iniciales: {self.visible_candles}", 'green')
+                # Iniciar el proceso de revelado automático
+                if not self._opacity_reveal_enabled:
+                    self.start_opacity_reveal()
+            else:
+                # Desactivar modo revelado incremental - mostrar todas las velas
+                self.load_all_candles = True
+                self.stop_opacity_reveal()
+                if self.debug_mode:
+                    self._log("Modo revelado incremental DESACTIVADO - Mostrando todas las velas", 'yellow')
+            
+            # Redibujar el gráfico con la nueva configuración
+            self._plot_last_candles()
+            
+        except Exception as e:
+            self._log(f"Error configurando modo revelado incremental: {e}", 'red')
+
     def _schedule_opacity_reveal_step(self):
         """Agenda el siguiente incremento de visibilidad en 5s."""
         if not self._opacity_reveal_enabled:
@@ -945,24 +973,49 @@ class CandleStreamer:
             _update_plot()
 
     def _plot_candles_with_opacity(self, df):
-        """Dibuja velas con control de opacidad - solo las primeras visible_candles son completamente visibles"""
-        if df.empty:
-            return
-            
+        """Dibuja velas con control de opacidad basado en visible_candles.
+        Las velas más allá de visible_candles tendrán alpha=0 (invisibles) a menos que load_all_candles sea True.
+        """
         try:
-            # Convertir fechas a números para matplotlib
-            dates = mdates.date2num(df.index.to_pydatetime())
+            # Limpiar patches anteriores
+            for patch in self._candle_patches:
+                try:
+                    if hasattr(patch, 'remove'):
+                        patch.remove()
+                    elif hasattr(patch, 'set_visible'):
+                        patch.set_visible(False)
+                except Exception:
+                    pass
+            self._candle_patches.clear()
+            
+            for patch in self._volume_patches:
+                try:
+                    if hasattr(patch, 'remove'):
+                        patch.remove()
+                    elif hasattr(patch, 'set_visible'):
+                        patch.set_visible(False)
+                except Exception:
+                    pass
+            self._volume_patches.clear()
+            
+            if df.empty:
+                return
+            
+            # Convertir índice a números de fecha para matplotlib
+            dates = mdates.date2num(df.index)
             
             # Calcular ancho de vela basado en el intervalo
             if len(dates) > 1:
-                width = (dates[1] - dates[0]) * 0.6
+                avg_interval = np.mean(np.diff(dates))
+                width = avg_interval * 0.6  # 60% del intervalo
             else:
-                # Para una sola vela, usar un ancho fijo
-                width = 0.0005
+                width = 0.0007  # Ancho por defecto para una sola vela
             
-            # Dibujar velas con opacidad controlada
-            for i, (idx, row) in enumerate(df.iterrows()):
+            # Dibujar cada vela
+            for i, (timestamp, row) in enumerate(df.iterrows()):
                 date_num = dates[i]
+                
+                # Extraer datos OHLCV
                 open_price = float(row['Open'])
                 high_price = float(row['High'])
                 low_price = float(row['Low'])
@@ -985,7 +1038,7 @@ class CandleStreamer:
                                                 color='black', linewidth=1, alpha=alpha, zorder=1)[0]
                 self._candle_patches.append(shadow_line)
                 
-                # Dibujar cuerpo de la vela
+                # Dibujar cuerpo de la vela con posicionamiento preciso
                 body_height = abs(close_price - open_price)
                 body_bottom = min(open_price, close_price)
                 

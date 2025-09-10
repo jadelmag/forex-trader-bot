@@ -284,6 +284,16 @@ class RiskManagerIntegration:
                 logger.warning(f"signal_data no es un diccionario: {type(signal_data)}")
                 return None
             
+            # Validar que contiene las claves requeridas
+            required_keys = ['senal', 'precio_actual', 'timestamp', 'atr_value', 'rr_ratio', 
+                           'risk_percent', 'estrategia_nombre', 'stop_loss_override', 
+                           'take_profit_override', 'atr_sl_multiplier', 'atr_tp_multiplier']
+            
+            for key in required_keys:
+                if key not in signal_data:
+                    logger.warning(f"Clave requerida '{key}' no encontrada en signal_data")
+                    return None
+            
             senal = signal_data['senal']
             precio_actual = signal_data['precio_actual']
             timestamp = signal_data['timestamp']
@@ -330,6 +340,18 @@ class RiskManagerIntegration:
                 self.metrics.errors_count += 1
                 return None
 
+            # LOGGING DETALLADO PARA DEBUG
+            if self.debug_mode:
+                logger.info(f"INTENTANDO ABRIR OPERACIÓN:")
+                logger.info(f"  Estrategia: {estrategia_nombre}")
+                logger.info(f"  Tipo: {tipo}")
+                logger.info(f"  Precio: {precio_actual}")
+                logger.info(f"  Stop Loss: {stop_loss:.5f}")
+                logger.info(f"  Take Profit: {take_profit:.5f}")
+                logger.info(f"  Riesgo %: {risk_percent}")
+                logger.info(f"  ATR: {atr_value}")
+                logger.info(f"  Timestamp: {timestamp}")
+
             # Crear operación usando RiskManager
             operacion = self.risk_manager.abrir_operacion(
                 tipo=tipo,
@@ -351,11 +373,17 @@ class RiskManagerIntegration:
                         logger.info(f"Trailing stop configurado para operación {operacion.id_operacion}")
 
                 self.metrics.signals_processed += 1
-                logger.info(f"Señal {tipo} procesada: {estrategia_nombre} - Precio: {precio_actual}, SL: {stop_loss:.5f}, TP: {take_profit:.5f}")
+                logger.info(f"✅ OPERACIÓN ABIERTA: {estrategia_nombre} - ID: {operacion.id} - Precio: {precio_actual}, SL: {stop_loss:.5f}, TP: {take_profit:.5f}")
             else:
                 self.metrics.errors_count += 1
                 error_msg = self.risk_manager.last_error or "Error desconocido"
-                logger.warning(f"Error procesando señal {tipo} {estrategia_nombre}: {error_msg}")
+                logger.error(f"❌ FALLÓ ABRIR OPERACIÓN: {estrategia_nombre} -> {error_msg}")
+                
+                # LOGGING ADICIONAL PARA DEBUG
+                if self.debug_mode:
+                    logger.error(f"  Capital disponible: {self.risk_manager.capital}")
+                    logger.error(f"  Operaciones activas: {self.risk_manager.get_operaciones_activas_count()}")
+                    logger.error(f"  Max operaciones: {self.risk_manager.max_operaciones_activas}")
 
             return operacion
 
