@@ -612,7 +612,9 @@ Ve a 👉 https://my.telegram.org
 
 
 ## TODO
-
+* No detecta patrones si no ve la gráfica completamente visible.
+  - Hacer menos restrictivo la detección de patrones, debe arriesgarse a detectar patrones con menos velas y menos datos para abrir ordenes de compra sin necesidad de ver la gráfica completamente visible.
+  - Cuando esté resuleto el problema anterior, ocultar las velas que no seleccione en binance_modal.py
 * Optimizar las estrategias [DOING] 
 * Conectar con metatrader [TODO]
 

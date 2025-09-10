@@ -77,12 +77,12 @@ class CandleStreamerConfigModal:
         )
         initial_money_entry.grid(row=3, column=1, sticky="w", pady=5, padx=5)
         
-        # Campo para velas visibles
+        # Campo para velas iniciales visibles
         ttk.Label(main_frame, text="Velas iniciales:").grid(row=4, column=0, sticky="w", pady=5)
         visible_candles_combo = ttk.Combobox(
             main_frame,
             textvariable=self.visible_candles_var,
-            values=["5", "6", "7", "8", "9", "10"],
+            values=["5", "6", "7", "8", "9", "10", "15", "20"],
             state="readonly",
             width=10
         )
@@ -160,7 +160,9 @@ class CandleStreamerConfigModal:
             "max_plot": int(self.max_candles_var.get()),
             "symbol": self.symbol_var.get(),
             "initial_money": initial_money,
-            "visible_candles": visible_candles
+            "visible_candles": visible_candles,
+            "auto_disconnect_after_candles": True,  # Flag para desconectar automáticamente
+            "target_candles": int(self.max_candles_var.get())  # Número de velas objetivo
         }
         self.on_connect(config)
         self.window.destroy()

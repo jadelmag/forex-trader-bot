@@ -25,6 +25,7 @@ class RLTrainingModal(tk.Toplevel):
 
         self._start_training_cb = start_training_callback
         self._training_thread = None
+        self._cancel_training = threading.Event()  # Flag to signal cancellation
 
         # Contenido
         container = ttk.Frame(self, padding=15)
@@ -37,7 +38,7 @@ class RLTrainingModal(tk.Toplevel):
         it_frame = ttk.Frame(container)
         it_frame.pack(fill="x", pady=(12, 8))
         ttk.Label(it_frame, text="Iteraciones:").pack(side="left")
-        self.iter_var = tk.StringVar(value="50000")
+        self.iter_var = tk.StringVar(value="1000")
         vcmd_int = (self.register(self._validate_positive_int), '%P')
         self.entry_iter = ttk.Entry(it_frame, textvariable=self.iter_var, width=10,
                                     validate='key', validatecommand=vcmd_int)
@@ -98,7 +99,19 @@ class RLTrainingModal(tk.Toplevel):
             pass
 
     def _on_cancel(self):
-        # No intentamos cancelar el hilo si está corriendo; solo cerramos el modal
+        # Si hay entrenamiento en curso, cancelarlo
+        if self._training_thread and self._training_thread.is_alive():
+            self._cancel_training.set()  # Signal cancellation
+            # Show cancellation message
+            self.progress_label.config(text="Cancelando entrenamiento...")
+            # Wait briefly for thread to finish
+            self.after(1000, self._force_close)
+        else:
+            # No training running, close immediately
+            self._force_close()
+    
+    def _force_close(self):
+        """Force close the modal after cancellation or normal completion."""
         try:
             self.grab_release()
         except Exception:
@@ -115,7 +128,7 @@ class RLTrainingModal(tk.Toplevel):
 
         # Deshabilitar acciones y comenzar progreso real
         self.btn_create.config(state='disabled')
-        self.btn_cancel.config(state='disabled')
+        # Keep cancel button enabled during training
         self.entry_iter.config(state='disabled')
         # Bloquear cierre de la ventana mientras entrena
         try:
@@ -152,7 +165,7 @@ class RLTrainingModal(tk.Toplevel):
                     except Exception:
                         pass
                     # Mantener botones deshabilitados y cerrar tras breve pausa
-                    self.after(800, self._on_cancel)
+                    self.after(800, self._force_close)
                 else:
                     messagebox.showerror("RL", error_msg or "Error en el entrenamiento")
                     # En error, permitir reintento
@@ -171,11 +184,14 @@ class RLTrainingModal(tk.Toplevel):
             except Exception:
                 pass
 
+        # Reset cancellation flag before starting new training
+        self._cancel_training.clear()
+        
         # Lanzar entrenamiento en segundo plano usando el callback entregado por el padre
         def _run_training():
             try:
-                # Pasamos callback de progreso para barra determinada
-                self._start_training_cb(iters, on_complete, on_progress)
+                # Pasamos callback de progreso para barra determinada y flag de cancelación
+                self._start_training_cb(iters, on_complete, on_progress, self._cancel_training)
             except Exception as e:
                 on_complete(success=False, error_msg=str(e))
 

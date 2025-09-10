@@ -4,489 +4,264 @@ import pandas as pd
 import numpy as np
 
 class CandlestickPatterns:
-    # Mapa canónico de patrones -> número de velas requeridas
     PATTERN_CANDLE_COUNTS = {
-        # 1 vela
-        'doji': 1,
-        'hammer': 1,
-        'hanging_man': 1,
-        'shooting_star': 1,
-        'spinning_top': 1,
-        'inverted_hammer': 1,
-        # 2 velas
-        'bullish_engulfing': 2,
-        'bearish_engulfing': 2,
-        'piercing_line': 2,
-        'dark_cloud_cover': 2,
-        'tweezer_top': 2,
-        'tweezer_bottom': 2,
-        # 3 velas
-        'morning_star': 3,
-        'evening_star': 3,
-        'three_white_soldiers': 3,
-        'three_black_crows': 3,
+        'doji': 1, 'hammer': 1, 'hanging_man': 1, 'shooting_star': 1, 'spinning_top': 1, 'inverted_hammer': 1,
+        'bullish_engulfing': 2, 'bearish_engulfing': 2, 'piercing_line': 2, 'dark_cloud_cover': 2,
+        'tweezer_top': 2, 'tweezer_bottom': 2,
+        'morning_star': 3, 'evening_star': 3, 'three_white_soldiers': 3, 'three_black_crows': 3
     }
 
-    def __init__(self, data, atr_period=14, trend_period=20, volatility_period=20):
-        """
-        data: DataFrame con columnas ['Open', 'High', 'Low', 'Close', 'Volume']
-        """
-        self.data = data.copy()
-        self._calculate_indicators(atr_period, trend_period, volatility_period)
-    
     @classmethod
     def get_patterns_by_candle_count(cls):
-        """Devuelve patrones agrupados por número de velas, filtrando solo los implementados.
-        Estructura: {1: [...], 2: [...], 3: [...], 'other': [...]}"""
+        """Agrupa patrones por número de velas que utilizan."""
         groups = {1: [], 2: [], 3: [], 'other': []}
-        for name, count in cls.PATTERN_CANDLE_COUNTS.items():
-            # Asegurar que el método exista en la clase
-            if hasattr(cls, name):
-                if count in (1, 2, 3):
-                    groups[count].append(name)
-                else:
-                    groups['other'].append(name)
-        # Además, incluir cualquier método público adicional que no esté en el mapa
-        for attr in dir(cls):
-            if attr.startswith('_'):
-                continue
-            if attr in groups[1] + groups[2] + groups[3] + groups['other']:
-                continue
-            # Solo considerar métodos que devuelvan un DataFrame con 'Signal' (no podemos comprobar aquí),
-            # pero al menos que sean callables y no sean utilidades estáticas conocidas
-            member = getattr(cls, attr)
-            if callable(member):
-                groups['other'].append(attr)
-        # Orden alfabético para consistencia
-        for k in groups:
-            groups[k] = sorted(groups[k])
+        
+        for pattern, count in cls.PATTERN_CANDLE_COUNTS.items():
+            if count in groups:
+                groups[count].append(pattern)
+            else:
+                groups['other'].append(pattern)
+        
         return groups
 
-    def _calculate_indicators(self, atr_period, trend_period, volatility_period):
-        """Calcula indicadores técnicos necesarios"""
-        df = self.data
+    def __init__(self, data, atr_period=14, trend_period=20, volatility_period=20, config=None):
+        self.data = data.copy()
         
-        # Calcular True Range (TR) de manera vectorizada
+        # Aplicar configuración personalizada si se proporciona
+        self.config = config or {}
+        
+        # Parámetros configurables con valores por defecto
+        self.atr_period = self.config.get('atr_period', atr_period)
+        self.trend_period = self.config.get('trend_period', trend_period)
+        self.volatility_period = self.config.get('volatility_period', volatility_period)
+        
+        # Parámetros específicos de patrones
+        self.doji_threshold = self.config.get('doji_threshold', 0.05)
+        self.tweezer_tolerance = self.config.get('tweezer_tolerance', 0.001)
+        self.min_confidence = self.config.get('min_confidence', 0.6)
+        self.partial_factor = self.config.get('partial_factor', 0.5)
+        self.hammer_body_ratio = self.config.get('hammer_body_ratio', 1.5)
+        self.shooting_star_ratio = self.config.get('shooting_star_ratio', 2.0)
+        self.spinning_top_ratio = self.config.get('spinning_top_ratio', 0.3)
+        self.marubozu_ratio = self.config.get('marubozu_ratio', 0.8)
+        
+        self._calculate_indicators(self.atr_period, self.trend_period, self.volatility_period)
+
+    # ---------------- Indicadores ----------------
+
+    def _calculate_indicators(self, atr_period, trend_period, volatility_period):
+        df = self.data
         high_low = df['High'] - df['Low']
         high_close_prev = abs(df['High'] - df['Close'].shift(1))
         low_close_prev = abs(df['Low'] - df['Close'].shift(1))
-        
         df['TR'] = pd.concat([high_low, high_close_prev, low_close_prev], axis=1).max(axis=1)
-        df['ATR'] = df['TR'].rolling(atr_period).mean()
-        
-        # Tendencia
+        df['ATR'] = df['TR'].ewm(span=atr_period, adjust=False).mean()
         df['SMA_20'] = df['Close'].rolling(trend_period).mean()
         df['SMA_50'] = df['Close'].rolling(50).mean()
-        
-        # RSI
         delta = df['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
         rs = gain / loss
         df['RSI'] = 100 - (100 / (1 + rs))
-        
-        # Volatilidad
         df['Volatility'] = df['Close'].pct_change().rolling(volatility_period).std()
-        
-        # Volume analysis
         if 'Volume' in df.columns:
             df['Volume_MA'] = df['Volume'].rolling(20).mean()
             df['Volume_Ratio'] = df['Volume'] / df['Volume_MA']
         else:
             df['Volume_MA'] = 1.0
             df['Volume_Ratio'] = 1.0
-        
-        # Llenar NaN values
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         for col in numeric_cols:
             df[col] = df[col].bfill().ffill()
-        
         self.data = df
 
     def _get_pattern_confidence(self, pattern_type, current_idx):
-        """Calcula la confianza del patrón (0.0 a 1.0)"""
         df = self.data
-        
-        if current_idx >= len(df):
-            return 0.5
+        # Si current_idx es un array/series, usar el primer elemento
+        if hasattr(current_idx, '__len__') and len(current_idx) > 0:
+            idx = 0  # Usar el primer índice para calcular confianza general
+        elif isinstance(current_idx, (int, np.integer)):
+            idx = current_idx
+        else:
+            idx = 0
             
+        if idx >= len(df):
+            return 0.5
         confidence = 1.0
-        
-        # Volume confirmation
-        if df['Volume_Ratio'].iloc[current_idx] < 0.8:
+        if df['Volume_Ratio'].iloc[idx] < 0.8:
             confidence *= 0.7
-        
-        # Volatility adjustment
-        current_volatility = df['Volatility'].iloc[current_idx]
-        if current_volatility > df['Volatility'].rolling(50).mean().iloc[current_idx] * 1.5:
+        current_volatility = df['Volatility'].iloc[idx]
+        if current_volatility > df['Volatility'].rolling(50).mean().iloc[idx] * 1.5:
             confidence *= 0.6
-        
         return max(0.1, min(1.0, confidence))
 
-    # ---------------- Todos los métodos requeridos ----------------
-    
-    def doji(self, threshold=0.05):
+    # ---------------- Señales anticipadas ----------------
+
+    def _get_partial_signal(self, pattern_type, condition_mask, partial_factor=None, direction=1):
+        df = self.data.copy()
+        if partial_factor is None:
+            partial_factor = self.partial_factor
+        partial_close = df['Open'] + (df['High'] - df['Open']) * partial_factor
+        partial_cond = condition_mask.copy()
+        partial_cond = partial_cond & ((direction == 1) & (partial_close > df['Open']) |
+                                       (direction == -1) & (partial_close < df['Open']))
+        confidence = self._get_pattern_confidence(pattern_type, df.index) * 0.7
+        signal = np.where(partial_cond, confidence * direction, 0)
+        return signal
+
+    # ---------------- Patrones de 1 vela ----------------
+
+    def doji(self, threshold=None):
+        if threshold is None:
+            threshold = self.doji_threshold
         df = self.data.copy()
         body = abs(df['Close'] - df['Open'])
         total_range = df['High'] - df['Low']
-        
-        signals = []
-        for i in range(len(df)):
-            if total_range.iloc[i] > 0:
-                body_ratio = body.iloc[i] / total_range.iloc[i]
-                confidence = self._get_pattern_confidence('neutral', i)
-                signal = confidence if body_ratio <= threshold else 0
-            else:
-                signal = 0
-            signals.append(signal)
-        
-        df['Signal'] = signals
+        cond = body / total_range <= threshold
+        df['Signal'] = self._get_partial_signal('neutral', cond, direction=1)
         return df
 
     def hammer(self):
         df = self.data.copy()
-        signals = []
-        
-        for i in range(len(df)):
-            body = abs(df['Close'].iloc[i] - df['Open'].iloc[i])
-            lower_shadow = min(df['Open'].iloc[i], df['Close'].iloc[i]) - df['Low'].iloc[i]
-            upper_shadow = df['High'].iloc[i] - max(df['Open'].iloc[i], df['Close'].iloc[i])
-            
-            is_hammer = (lower_shadow >= 1.5 * body and upper_shadow <= body and body > 0)
-            confidence = self._get_pattern_confidence('bullish', i)
-            
-            signal = confidence if is_hammer else 0
-            signals.append(signal)
-        
-        df['Signal'] = signals
+        body = abs(df['Close'] - df['Open'])
+        lower_shadow = np.minimum(df['Open'], df['Close']) - df['Low']
+        upper_shadow = df['High'] - np.maximum(df['Open'], df['Close'])
+        cond = (lower_shadow >= self.hammer_body_ratio*body) & (upper_shadow <= body) & (body > 0)
+        df['Signal'] = self._get_partial_signal('bullish', cond, direction=1)
         return df
 
     def hanging_man(self):
         df = self.data.copy()
-        signals = []
-        
-        for i in range(len(df)):
-            body = abs(df['Close'].iloc[i] - df['Open'].iloc[i])
-            lower_shadow = min(df['Open'].iloc[i], df['Close'].iloc[i]) - df['Low'].iloc[i]
-            upper_shadow = df['High'].iloc[i] - max(df['Open'].iloc[i], df['Close'].iloc[i])
-            
-            is_pattern = (lower_shadow >= 1.5 * body and upper_shadow <= body and body > 0)
-            confidence = self._get_pattern_confidence('bearish', i)
-            
-            signal = -confidence if is_pattern else 0
-            signals.append(signal)
-        
-        df['Signal'] = signals
+        body = abs(df['Close'] - df['Open'])
+        lower_shadow = np.minimum(df['Open'], df['Close']) - df['Low']
+        upper_shadow = df['High'] - np.maximum(df['Open'], df['Close'])
+        cond = (lower_shadow >= self.hammer_body_ratio*body) & (upper_shadow <= body) & (body > 0)
+        df['Signal'] = self._get_partial_signal('bearish', cond, direction=-1)
         return df
 
     def shooting_star(self):
         df = self.data.copy()
-        signals = []
-        
-        for i in range(len(df)):
-            body = abs(df['Close'].iloc[i] - df['Open'].iloc[i])
-            upper_shadow = df['High'].iloc[i] - max(df['Open'].iloc[i], df['Close'].iloc[i])
-            lower_shadow = min(df['Open'].iloc[i], df['Close'].iloc[i]) - df['Low'].iloc[i]
-            
-            is_pattern = (upper_shadow >= 2 * body and lower_shadow <= body)
-            confidence = self._get_pattern_confidence('bearish', i)
-            
-            signal = -confidence if is_pattern else 0
-            signals.append(signal)
-        
-        df['Signal'] = signals
+        body = abs(df['Close'] - df['Open'])
+        upper_shadow = df['High'] - np.maximum(df['Open'], df['Close'])
+        lower_shadow = np.minimum(df['Open'], df['Close']) - df['Low']
+        cond = (upper_shadow >= self.shooting_star_ratio*body) & (lower_shadow <= body)
+        df['Signal'] = self._get_partial_signal('bearish', cond, direction=-1)
         return df
 
     def spinning_top(self):
         df = self.data.copy()
-        signals = []
-        
-        for i in range(len(df)):
-            body = abs(df['Close'].iloc[i] - df['Open'].iloc[i])
-            total_range = df['High'].iloc[i] - df['Low'].iloc[i]
-            upper_shadow = df['High'].iloc[i] - max(df['Open'].iloc[i], df['Close'].iloc[i])
-            lower_shadow = min(df['Open'].iloc[i], df['Close'].iloc[i]) - df['Low'].iloc[i]
-            
-            is_pattern = (body <= total_range * 0.3 and upper_shadow >= body and lower_shadow >= body)
-            confidence = self._get_pattern_confidence('neutral', i)
-            
-            signal = confidence if is_pattern else 0
-            signals.append(signal)
-        
-        df['Signal'] = signals
+        body = abs(df['Close'] - df['Open'])
+        total_range = df['High'] - df['Low']
+        upper_shadow = df['High'] - np.maximum(df['Open'], df['Close'])
+        lower_shadow = np.minimum(df['Open'], df['Close']) - df['Low']
+        cond = (body <= total_range*self.spinning_top_ratio) & (upper_shadow >= body) & (lower_shadow >= body)
+        df['Signal'] = self._get_partial_signal('neutral', cond, direction=1)
         return df
 
     def inverted_hammer(self):
         df = self.data.copy()
-        signals = []
-        
-        for i in range(len(df)):
-            body = abs(df['Close'].iloc[i] - df['Open'].iloc[i])
-            upper_shadow = df['High'].iloc[i] - max(df['Open'].iloc[i], df['Close'].iloc[i])
-            lower_shadow = min(df['Open'].iloc[i], df['Close'].iloc[i]) - df['Low'].iloc[i]
-            
-            is_pattern = (upper_shadow >= 2 * body and lower_shadow <= body)
-            confidence = self._get_pattern_confidence('bullish', i)
-            
-            signal = confidence if is_pattern else 0
-            signals.append(signal)
-        
-        df['Signal'] = signals
+        body = abs(df['Close'] - df['Open'])
+        upper_shadow = df['High'] - np.maximum(df['Open'], df['Close'])
+        lower_shadow = np.minimum(df['Open'], df['Close']) - df['Low']
+        cond = (upper_shadow >= self.shooting_star_ratio*body) & (lower_shadow <= body)
+        df['Signal'] = self._get_partial_signal('bullish', cond, direction=1)
         return df
 
     def marubozu(self):
         df = self.data.copy()
-        signals = []
-        
-        for i in range(len(df)):
-            body = abs(df['Close'].iloc[i] - df['Open'].iloc[i])
-            total_range = df['High'].iloc[i] - df['Low'].iloc[i]
-            upper_shadow = df['High'].iloc[i] - max(df['Open'].iloc[i], df['Close'].iloc[i])
-            lower_shadow = min(df['Open'].iloc[i], df['Close'].iloc[i]) - df['Low'].iloc[i]
-            
-            is_marubozu = (body > total_range * 0.8 and upper_shadow <= body * 0.1 and lower_shadow <= body * 0.1)
-            
-            if is_marubozu:
-                signal = 1 if df['Close'].iloc[i] > df['Open'].iloc[i] else -1
-                confidence = self._get_pattern_confidence('trend', i)
-                signal *= confidence
-            else:
-                signal = 0
-                
-            signals.append(signal)
-        
-        df['Signal'] = signals
+        body = abs(df['Close'] - df['Open'])
+        total_range = df['High'] - df['Low']
+        upper_shadow = df['High'] - np.maximum(df['Open'], df['Close'])
+        lower_shadow = np.minimum(df['Open'], df['Close']) - df['Low']
+        cond = (body > total_range*self.marubozu_ratio) & (upper_shadow <= body*0.1) & (lower_shadow <= body*0.1)
+        df['Signal'] = self._get_partial_signal('trend', cond, direction=np.sign(df['Close'] - df['Open']))
         return df
+
+    # ---------------- Patrones de 2 velas ----------------
 
     def bullish_engulfing(self):
         df = self.data.copy()
-        signals = []
-        
-        for i in range(len(df)):
-            if i < 1:
-                signals.append(0)
-                continue
-                
-            current_bullish = df['Close'].iloc[i] > df['Open'].iloc[i]
-            prev_bearish = df['Close'].iloc[i-1] < df['Open'].iloc[i-1]
-            engulfing = (df['Open'].iloc[i] < df['Close'].iloc[i-1] and df['Close'].iloc[i] > df['Open'].iloc[i-1])
-            
-            confidence = self._get_pattern_confidence('bullish', i)
-            signal = confidence if (current_bullish and prev_bearish and engulfing) else 0
-            signals.append(signal)
-        
-        df['Signal'] = signals
+        cond = (df['Close'] > df['Open']) & (df['Close'].shift(1) < df['Open'].shift(1)) & \
+               (df['Open'] < df['Close'].shift(1)) & (df['Close'] > df['Open'].shift(1))
+        df['Signal'] = self._get_partial_signal('bullish', cond, direction=1)
         return df
 
     def bearish_engulfing(self):
         df = self.data.copy()
-        signals = []
-        
-        for i in range(len(df)):
-            if i < 1:
-                signals.append(0)
-                continue
-                
-            current_bearish = df['Close'].iloc[i] < df['Open'].iloc[i]
-            prev_bullish = df['Close'].iloc[i-1] > df['Open'].iloc[i-1]
-            engulfing = (df['Open'].iloc[i] > df['Close'].iloc[i-1] and df['Close'].iloc[i] < df['Open'].iloc[i-1])
-            
-            confidence = self._get_pattern_confidence('bearish', i)
-            signal = -confidence if (current_bearish and prev_bullish and engulfing) else 0
-            signals.append(signal)
-        
-        df['Signal'] = signals
+        cond = (df['Close'] < df['Open']) & (df['Close'].shift(1) > df['Open'].shift(1)) & \
+               (df['Open'] > df['Close'].shift(1)) & (df['Close'] < df['Open'].shift(1))
+        df['Signal'] = self._get_partial_signal('bearish', cond, direction=-1)
         return df
 
     def piercing_line(self):
         df = self.data.copy()
-        signals = []
-        
-        for i in range(len(df)):
-            if i < 1:
-                signals.append(0)
-                continue
-                
-            prev_bearish = df['Close'].iloc[i-1] < df['Open'].iloc[i-1]
-            current_bullish = df['Close'].iloc[i] > df['Open'].iloc[i]
-            opens_below = df['Open'].iloc[i] < df['Close'].iloc[i-1]
-            closes_above_mid = df['Close'].iloc[i] > (df['Open'].iloc[i-1] + df['Close'].iloc[i-1]) / 2
-            
-            confidence = self._get_pattern_confidence('bullish', i)
-            signal = confidence if (prev_bearish and current_bullish and opens_below and closes_above_mid) else 0
-            signals.append(signal)
-        
-        df['Signal'] = signals
+        cond = (df['Close'] > df['Open']) & (df['Close'].shift(1) < df['Open'].shift(1)) & \
+               (df['Open'] < df['Close'].shift(1)) & (df['Close'] > (df['Open'].shift(1) + df['Close'].shift(1))/2)
+        df['Signal'] = self._get_partial_signal('bullish', cond, direction=1)
         return df
 
     def dark_cloud_cover(self):
         df = self.data.copy()
-        signals = []
-        
-        for i in range(len(df)):
-            if i < 1:
-                signals.append(0)
-                continue
-                
-            prev_bullish = df['Close'].iloc[i-1] > df['Open'].iloc[i-1]
-            current_bearish = df['Close'].iloc[i] < df['Open'].iloc[i]
-            opens_above = df['Open'].iloc[i] > df['Close'].iloc[i-1]
-            closes_below_mid = df['Close'].iloc[i] < (df['Open'].iloc[i-1] + df['Close'].iloc[i-1]) / 2
-            
-            confidence = self._get_pattern_confidence('bearish', i)
-            signal = -confidence if (prev_bullish and current_bearish and opens_above and closes_below_mid) else 0
-            signals.append(signal)
-        
-        df['Signal'] = signals
+        cond = (df['Close'] < df['Open']) & (df['Close'].shift(1) > df['Open'].shift(1)) & \
+               (df['Open'] > df['Close'].shift(1)) & (df['Close'] < (df['Open'].shift(1) + df['Close'].shift(1))/2)
+        df['Signal'] = self._get_partial_signal('bearish', cond, direction=-1)
         return df
 
     def morning_star(self):
         df = self.data.copy()
-        signals = []
-        
-        for i in range(len(df)):
-            if i < 2:
-                signals.append(0)
-                continue
-                
-            first_bearish = df['Close'].iloc[i-2] < df['Open'].iloc[i-2]
-            third_bullish = df['Close'].iloc[i] > df['Open'].iloc[i]
-            middle_small = abs(df['Close'].iloc[i-1] - df['Open'].iloc[i-1]) < abs(df['Close'].iloc[i-2] - df['Open'].iloc[i-2]) / 2
-            
-            confidence = self._get_pattern_confidence('bullish', i)
-            signal = confidence if (first_bearish and middle_small and third_bullish) else 0
-            signals.append(signal)
-        
-        df['Signal'] = signals
+        cond = (df['Close'].shift(2) < df['Open'].shift(2)) & \
+               (abs(df['Close'].shift(1) - df['Open'].shift(1)) < abs(df['Close'].shift(2) - df['Open'].shift(2))/2) & \
+               (df['Close'] > df['Open'])
+        df['Signal'] = self._get_partial_signal('bullish', cond, direction=1)
         return df
 
     def evening_star(self):
         df = self.data.copy()
-        signals = []
-        
-        for i in range(len(df)):
-            if i < 2:
-                signals.append(0)
-                continue
-                
-            first_bullish = df['Close'].iloc[i-2] > df['Open'].iloc[i-2]
-            third_bearish = df['Close'].iloc[i] < df['Open'].iloc[i]
-            middle_small = abs(df['Close'].iloc[i-1] - df['Open'].iloc[i-1]) < abs(df['Close'].iloc[i-2] - df['Open'].iloc[i-2]) / 2
-            
-            confidence = self._get_pattern_confidence('bearish', i)
-            signal = -confidence if (first_bullish and middle_small and third_bearish) else 0
-            signals.append(signal)
-        
-        df['Signal'] = signals
+        cond = (df['Close'].shift(2) > df['Open'].shift(2)) & \
+               (abs(df['Close'].shift(1) - df['Open'].shift(1)) < abs(df['Close'].shift(2) - df['Open'].shift(2))/2) & \
+               (df['Close'] < df['Open'])
+        df['Signal'] = self._get_partial_signal('bearish', cond, direction=-1)
         return df
+
+    def tweezer_top(self, tolerance=None):
+        if tolerance is None:
+            tolerance = self.tweezer_tolerance
+        df = self.data.copy()
+        cond = (df['Close'] < df['Open']) & (df['Close'].shift(1) > df['Open'].shift(1)) & \
+               (abs(df['High'] - df['High'].shift(1)) <= df['High'] * tolerance)
+        df['Signal'] = self._get_partial_signal('bearish', cond, direction=-1)
+        return df
+
+    def tweezer_bottom(self, tolerance=None):
+        if tolerance is None:
+            tolerance = self.tweezer_tolerance
+        df = self.data.copy()
+        cond = (df['Close'] > df['Open']) & (df['Close'].shift(1) < df['Open'].shift(1)) & \
+               (abs(df['Low'] - df['Low'].shift(1)) <= df['Low'] * tolerance)
+        df['Signal'] = self._get_partial_signal('bullish', cond, direction=1)
+        return df
+
+    # ---------------- Patrones de 3 velas ----------------
 
     def three_white_soldiers(self):
         df = self.data.copy()
-        signals = []
-        
-        for i in range(len(df)):
-            if i < 2:
-                signals.append(0)
-                continue
-                
-            cond = (
-                (df['Close'].iloc[i] > df['Open'].iloc[i]) &
-                (df['Close'].iloc[i-1] > df['Open'].iloc[i-1]) &
-                (df['Close'].iloc[i-2] > df['Open'].iloc[i-2]) &
-                (df['Close'].iloc[i] > df['Close'].iloc[i-1]) &
-                (df['Close'].iloc[i-1] > df['Close'].iloc[i-2])
-            )
-            
-            confidence = self._get_pattern_confidence('bullish', i)
-            signal = confidence if cond else 0
-            signals.append(signal)
-        
-        df['Signal'] = signals
+        cond = (df['Close'] > df['Open']) & (df['Close'].shift(1) > df['Open'].shift(1)) & \
+               (df['Close'].shift(2) > df['Open'].shift(2)) & (df['Close'] > df['Close'].shift(1)) & (df['Close'].shift(1) > df['Close'].shift(2))
+        df['Signal'] = self._get_partial_signal('bullish', cond, direction=1)
         return df
 
     def three_black_crows(self):
         df = self.data.copy()
-        signals = []
-        
-        for i in range(len(df)):
-            if i < 2:
-                signals.append(0)
-                continue
-                
-            cond = (
-                (df['Close'].iloc[i] < df['Open'].iloc[i]) &
-                (df['Close'].iloc[i-1] < df['Open'].iloc[i-1]) &
-                (df['Close'].iloc[i-2] < df['Open'].iloc[i-2]) &
-                (df['Close'].iloc[i] < df['Close'].iloc[i-1]) &
-                (df['Close'].iloc[i-1] < df['Close'].iloc[i-2])
-            )
-            
-            confidence = self._get_pattern_confidence('bearish', i)
-            signal = -confidence if cond else 0
-            signals.append(signal)
-        
-        df['Signal'] = signals
+        cond = (df['Close'] < df['Open']) & (df['Close'].shift(1) < df['Open'].shift(1)) & \
+               (df['Close'].shift(2) < df['Open'].shift(2)) & (df['Close'] < df['Close'].shift(1)) & (df['Close'].shift(1) < df['Close'].shift(2))
+        df['Signal'] = self._get_partial_signal('bearish', cond, direction=-1)
         return df
 
-    def tweezer_top(self, tolerance=0.001):
-        df = self.data.copy()
-        signals = []
+    # ---------------- Señales combinadas ----------------
 
-        for i in range(len(df)):
-            if i < 1:
-                signals.append(0)
-                continue
-
-            prev_bullish = df['Close'].iloc[i-1] > df['Open'].iloc[i-1]
-            current_bearish = df['Close'].iloc[i] < df['Open'].iloc[i]
-
-            # Máximos casi iguales (ajustado por tolerancia relativa)
-            tops_aligned = abs(df['High'].iloc[i] - df['High'].iloc[i-1]) <= df['High'].iloc[i] * tolerance
-
-            is_pattern = prev_bullish and current_bearish and tops_aligned
-            confidence = self._get_pattern_confidence('bearish', i)
-
-            signal = -confidence if is_pattern else 0
-            signals.append(signal)
-
-        df['Signal'] = signals
-        return df
-
-    def tweezer_bottom(self, tolerance=0.001):
-        df = self.data.copy()
-        signals = []
-
-        for i in range(len(df)):
-            if i < 1:
-                signals.append(0)
-                continue
-
-            prev_bearish = df['Close'].iloc[i-1] < df['Open'].iloc[i-1]
-            current_bullish = df['Close'].iloc[i] > df['Open'].iloc[i]
-
-            # Mínimos casi iguales (ajustado por tolerancia relativa)
-            bottoms_aligned = abs(df['Low'].iloc[i] - df['Low'].iloc[i-1]) <= df['Low'].iloc[i] * tolerance
-
-            is_pattern = prev_bearish and current_bullish and bottoms_aligned
-            confidence = self._get_pattern_confidence('bullish', i)
-
-            signal = confidence if is_pattern else 0
-            signals.append(signal)
-
-        df['Signal'] = signals
-        return df
-
-    # ---------------- Métodos de compatibilidad ----------------
-    
     def detect_all_patterns(self):
         df = self.data.copy()
-        pattern_methods = [
-            'doji', 'hammer', 'hanging_man', 'shooting_star', 'spinning_top', 
-            'inverted_hammer', 'marubozu', 'bullish_engulfing', 'bearish_engulfing',
-            'piercing_line', 'dark_cloud_cover', 'morning_star', 'evening_star',
-            'three_white_soldiers', 'three_black_crows', 'tweezer_top', 'tweezer_bottom'
-        ]
-        
+        pattern_methods = list(self.PATTERN_CANDLE_COUNTS.keys())
         for method in pattern_methods:
             try:
                 result_df = getattr(self, method)()
@@ -494,27 +269,28 @@ class CandlestickPatterns:
             except Exception as e:
                 print(f"Error calculando {method}: {e}")
                 df[method] = 0
-        
         return df
 
-    def combined_signal_optimized(self):
+    def combined_signal_optimized(self, min_patterns=None, min_confidence=None):
+        if min_patterns is None:
+            min_patterns = self.config.get('min_patterns', 1)
+        if min_confidence is None:
+            min_confidence = self.min_confidence
         df = self.detect_all_patterns()
-        
-        # Señal combinada
-        bullish_patterns = ['hammer', 'bullish_engulfing', 'piercing_line', 'morning_star', 'three_white_soldiers', 'tweezer_top']
-        bearish_patterns = ['hanging_man', 'bearish_engulfing', 'dark_cloud_cover', 'evening_star', 'three_black_crows', 'tweezer_bottom']
-        
-        df['Bullish_Score'] = df[bullish_patterns].sum(axis=1)
-        df['Bearish_Score'] = df[bearish_patterns].sum(axis=1)
-        
+        bullish_patterns = ['hammer', 'bullish_engulfing', 'piercing_line', 'morning_star', 'three_white_soldiers', 'tweezer_bottom']
+        bearish_patterns = ['hanging_man', 'bearish_engulfing', 'dark_cloud_cover', 'evening_star', 'three_black_crows', 'tweezer_top']
+        df['Bullish_Score'] = df[bullish_patterns].apply(lambda row: sum(val for val in row if val >= min_confidence), axis=1)
+        df['Bearish_Score'] = df[bearish_patterns].apply(lambda row: sum(val for val in row if val <= -min_confidence), axis=1)
         df['Final_Signal'] = 0
-        df.loc[df['Bullish_Score'] > 0.5, 'Final_Signal'] = 1
-        df.loc[df['Bearish_Score'] < -0.5, 'Final_Signal'] = -1
-        
+        df.loc[df['Bullish_Score'] >= min_patterns, 'Final_Signal'] = 1
+        df.loc[df['Bearish_Score'] >= min_patterns, 'Final_Signal'] = -1
         return df
 
-    def get_trading_signals(self, min_confidence=0.6, min_patterns=1):
-        """Método simplificado para compatibilidad"""
-        df = self.combined_signal_optimized()
+    def get_trading_signals(self, min_confidence=None, min_patterns=None):
+        if min_confidence is None:
+            min_confidence = self.min_confidence
+        if min_patterns is None:
+            min_patterns = self.config.get('min_patterns', 1)
+        df = self.combined_signal_optimized(min_patterns=min_patterns, min_confidence=min_confidence)
         df['Trading_Signal'] = df['Final_Signal']
         return df

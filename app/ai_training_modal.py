@@ -680,10 +680,37 @@ class AITrainingModal(tk.Toplevel):
                     rr = 0.0
                 seleccion_fx[metodo] = {"tipo": "forex", "riesgo": riesgo, "rr": rr}
 
-        seleccion_candle = []
+        seleccion_candle = {}
         for metodo, var in getattr(self, 'candle_vars', {}).items():
             if var.get():
-                seleccion_candle.append(metodo)
+                # Para candle strategies, incluir parámetros de optimización
+                seleccion_candle[metodo] = {
+                    "tipo": "candle",
+                    "optimize_params": True,  # Indicar que se deben optimizar parámetros
+                    "param_ranges": {
+                        # Parámetros de detección de patrones
+                        "atr_period": (10, 30),
+                        "trend_period": (15, 50),
+                        "volatility_period": (15, 50),
+                        "doji_threshold": (0.01, 0.1),
+                        "tweezer_tolerance": (0.0005, 0.005),
+                        "min_confidence": (0.3, 0.9),
+                        "partial_factor": (0.3, 0.7),
+                        "hammer_body_ratio": (1.0, 3.0),
+                        "shooting_star_ratio": (1.5, 4.0),
+                        "spinning_top_ratio": (0.1, 0.5),
+                        "marubozu_ratio": (0.7, 0.95),
+                        # Parámetros de salida
+                        "use_signal_change": [True, False],
+                        "use_stop_loss": [True, False],
+                        "use_take_profit": [True, False],
+                        "use_trailing_stop": [True, False],
+                        "use_pattern_reversal": [True, False],
+                        "atr_sl_multiplier": (1.0, 3.0),
+                        "atr_tp_multiplier": (2.0, 5.0),
+                        "atr_trailing_multiplier": (1.5, 3.0)
+                    }
+                }
 
         # Los patrones de velas ahora están incluidos en CandleStrategies
         seleccion_patterns = []

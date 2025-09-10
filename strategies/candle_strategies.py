@@ -32,11 +32,13 @@ class CandleExitConfig:
 
 
 class CandleStrategies:
-    def __init__(self, data):
+    def __init__(self, data, config=None):
         """
         data: DataFrame con columnas ['Open','High','Low','Close']
+        config: Diccionario opcional con configuración para CandlestickPatterns
         """
         self.data = data.copy()
+        self.config = config or {}
         
         # Asegurar que tenemos las columnas necesarias
         required_cols = ['Open', 'High', 'Low', 'Close']
@@ -48,7 +50,8 @@ class CandleStrategies:
         if 'Volume' not in self.data.columns:
             self.data['Volume'] = 1.0
             
-        self.patterns = CandlestickPatterns(self.data)
+        # Pasar configuración a CandlestickPatterns
+        self.patterns = CandlestickPatterns(self.data, config=self.config)
 
     def _safe_join(self, main_df, new_df, new_columns):
         """Une dataframes de manera segura evitando superposición de columnas"""

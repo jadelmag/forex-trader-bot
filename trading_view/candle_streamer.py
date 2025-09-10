@@ -21,6 +21,7 @@ import queue
 URL = "wss://stream.binance.com:9443/ws"
 DEFAULT_INTERVAL = '1m'
 DEFAULT_MAX_PLOT = 500
+DEFAULT_CANDLE_REVEAL_INTERVAL = 5000  # 5 segundos en milisegundos
 
 class CandleStreamer:
     ALLOWED_INTERVALS = ['1s','5s','10s','20s','30s','40s','50s','1m','2m','3m','4m','5m','6m','7m','8m','9m','10m']
@@ -48,7 +49,8 @@ class CandleStreamer:
             
         # Configurar velas visibles
         self.visible_candles = max(1, min(visible_candles, max_plot))
-        self.load_all_candles = False  # Flag para cargar todas las velas - inicialmente False para permitir revelado incremental
+        self.load_all_candles = True  # Flag para cargar todas las velas al aceptar config
+        self.progressive_reveal = True  # Revelado progresivo siempre activado
 
         self.url = URL
         self.ws = None
@@ -62,6 +64,15 @@ class CandleStreamer:
         self.reconnect_delay = 1  # Initial delay in seconds
         self.max_reconnect_delay = 300  # Maximum delay (5 minutes)
         self.reconnect_thread = None
+        
+        # Auto-disconnect parameters
+        self.auto_disconnect_enabled = False
+        self.target_candles = 0
+        self.auto_disconnect_triggered = False
+        
+        # Simulation parameters
+        self.simulation_mode = False
+        self.simulation_index = 0
         
         # Thread pool for background tasks
         self._thread_pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix="CandleStreamer")
@@ -103,7 +114,7 @@ class CandleStreamer:
         # Temporizador para "revelar" velas ocultas (aumentar opacidad)
         self._opacity_reveal_enabled = False
         self._opacity_reveal_timer_id = None
-        self._opacity_reveal_interval_ms = 5000  # cada 5 segundos
+        self._opacity_reveal_interval_ms = DEFAULT_CANDLE_REVEAL_INTERVAL
         
         # Si se proporciona un frame padre, usamos FigureCanvasTkAgg
         if self.parent_frame:
@@ -170,6 +181,131 @@ class CandleStreamer:
         """Activa o desactiva el debug específico para hover"""
         self.debug_hover = debug
         self._log(f"Debug hover {'activado' if debug else 'desactivado'}", 'blue')
+    
+    def configure_auto_disconnect(self, enabled: bool, target_candles: int = 0):
+        """Configura la desconexión automática después de alcanzar el número objetivo de velas"""
+        self.auto_disconnect_enabled = enabled
+        self.target_candles = target_candles
+        self.auto_disconnect_triggered = False
+        # No mostrar mensaje de configuración para mantener el log limpio
+    
+    def _check_auto_disconnect(self):
+        """Verifica si se debe desconectar automáticamente"""
+        if not self.auto_disconnect_enabled or self.auto_disconnect_triggered:
+            return
+        
+        current_candle_count = len(self.df) if hasattr(self, 'df') and self.df is not None else 0
+        
+        if current_candle_count >= self.target_candles:
+            self.auto_disconnect_triggered = True
+            # Desconectar después de un breve delay para permitir que se complete el procesamiento
+            if hasattr(self, 'parent_frame') and self.parent_frame:
+                self.parent_frame.after(1000, self._perform_auto_disconnect)  # 1 segundo de delay
+            else:
+                threading.Timer(1.0, self._perform_auto_disconnect).start()
+    
+    def _perform_auto_disconnect(self):
+        """Ejecuta la desconexión automática y comienza simulación con datos CSV"""
+        try:
+            current_candle_count = len(self.df) if hasattr(self, 'df') and self.df is not None else 0
+            self._log(f"✅ Descarga completada: se alcanzaron {current_candle_count} velas", 'green')
+            
+            # Deshabilitar reconexiones automáticas
+            self.max_reconnect_attempts = 0
+            
+            # Cerrar WebSocket de forma segura
+            if hasattr(self, 'ws') and self.ws:
+                try:
+                    self.ws.close()
+                except Exception:
+                    pass
+            
+            # Esperar a que termine el hilo WebSocket
+            if hasattr(self, 'thread') and self.thread and self.thread.is_alive():
+                self.thread.join(timeout=2.0)
+            
+            # Cancelar timer de reconexión si existe
+            if hasattr(self, 'reconnect_thread') and self.reconnect_thread:
+                try:
+                    self.reconnect_thread.cancel()
+                except Exception:
+                    pass
+            
+            # Iniciar simulación con datos descargados
+            self._start_csv_simulation()
+            
+        except Exception as e:
+            self._log(f"Error durante la desconexión: {e}", 'red')
+    
+    def _start_csv_simulation(self):
+        """Inicia simulación progresiva con los datos CSV descargados"""
+        try:
+            if self.df is None or self.df.empty:
+                self._log("No hay datos para simular", 'red')
+                return
+            
+            # Cambiar a modo simulación
+            self.running = False  # WebSocket desconectado
+            self.simulation_mode = True
+            self.simulation_index = 0
+            
+            # Iniciar simulación progresiva
+            self._schedule_next_simulation_step()
+            
+        except Exception as e:
+            self._log(f"Error iniciando simulación CSV: {e}", 'red')
+    
+    def _schedule_next_simulation_step(self):
+        """Programa el siguiente paso de la simulación"""
+        if not hasattr(self, 'simulation_mode') or not self.simulation_mode:
+            return
+        
+        if not hasattr(self, 'simulation_index'):
+            self.simulation_index = 0
+        
+        # Verificar si hay más datos para simular
+        if self.simulation_index >= len(self.df):
+            self._log("Simulación completada", 'green')
+            return
+        
+        # Programar siguiente paso
+        if hasattr(self, 'parent_frame') and self.parent_frame:
+            self.parent_frame.after(1000, self._execute_simulation_step)  # 1 segundo por vela
+        else:
+            threading.Timer(1.0, self._execute_simulation_step).start()
+    
+    def _execute_simulation_step(self):
+        """Ejecuta un paso de la simulación (procesa una vela)"""
+        try:
+            if not hasattr(self, 'simulation_mode') or not self.simulation_mode:
+                return
+            
+            if self.simulation_index >= len(self.df):
+                return
+            
+            # Obtener la vela actual
+            current_row = self.df.iloc[self.simulation_index]
+            current_timestamp = self.df.index[self.simulation_index]
+            
+            # Crear DataFrame hasta la vela actual (simulando progreso temporal)
+            df_current = self.df.iloc[:self.simulation_index + 1].copy()
+            
+            # Notificar a los callbacks (esto activa la detección de patrones y trading)
+            for cb in list(self._candle_update_callbacks):
+                try:
+                    cb(df_current)
+                except Exception as e:
+                    if self.debug_mode:
+                        self._log(f"Error en callback de simulación: {e}", 'red')
+            
+            # Incrementar índice para siguiente vela
+            self.simulation_index += 1
+            
+            # Programar siguiente paso
+            self._schedule_next_simulation_step()
+            
+        except Exception as e:
+            self._log(f"Error en paso de simulación: {e}", 'red')
     
     def test_tooltip_visibility(self):
         """Método de prueba para verificar si el tooltip está funcionando"""
@@ -369,9 +505,8 @@ class CandleStreamer:
             if self.debug_mode:
                 self._log(f"Error registrando callback: {e}", 'red')
 
-    def _notify_candle_update(self):
-        """Notifica a los suscriptores entregando un DataFrame que incluye la vela
-        actual (si existe)."""
+    def _notify_candle_update_callbacks(self):
+        """Notifica a todos los callbacks registrados sobre actualizaciones de velas"""
         try:
             df_current = self.df.copy()
             if self.current_candle is not None:
@@ -380,12 +515,17 @@ class CandleStreamer:
                 if not df_current.empty:
                     df_current.sort_index(inplace=True)
             
-            # LOGGING PARA DETECCIÓN DE PATRONES: Verificar datos OHLC
+            # Logging detallado para verificar datos enviados a detectores de patrones
             if self.debug_mode and not df_current.empty:
-                last_candles = df_current.tail(5)  # Últimas 5 velas para análisis
-                self._log(f"DATOS PARA PATRONES - Total velas: {len(df_current)}", 'blue')
-                for i, (timestamp, row) in enumerate(last_candles.iterrows()):
-                    self._log(f"  Vela {i+1}: {timestamp} | O:{row['Open']:.5f} H:{row['High']:.5f} L:{row['Low']:.5f} C:{row['Close']:.5f}", 'gray')
+                self._log(f"DATOS PARA DETECCIÓN DE PATRONES:", 'cyan')
+                self._log(f"  - Total velas disponibles: {len(df_current)}", 'cyan')
+                self._log(f"  - Rango temporal: {df_current.index[0]} a {df_current.index[-1]}", 'cyan')
+                
+                # Mostrar OHLC de las últimas 5 velas para verificar calidad de datos
+                last_5 = df_current.tail(5)
+                self._log(f"  - Últimas 5 velas OHLC:", 'cyan')
+                for idx, row in last_5.iterrows():
+                    self._log(f"    {idx}: O={row['Open']:.5f} H={row['High']:.5f} L={row['Low']:.5f} C={row['Close']:.5f}", 'cyan')
             
             for cb in list(self._candle_update_callbacks):
                 try:
@@ -397,6 +537,85 @@ class CandleStreamer:
         except Exception as e:
             if self.debug_mode:
                 self._log(f"Error en notificación de vela: {e}", 'red')
+
+    def setup_pattern_detection(self, risk_manager=None, candle_strategies=None):
+        """Configura automáticamente la detección de patrones y estrategias"""
+        try:
+            if self.debug_mode:
+                self._log("🔧 Configurando detección de patrones...", 'cyan')
+            
+            # Importar las clases necesarias
+            from patterns.candlestickpatterns import CandlestickPatterns
+            from strategies.candle_strategies import CandleStrategies
+            
+            # Crear detector de patrones si no se proporciona
+            if candle_strategies is None and hasattr(self, 'df') and not self.df.empty:
+                candle_strategies = CandleStrategies(self.df)
+                if self.debug_mode:
+                    self._log("📊 CandleStrategies inicializado", 'green')
+            
+            # Registrar callback para detección de patrones
+            if candle_strategies:
+                def pattern_detector_callback(df):
+                    try:
+                        if df.empty or len(df) < 5:
+                            return
+                        
+                        # Actualizar datos en CandleStrategies
+                        candle_strategies.data = df
+                        
+                        # Detectar patrón marubozu_trend
+                        result = candle_strategies.marubozu_trend()
+                        if not result.empty and 'Signal' in result.columns:
+                            last_signal = result['Signal'].iloc[-1]
+                            if last_signal != 0:
+                                timestamp = df.index[-1]
+                                price = df['Close'].iloc[-1]
+                                
+                                # Explicar el significado de la señal
+                                if last_signal == 1:
+                                    self._log(f"🟢 SEÑAL COMPRA: marubozu_trend = {last_signal} (Patrón indica subida)", 'green')
+                                elif last_signal == -1:
+                                    self._log(f"🔴 SEÑAL VENTA: marubozu_trend = {last_signal} (Patrón indica bajada - cerrar posiciones)", 'red')
+                                else:
+                                    self._log(f"⚪ SEÑAL NEUTRA: marubozu_trend = {last_signal}", 'yellow')
+                                
+                                # Abrir operación si hay risk_manager
+                                if risk_manager and last_signal > 0:  # Señal de compra
+                                    stop_loss = price * 0.99  # 1% stop loss
+                                    take_profit = price * 1.02  # 2% take profit
+                                    
+                                    operacion = risk_manager.abrir_operacion(
+                                        tipo='BUY',
+                                        precio=price,
+                                        timestamp=timestamp,
+                                        stop_loss=stop_loss,
+                                        take_profit=take_profit,
+                                        estrategia='candle_marubozu_trend'
+                                    )
+                                    
+                                    if operacion:
+                                        self._log(f"💰 COMPRA marubozu_trend: Operación {operacion.id} [BUY] @ {price:.5f}", 'green')
+                                        self._log(f"📊 Capital restante: ${risk_manager.capital:,.2f}", 'blue')
+                                        self._log(f"🎯 Stop Loss: {stop_loss:.5f} | Take Profit: {take_profit:.5f}", 'blue')
+                                    else:
+                                        error_msg = risk_manager.last_error or "Error desconocido"
+                                        self._log(f"❌ OPEN BUY FALLÓ (candle_marubozu_trend) -> {error_msg}", 'red')
+                                        
+                    except Exception as e:
+                        if self.debug_mode:
+                            self._log(f"Error en detector de patrones: {e}", 'red')
+                
+                self.on_candle_update(pattern_detector_callback)
+            
+            # Activar modo debug automáticamente
+            self.set_debug_mode(True)
+            
+            if self.debug_mode:
+                self._log("✅ Detección de patrones configurada correctamente", 'green')
+                
+        except Exception as e:
+            self._log(f"❌ Error configurando detección de patrones: {e}", 'red')
 
     @classmethod
     def _load_or_fetch_symbols(cls):
@@ -462,6 +681,8 @@ class CandleStreamer:
                             self.df = pd.concat([self.df, new_candle])
                         if self.debug_mode:
                             self._log(f"DataFrame actualizado. Total de velas: {len(self.df)}", 'gray')
+                        # Verificar auto-desconexión después de agregar nueva vela
+                        self._check_auto_disconnect()
                         # Actualizar CSV en background
                         self._thread_pool.submit(self._update_csv_threaded)
 
@@ -478,7 +699,7 @@ class CandleStreamer:
                     # Programar refresco del gráfico en lugar de refrescar inmediatamente
                     self._schedule_refresh()
                     # Notificar actualización de vela
-                    self._notify_candle_update()
+                    self._notify_candle_update_callbacks()
                 else:
                     prev_high = self.current_candle['High']
                     prev_low = self.current_candle['Low']
@@ -496,7 +717,7 @@ class CandleStreamer:
                     # Programar refresco del gráfico
                     self._schedule_refresh()
                     # Notificar actualización intra-intervalo
-                    self._notify_candle_update()
+                    self._notify_candle_update_callbacks()
         except Exception as e:
             self._log(f"Error en _add_trade_to_candle: {e}", 'red')
 
@@ -801,13 +1022,12 @@ class CandleStreamer:
                 close_price = float(row['Close'])
                 volume = float(row['Volume'])
                 
-                # Control de opacidad: si load_all_candles es True, todas las velas son visibles
-                # Si no, solo las primeras visible_candles son visibles para el revelado incremental
-                if self.load_all_candles:
-                    alpha = 1.0  # Todas las velas visibles para detección de patrones
+                # Control de opacidad: solo las primeras visible_candles son completamente visibles
+                # El resto comienzan con opacidad 0 si progressive_reveal está activado
+                if self.progressive_reveal and i >= self.visible_candles:
+                    alpha = 0.0  # Velas ocultas inicialmente
                 else:
-                    # Revelado incremental: solo las primeras visible_candles son visibles
-                    alpha = 1.0 if i < self.visible_candles else 0.0
+                    alpha = 1.0  # Velas visibles
                 
                 # Color de la vela
                 is_bullish = close_price >= open_price
@@ -823,12 +1043,12 @@ class CandleStreamer:
                 body_bottom = min(open_price, close_price)
                 
                 if body_height > 0:
-                    # Vela con cuerpo - posicionada exactamente en timestamp sin desplazamiento
+                    # Vela con cuerpo - centrada en su timestamp
                     candle_rect = Rectangle((date_num - width/2, body_bottom), width, body_height,
                                           facecolor=candle_color, edgecolor='black', 
                                           alpha=alpha, linewidth=0.5, zorder=2)
                 else:
-                    # Doji - línea horizontal centrada en timestamp
+                    # Doji - línea horizontal centrada en su timestamp
                     candle_rect = Rectangle((date_num - width/2, open_price - 0.00001), width, 0.00002,
                                           facecolor=candle_color, edgecolor='black',
                                           alpha=alpha, linewidth=0.5, zorder=2)
@@ -1670,10 +1890,11 @@ class CandleStreamer:
         # Precargar histórico en hilo separado para no bloquear UI
         self._thread_pool.submit(self._seed_historical_threaded, min(self.max_plot, 500))
         
-        # Iniciar revelado progresivo de velas (opacidad) automáticamente
+        # Iniciar revelado progresivo de velas (opacidad) si está habilitado
         try:
-            if not getattr(self, '_opacity_reveal_enabled', False):
+            if self.progressive_reveal and not getattr(self, '_opacity_reveal_enabled', False):
                 self.start_opacity_reveal()
+                self._log("Revelado progresivo activado - velas aparecerán cada 5 segundos", 'green')
         except Exception as _e:
             if self.debug_mode:
                 self._log(f"No se pudo iniciar opacity reveal automáticamente: {_e}", 'yellow')

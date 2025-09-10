@@ -37,7 +37,7 @@ class EstrategiasModal(tk.Toplevel):
 
         # Centrar ventana sobre el padre
         self.update_idletasks()
-        w = 600
+        w = 700  # Aumentar ancho para acomodar ambos botones
         # Altura total del modal: área de lista (400) + controles inferiores
         h_total = 500
         # Usar gui_parent.root para obtener coordenadas si es necesario
@@ -235,8 +235,17 @@ class EstrategiasModal(tk.Toplevel):
             )
             btn_candle_sel.pack(side="left", padx=5)
             btn_candle_desel.pack(side="left", padx=5)
-
-            # Botón para cargar configuraciones desde carpeta config/
+            
+            # Botón para configurar detección de patrones globalmente
+            btn_pattern_detection = ttk.Button(
+                btn_candle_frame,
+                text="Configurar detección",
+                command=self._open_pattern_detection_config,
+                width=20
+            )
+            btn_pattern_detection.pack(side="left", padx=5)
+            
+            # Botón para cargar configuraciones desde archivos JSON
             try:
                 all_exist = self._can_load_all_candle_configs(self.estrategias_candle)
             except Exception:
@@ -250,10 +259,6 @@ class EstrategiasModal(tk.Toplevel):
             )
             self.btn_load_candle_configs.pack(side="left", padx=5)
 
-            # Encabezado para Candle Strategies (con configuración personalizada)
-            ttk.Label(self.scrollable_frame, text="Estrategia", width=20, anchor="w").grid(row=start_row+2, column=0, padx=5)
-            ttk.Label(self.scrollable_frame, text="Configuración", width=15).grid(row=start_row+2, column=1, padx=5)
-            ttk.Label(self.scrollable_frame, text="", width=15).grid(row=start_row+2, column=2, padx=5)
             ttk.Label(self.scrollable_frame, text="Velas", width=10, anchor="center").grid(row=start_row+2, column=3, padx=5)
 
             # Estrategias Candle (con configuración personalizada)
@@ -504,16 +509,27 @@ class EstrategiasModal(tk.Toplevel):
                 else:
                     # Para Candle Strategies: incluir configuración si es Custom
                     if ctrl["tipo"] == "candle":
+                        config = None  # Inicializar config por defecto
                         try:
+                            # Primero aplicar configuración global de detección si existe
+                            base_config = self._get_default_candle_config(nombre)
+                            if hasattr(self, 'global_pattern_config') and self.global_pattern_config:
+                                # Fusionar configuración global de detección con config base
+                                base_config.update(self.global_pattern_config)
+                            
                             if ctrl.get("config_type") and ctrl["config_type"].get() == "Custom":
-                                config = ctrl.get("custom_config") or self._get_default_candle_config(nombre)
-                                def on_save(config_dict):
-                                    try:
-                                        ctrl["custom_config"] = config_dict
-                                        # Log de verificación de guardado
-                                        self._log_to_parent(f"Configuración guardada para {nombre}: {list(config_dict.keys())}", 'white')
-                                    except Exception:
-                                        pass
+                                # Para Custom, usar config individual que puede sobrescribir la global
+                                custom_config = ctrl.get("custom_config") or base_config
+                                # Asegurar que la config global esté incluida
+                                if hasattr(self, 'global_pattern_config') and self.global_pattern_config:
+                                    merged_config = dict(base_config)
+                                    merged_config.update(custom_config)
+                                    config = merged_config
+                                else:
+                                    config = custom_config
+                            else:
+                                # Para Default, usar config base + global
+                                config = base_config
                         except Exception:
                             config = None
                         seleccion[nombre] = {"tipo": "candle", "config": config}
@@ -1127,6 +1143,7 @@ class EstrategiasModal(tk.Toplevel):
 
         def cfg(use_ts, sl, tp, ts_mult=None, use_sc=True, use_sl=True, use_tp=True, use_pr=False):
             return {
+                # Parámetros de CandleExitConfig (salidas)
                 "use_signal_change": use_sc,
                 "use_stop_loss": use_sl,
                 "use_take_profit": use_tp,
@@ -1135,6 +1152,20 @@ class EstrategiasModal(tk.Toplevel):
                 "atr_sl_multiplier": sl,
                 "atr_tp_multiplier": tp,
                 "atr_trailing_multiplier": ts_mult if ts_mult is not None else 1.5,
+                
+                # Parámetros de CandlestickPatterns (detección)
+                "doji_threshold": 0.05,
+                "tweezer_tolerance": 0.001,
+                "min_confidence": 0.6,
+                "partial_factor": 0.5,
+                "hammer_body_ratio": 1.5,
+                "shooting_star_ratio": 2.0,
+                "spinning_top_ratio": 0.3,
+                "marubozu_ratio": 0.8,
+                "atr_period": 14,
+                "trend_period": 20,
+                "volatility_period": 20,
+                "min_patterns": 1
             }
 
         if name in reversal:
@@ -1178,3 +1209,193 @@ class EstrategiasModal(tk.Toplevel):
         except Exception:
             pass
         return sorted(set(strategies))
+
+    def _open_pattern_detection_config(self):
+        """Abre modal de configuración global para detección de patrones."""
+        try:
+            # Posicionar a la derecha del modal principal
+            self.update_idletasks()
+            x = self.winfo_rootx() + self.winfo_width() + 10
+            y = self.winfo_rooty()
+
+            # Obtener configuración actual global o usar defaults
+            current_config = getattr(self, 'global_pattern_config', None) or self._get_default_pattern_detection_config()
+
+            def on_save(config_dict):
+                try:
+                    # Guardar configuración global
+                    self.global_pattern_config = config_dict
+                    self._log_to_parent(f"Configuración de detección guardada: {len(config_dict)} parámetros", 'green')
+                except Exception as e:
+                    self._log_to_parent(f"Error guardando configuración: {e}", 'red')
+
+            PatternDetectionModal(self, current_config, on_save, x, y)
+        except Exception as e:
+            print(f"Error opening pattern detection modal: {e}")
+
+    def _get_default_pattern_detection_config(self) -> dict:
+        """Devuelve configuración por defecto para detección de patrones."""
+        return {
+            # Parámetros de detección de patrones
+            "doji_threshold": 0.05,
+            "tweezer_tolerance": 0.001,
+            "min_confidence": 0.6,
+            "partial_factor": 0.5,
+            "hammer_body_ratio": 1.5,
+            "shooting_star_ratio": 2.0,
+            "spinning_top_ratio": 0.3,
+            "marubozu_ratio": 0.8,
+            
+            # Parámetros de indicadores técnicos
+            "atr_period": 14,
+            "trend_period": 20,
+            "volatility_period": 20,
+            
+            # Parámetros adicionales de patrones
+            "engulfing_min_body_ratio": 1.2,
+            "harami_max_body_ratio": 0.8,
+            "star_gap_threshold": 0.001,
+            "three_methods_trend_strength": 0.7
+        }
+
+
+class PatternDetectionModal(tk.Toplevel):
+    """Modal de configuración global para detección de patrones."""
+    def __init__(self, parent, current_config: dict, on_save, pos_x: int, pos_y: int):
+        super().__init__(parent)
+        self.parent = parent
+        self.on_save = on_save
+        self.title("Configuración de Detección de Patrones")
+        self.resizable(False, False)
+        self.grab_set()
+
+        # Posicionar
+        self.geometry(f"420x500+{pos_x}+{pos_y}")
+
+        # Título
+        ttk.Label(self, text="Parámetros de Detección de Patrones", font=("Arial", 12, "bold")).pack(pady=(10, 5))
+        ttk.Label(self, text="Estos parámetros afectan a TODAS las estrategias de velas", 
+                 font=("Arial", 9), foreground="blue").pack(pady=(0, 10))
+
+        # Área scrollable
+        scroll_wrap = tk.Frame(self)
+        scroll_wrap.pack(fill="both", expand=True, padx=10, pady=5)
+        canvas = tk.Canvas(scroll_wrap, highlightthickness=0)
+        vscroll = ttk.Scrollbar(scroll_wrap, orient="vertical", command=canvas.yview)
+        content = tk.Frame(canvas)
+        content.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=content, anchor="nw")
+        canvas.configure(yscrollcommand=vscroll.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        vscroll.pack(side="right", fill="y")
+
+        # Activar scroll con rueda
+        content.bind("<Enter>", lambda e: self._bind_mousewheel(canvas))
+        content.bind("<Leave>", lambda e: self._unbind_mousewheel())
+
+        # Contenedor centrado
+        content.grid_columnconfigure(0, weight=1)
+        content.grid_columnconfigure(2, weight=1)
+        inner_container = tk.Frame(content)
+        inner_container.grid(row=0, column=1, sticky="n", padx=15, pady=5)
+
+        # Validación para números flotantes
+        vcmd_float = (self.register(self._validate_float), '%P')
+
+        # Campos numéricos
+        self.num_fields = {}
+        def add_num(title, key, help_text=""):
+            frame = tk.Frame(inner_container)
+            frame.pack(fill="x", pady=6)
+            ttk.Label(frame, text=title, font=("Arial", 9, "bold")).pack(anchor="w")
+            var = tk.StringVar(value=str(current_config.get(key, 0.0)))
+            entry = tk.Entry(frame, textvariable=var, validate="key", validatecommand=vcmd_float, width=15)
+            entry.pack(anchor="w", pady=2)
+            if help_text:
+                ttk.Label(frame, text=help_text, foreground="#666", font=("Arial", 8)).pack(anchor="w")
+            self.num_fields[key] = var
+
+        # Separador: Parámetros de Patrones
+        ttk.Separator(inner_container, orient='horizontal').pack(fill="x", pady=10)
+        ttk.Label(inner_container, text="🕯️ Parámetros de Patrones", font=("Arial", 10, "bold")).pack(anchor="w")
+        
+        add_num("Doji Threshold", "doji_threshold", "Sensibilidad para detectar patrones doji (0.01-0.1)")
+        add_num("Tweezer Tolerance", "tweezer_tolerance", "Tolerancia para patrones tweezer (0.0005-0.005)")
+        add_num("Hammer Body Ratio", "hammer_body_ratio", "Ratio cuerpo/sombra para hammer (1.0-3.0)")
+        add_num("Shooting Star Ratio", "shooting_star_ratio", "Ratio sombra superior para shooting star (1.5-4.0)")
+        add_num("Spinning Top Ratio", "spinning_top_ratio", "Ratio para spinning top (0.1-0.5)")
+        add_num("Marubozu Ratio", "marubozu_ratio", "Ratio para marubozu (0.7-0.95)")
+
+        # Separador: Parámetros de Confianza
+        ttk.Separator(inner_container, orient='horizontal').pack(fill="x", pady=10)
+        ttk.Label(inner_container, text="📊 Parámetros de Confianza", font=("Arial", 10, "bold")).pack(anchor="w")
+        
+        add_num("Min Confidence", "min_confidence", "Confianza mínima para señales (0.3-0.9)")
+        add_num("Partial Factor", "partial_factor", "Factor para señales parciales (0.3-0.7)")
+
+        # Separador: Indicadores Técnicos
+        ttk.Separator(inner_container, orient='horizontal').pack(fill="x", pady=10)
+        ttk.Label(inner_container, text="📈 Indicadores Técnicos", font=("Arial", 10, "bold")).pack(anchor="w")
+        
+        add_num("ATR Period", "atr_period", "Período para ATR (10-30)")
+        add_num("Trend Period", "trend_period", "Período para tendencia (15-50)")
+        add_num("Volatility Period", "volatility_period", "Período para volatilidad (15-50)")
+
+        # Separador: Patrones Avanzados
+        ttk.Separator(inner_container, orient='horizontal').pack(fill="x", pady=10)
+        ttk.Label(inner_container, text="🎯 Patrones Avanzados", font=("Arial", 10, "bold")).pack(anchor="w")
+        
+        add_num("Engulfing Min Body Ratio", "engulfing_min_body_ratio", "Ratio mínimo para engulfing (1.0-2.0)")
+        add_num("Harami Max Body Ratio", "harami_max_body_ratio", "Ratio máximo para harami (0.5-1.0)")
+        add_num("Star Gap Threshold", "star_gap_threshold", "Umbral de gap para star patterns (0.0005-0.01)")
+        add_num("Three Methods Trend Strength", "three_methods_trend_strength", "Fuerza de tendencia para three methods (0.5-0.9)")
+
+        # Botones
+        btn_frame = tk.Frame(self)
+        btn_frame.pack(pady=10)
+        
+        ttk.Button(btn_frame, text="Guardar", command=self._save_config, width=12).pack(side="left", padx=5)
+        ttk.Button(btn_frame, text="Cancelar", command=self.destroy, width=12).pack(side="left", padx=5)
+        ttk.Button(btn_frame, text="Restaurar", command=self._restore_defaults, width=12).pack(side="left", padx=5)
+
+    def _validate_float(self, value):
+        """Valida que el valor sea un número flotante válido."""
+        if value == "":
+            return True
+        try:
+            float(value)
+            return True
+        except ValueError:
+            return False
+
+    def _bind_mousewheel(self, canvas):
+        """Activa scroll con rueda del ratón."""
+        def on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        canvas.bind_all("<MouseWheel>", on_mousewheel)
+
+    def _unbind_mousewheel(self):
+        """Desactiva scroll con rueda del ratón."""
+        self.unbind_all("<MouseWheel>")
+
+    def _save_config(self):
+        """Guarda la configuración y cierra el modal."""
+        try:
+            config = {}
+            for key, var in self.num_fields.items():
+                try:
+                    config[key] = float(var.get() or 0.0)
+                except ValueError:
+                    config[key] = 0.0
+            
+            self.on_save(config)
+            self.destroy()
+        except Exception as e:
+            print(f"Error saving pattern detection config: {e}")
+
+    def _restore_defaults(self):
+        """Restaura valores por defecto."""
+        defaults = self.parent._get_default_pattern_detection_config()
+        for key, var in self.num_fields.items():
+            if key in defaults:
+                var.set(str(defaults[key]))

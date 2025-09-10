@@ -1369,7 +1369,7 @@ class GUIPrincipal:
     # ---------------- Funciones RL ----------------
     def entrenar_rl(self):
         # Mostrar modal de entrenamiento
-        def _start_training(iterations: int, on_complete, on_progress=None):
+        def _start_training(iterations: int, on_complete, on_progress=None, cancel_event=None):
             try:
                 # Logger thread-safe hacia el log inferior
                 def _log_ts(msg: str, color='white'):
@@ -1384,23 +1384,32 @@ class GUIPrincipal:
                     patrones=[],
                     log_fn=lambda m: _log_ts(m, 'cyan')
                 )
-                self.rl_agent.entrenar(timesteps=iterations, progress_cb=on_progress)
-                # Avisar al modal que el entrenamiento terminó OK
-                on_complete(success=True)
-                # Aviso visual de fin de entrenamiento
-                try:
-                    self.root.after(0, lambda: messagebox.showinfo("IA", "Entrenamiento completado y modelo guardado"))
-                except Exception:
-                    pass
-                # Tras finalizar el entrenamiento, aplicar automáticamente las señales RL
-                # para calcular y reflejar Beneficios/Pérdidas en la barra superior.
-                try:
-                    self.root.after(0, lambda: (
-                        self.log("Aplicando señales RL post-entrenamiento...", color='yellow'),
-                        self.aplicar_senales_rl()
-                    ))
-                except Exception:
-                    pass
+                success = self.rl_agent.entrenar(timesteps=iterations, progress_cb=on_progress, cancel_event=cancel_event)
+                
+                # Check if training was cancelled
+                if cancel_event and cancel_event.is_set():
+                    on_complete(success=False, error_msg="Entrenamiento cancelado por el usuario")
+                    return
+                
+                # Avisar al modal que el entrenamiento terminó OK o con error
+                on_complete(success=success)
+                
+                # Only show completion message and apply signals if successful
+                if success:
+                    # Aviso visual de fin de entrenamiento
+                    try:
+                        self.root.after(0, lambda: messagebox.showinfo("IA", "Entrenamiento completado y modelo guardado"))
+                    except Exception:
+                        pass
+                    # Tras finalizar el entrenamiento, aplicar automáticamente las señales RL
+                    # para calcular y reflejar Beneficios/Pérdidas en la barra superior.
+                    try:
+                        self.root.after(0, lambda: (
+                            self.log("Aplicando señales RL post-entrenamiento...", color='yellow'),
+                            self.aplicar_senales_rl()
+                        ))
+                    except Exception:
+                        pass
             except Exception as e:
                 on_complete(success=False, error_msg=str(e))
 
@@ -1523,10 +1532,10 @@ class GUIPrincipal:
                 self.candle_streamer.symbol = config["symbol"]
                 self.candle_streamer.csv_file = os.path.join(self.candle_streamer.csv_folder, f'{self.candle_streamer.symbol}_data.csv')
             
-            # Activar modo revelado incremental por defecto para mostrar velas progresivamente
-            # Esto hará que inicialmente solo se muestren las velas especificadas en visible_candles
-            # y luego se revelen más cada 5 segundos
-            self.candle_streamer.enable_incremental_reveal(enable=True)
+            # Configurar auto-desconexión si está habilitada
+            if config.get("auto_disconnect_after_candles", False):
+                target_candles = config.get("target_candles", 500)
+                self.candle_streamer.configure_auto_disconnect(True, target_candles)
             
             # Iniciar el streamer en un hilo separado
             def start_streamer():
@@ -1876,6 +1885,7 @@ class GUIPrincipal:
                     
                     # Procesar señales
                     if signals is not None and not signals.empty and signals.iloc[-1] == 1:  # Señal de compra
+                        self.log(f"🟢 SEÑAL COMPRA: {strategy_name} = 1 (Estrategia indica subida)", color="green")
                         if self._procesar_senal_compra_risk_manager(last_candle, strategy_name, risk, rr_ratio):
                             forex_orders_opened += 1
                         
@@ -1922,16 +1932,57 @@ class GUIPrincipal:
                             # Usar ExecSignal si está disponible; fallback a Signal
                             if 'ExecSignal' in df_res.columns:
                                 signals = df_res['ExecSignal']
-                            else:
-                                signals = df_res['Signal'] if 'Signal' in df_res.columns else None
 
                             if signals is not None and not signals.empty and len(signals) > 0:
                                 current_signal = signals.iloc[-1]
+                                # Procesar primero señales de salida (-1)
+                                if current_signal == -1:
+                                    # Explicar el significado de la señal
+                                    self.log(f"🔴 SEÑAL DE VENTA/CIERRE: {strategy_name} = {current_signal} (Patrón indica bajada)", color="red")
+                                    try:
+                                        # Cerrar operaciones abiertas por esta estrategia en RiskManager
+                                        cerradas = self.risk_integration.procesar_senal(
+                                            senal=-1,
+                                            precio_actual=float(last_candle['Close']),
+                                            timestamp=last_candle.name if hasattr(last_candle, 'name') else datetime.now(),
+                                            rr_ratio=2.0,
+                                            estrategia_nombre=f"candle_{strategy_name}",
+                                            sync_mode=True
+                                        )
+                                        # Registrar cierres y actualizar métricas/labels si aplica
+                                        if isinstance(cerradas, list) and cerradas:
+                                            for op in cerradas:
+                                                try:
+                                                    profit = op.calcular_profit(op.precio_cierre)
+                                                    color = 'green' if profit >= 0 else 'red'
+                                                    self.log(f"CIERRE POR ESTRATEGIA {op.estrategia}: {op} | Profit: ${profit:+.2f}", color=color)
+                                                    if profit >= 0:
+                                                        self.beneficios = float(getattr(self, 'beneficios', 0.0) or 0.0) + float(profit)
+                                                        self.label_beneficios.config(text=f"Beneficios: {self.beneficios:,.2f}$")
+                                                    else:
+                                                        self.perdidas = float(getattr(self, 'perdidas', 0.0) or 0.0) + float(abs(profit))
+                                                        self.label_perdidas.config(text=f"Pérdidas: {self.perdidas:,.2f}$")
+                                                except Exception:
+                                                    pass
+                                            # Refrescar equity/cash tras cierres
+                                            try:
+                                                self._actualizar_dinero_visible(float(last_candle['Close']))
+                                                cash_now = float(getattr(self.risk_manager, 'capital', self.dinero_ficticio))
+                                                self.label_cash.config(text=f"Dinero: {cash_now:,.2f}$")
+                                                self.root.update_idletasks()
+                                            except Exception:
+                                                pass
+                                    except Exception as e:
+                                        self.log(f"Error cerrando por estrategia {strategy_name}: {str(e)}", color='red')
+                                
+                                # Luego procesar potenciales entradas (+1)
                                 if current_signal == 1:
-                                    self.log(f"SEÑAL DETECTADA: {strategy_name} = {current_signal}", color="cyan")
+                                    # Explicar el significado de la señal
+                                    self.log(f"🟢 SEÑAL COMPRA: {strategy_name} = {current_signal} (Patrón indica subida)", color="green")
                                     if self._procesar_senal_compra_risk_manager(last_candle, f"candle_{strategy_name}", 0.01, 2.0):
                                         candle_orders_opened += 1
                                 elif current_signal != 0:
+                                    # Señales distintas de 1 y -1 (por ejemplo, 2 o valores especiales)
                                     self.log(f"Señal {strategy_name}: {current_signal}", color="gray")
                             else:
                                 self.log(f"No hay señales válidas para {strategy_name}", color="gray")
@@ -1955,6 +2006,7 @@ class GUIPrincipal:
                             df_res = metodo()
                             signals = df_res['Signal'] if 'Signal' in df_res.columns else None
                             if signals is not None and not signals.empty and signals.iloc[-1] == 1:
+                                self.log(f"🟢 SEÑAL COMPRA: {pattern_name} = 1 (Patrón indica subida)", color="green")
                                 if self._procesar_senal_compra_risk_manager(last_candle, f"pattern_{pattern_name}", 0.01, 2.0):
                                     pattern_orders_opened += 1
                     except Exception as e:
@@ -1998,9 +2050,10 @@ class GUIPrincipal:
             )
 
             if operacion:
-                # Log consistente con mensajes existentes
-                strategy_str = strategy_name.replace("_", " ").title()
-                self.log(f"Orden de COMPRA abierta {strategy_str}: {price:.5f} (TP: {operacion.take_profit:.5f}, SL: {operacion.stop_loss:.5f})", color='green')
+                # Log consistente con formato mejorado
+                strategy_display = strategy_name.replace("candle_", "").replace("pattern_", "").replace("_", " ")
+                self.log(f"💰 COMPRA {strategy_display}: Operación {operacion.id} [BUY] @ {price:.5f}", color='green')
+                self.log(f"🎯 Stop Loss: {operacion.stop_loss:.5f} | Take Profit: {operacion.take_profit:.5f}", color='blue')
                 # Refrescar dinero visible y label Dinero
                 try:
                     self._actualizar_dinero_visible(price)
