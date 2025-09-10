@@ -1,0 +1,13 @@
+Simulación en progreso - Velas procesadas: 10
+Señal doji_indecision: -1
+Señal doji_reversal_strategy: -1
+Señal doji_indecision: -1
+Señal doji_reversal_strategy: -1
+Señal doji_indecision: -1
+Señal doji_reversal_strategy: -1
+Señal doji_indecision: -1
+Señal doji_reversal_strategy: -1
+Señal doji_indecision: -1
+Señal doji_reversal_strategy: -1
+Señal doji_indecision: -1
+Señal doji_reversal_strategy: -1
