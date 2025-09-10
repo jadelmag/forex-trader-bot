@@ -21,6 +21,7 @@ import queue
 URL = "wss://stream.binance.com:9443/ws"
 DEFAULT_INTERVAL = '1m'
 DEFAULT_MAX_PLOT = 500
+DEFAULT_CANDLE_REVEAL_INTERVAL = 5000  # 5 segundos en milisegundos
 
 class CandleStreamer:
     ALLOWED_INTERVALS = ['1s','5s','10s','20s','30s','40s','50s','1m','2m','3m','4m','5m','6m','7m','8m','9m','10m']
@@ -49,6 +50,7 @@ class CandleStreamer:
         # Configurar velas visibles
         self.visible_candles = max(1, min(visible_candles, max_plot))
         self.load_all_candles = True  # Flag para cargar todas las velas al aceptar config
+        self.progressive_reveal = True  # Revelado progresivo siempre activado
 
         self.url = URL
         self.ws = None
@@ -103,7 +105,7 @@ class CandleStreamer:
         # Temporizador para "revelar" velas ocultas (aumentar opacidad)
         self._opacity_reveal_enabled = False
         self._opacity_reveal_timer_id = None
-        self._opacity_reveal_interval_ms = 5000  # cada 5 segundos
+        self._opacity_reveal_interval_ms = DEFAULT_CANDLE_REVEAL_INTERVAL
         
         # Si se proporciona un frame padre, usamos FigureCanvasTkAgg
         if self.parent_frame:
@@ -829,8 +831,12 @@ class CandleStreamer:
                 close_price = float(row['Close'])
                 volume = float(row['Volume'])
                 
-                # Todas las velas completamente visibles para detección de patrones
-                alpha = 1.0
+                # Control de opacidad: solo las primeras visible_candles son completamente visibles
+                # El resto comienzan con opacidad 0 si progressive_reveal está activado
+                if self.progressive_reveal and i >= self.visible_candles:
+                    alpha = 0.0  # Velas ocultas inicialmente
+                else:
+                    alpha = 1.0  # Velas visibles
                 
                 # Color de la vela
                 is_bullish = close_price >= open_price
@@ -1693,10 +1699,11 @@ class CandleStreamer:
         # Precargar histórico en hilo separado para no bloquear UI
         self._thread_pool.submit(self._seed_historical_threaded, min(self.max_plot, 500))
         
-        # Iniciar revelado progresivo de velas (opacidad) automáticamente
+        # Iniciar revelado progresivo de velas (opacidad) si está habilitado
         try:
-            if not getattr(self, '_opacity_reveal_enabled', False):
+            if self.progressive_reveal and not getattr(self, '_opacity_reveal_enabled', False):
                 self.start_opacity_reveal()
+                self._log("Revelado progresivo activado - velas aparecerán cada 5 segundos", 'green')
         except Exception as _e:
             if self.debug_mode:
                 self._log(f"No se pudo iniciar opacity reveal automáticamente: {_e}", 'yellow')

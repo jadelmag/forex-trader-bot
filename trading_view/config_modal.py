@@ -29,7 +29,7 @@ class CandleStreamerConfigModal:
         self.max_candles_var = tk.StringVar(value=str(initial_values.get("max_plot", 500)) if initial_values else "500")
         self.symbol_var = tk.StringVar(value=initial_values.get("symbol", "") if initial_values and "symbol" in initial_values else (symbols[0] if symbols else ""))
         self.initial_money_var = tk.StringVar(value=str(initial_values.get("initial_money", "1000")) if initial_values else "1000")
-        self.visible_candles_var = tk.StringVar(value=str(initial_values.get("visible_candles", 5)) if initial_values else "5")
+        self.visible_candles_var = tk.StringVar(value=str(initial_values.get("visible_candles", 20)) if initial_values else "20")
         
         # Estilo
         style = ttk.Style()
@@ -77,12 +77,12 @@ class CandleStreamerConfigModal:
         )
         initial_money_entry.grid(row=3, column=1, sticky="w", pady=5, padx=5)
         
-        # Campo para velas visibles
+        # Campo para velas iniciales visibles
         ttk.Label(main_frame, text="Velas iniciales:").grid(row=4, column=0, sticky="w", pady=5)
         visible_candles_combo = ttk.Combobox(
             main_frame,
             textvariable=self.visible_candles_var,
-            values=["5", "6", "7", "8", "9", "10"],
+            values=["5", "6", "7", "8", "9", "10", "15", "20"],
             state="readonly",
             width=10
         )
