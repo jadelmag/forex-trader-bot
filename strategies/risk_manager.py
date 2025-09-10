@@ -126,6 +126,24 @@ class RiskManager:
         }
         self._tiempos_operacion = []
 
+    def _get_capital_limit(self):
+        """Obtiene el límite de capital desde la configuración"""
+        try:
+            from pathlib import Path
+            import json
+            
+            config_dir = Path(__file__).parent.parent / "config"
+            config_file = config_dir / "app_config.json"
+            
+            if config_file.exists():
+                with open(config_file, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                return float(config.get('capital_limit', 100))
+            else:
+                return 100.0  # Valor por defecto
+        except Exception:
+            return 100.0  # Valor por defecto en caso de error
+
     # ---------- Métodos optimizados con cache ----------
     def _actualizar_cache_operaciones_activas(self):
         """Actualiza el cache de operaciones activas"""
@@ -240,9 +258,10 @@ class RiskManager:
                 self.last_error = f"Tipo de operación inválido: {tipo}"
             return False
 
-        # Validar capital mínimo
-        if self.capital < 100:
-            self.last_error = f"Capital insuficiente: ${self.capital:,.2f}"
+        # Validar capital mínimo (configurable)
+        capital_limit = self._get_capital_limit()
+        if self.capital < capital_limit:
+            self.last_error = f"Capital insuficiente: ${self.capital:,.2f} (mínimo: ${capital_limit:,.2f})"
             return False
 
         return True

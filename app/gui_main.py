@@ -1179,9 +1179,10 @@ class GUIPrincipal:
         Optimizado para datos fijos con pre-cálculo de estrategias
         """
         try:
-            # Verificar capital inicial
-            if self.dinero_ficticio <= 100:
-                self.log("OPERACIÓN SALTADA: Capital insuficiente (mínimo $100)", color='yellow')
+            # Verificar capital inicial (configurable)
+            capital_limit = self._get_capital_limit()
+            if self.dinero_ficticio <= capital_limit:
+                self.log(f"OPERACIÓN SALTADA: Capital insuficiente (mínimo ${capital_limit:,.2f})", color='yellow')
                 if progress_callback:
                     progress_callback(100, "Simulación completada - Capital insuficiente")
                 return
@@ -1365,6 +1366,24 @@ class GUIPrincipal:
         # Actualizar labels finales
         self.dinero_ficticio = stats['capital_final']
         self.actualizar_labels()
+
+    def _get_capital_limit(self):
+        """Obtiene el límite de capital desde la configuración"""
+        try:
+            from pathlib import Path
+            import json
+            
+            config_dir = Path(__file__).parent.parent / "config"
+            config_file = config_dir / "app_config.json"
+            
+            if config_file.exists():
+                with open(config_file, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                return float(config.get('capital_limit', 100))
+            else:
+                return 100.0  # Valor por defecto
+        except Exception:
+            return 100.0  # Valor por defecto en caso de error
 
     # ---------------- Funciones RL ----------------
     def entrenar_rl(self):
