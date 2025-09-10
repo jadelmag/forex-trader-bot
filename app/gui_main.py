@@ -1369,7 +1369,7 @@ class GUIPrincipal:
     # ---------------- Funciones RL ----------------
     def entrenar_rl(self):
         # Mostrar modal de entrenamiento
-        def _start_training(iterations: int, on_complete, on_progress=None):
+        def _start_training(iterations: int, on_complete, on_progress=None, cancel_event=None):
             try:
                 # Logger thread-safe hacia el log inferior
                 def _log_ts(msg: str, color='white'):
@@ -1384,23 +1384,32 @@ class GUIPrincipal:
                     patrones=[],
                     log_fn=lambda m: _log_ts(m, 'cyan')
                 )
-                self.rl_agent.entrenar(timesteps=iterations, progress_cb=on_progress)
-                # Avisar al modal que el entrenamiento terminó OK
-                on_complete(success=True)
-                # Aviso visual de fin de entrenamiento
-                try:
-                    self.root.after(0, lambda: messagebox.showinfo("IA", "Entrenamiento completado y modelo guardado"))
-                except Exception:
-                    pass
-                # Tras finalizar el entrenamiento, aplicar automáticamente las señales RL
-                # para calcular y reflejar Beneficios/Pérdidas en la barra superior.
-                try:
-                    self.root.after(0, lambda: (
-                        self.log("Aplicando señales RL post-entrenamiento...", color='yellow'),
-                        self.aplicar_senales_rl()
-                    ))
-                except Exception:
-                    pass
+                success = self.rl_agent.entrenar(timesteps=iterations, progress_cb=on_progress, cancel_event=cancel_event)
+                
+                # Check if training was cancelled
+                if cancel_event and cancel_event.is_set():
+                    on_complete(success=False, error_msg="Entrenamiento cancelado por el usuario")
+                    return
+                
+                # Avisar al modal que el entrenamiento terminó OK o con error
+                on_complete(success=success)
+                
+                # Only show completion message and apply signals if successful
+                if success:
+                    # Aviso visual de fin de entrenamiento
+                    try:
+                        self.root.after(0, lambda: messagebox.showinfo("IA", "Entrenamiento completado y modelo guardado"))
+                    except Exception:
+                        pass
+                    # Tras finalizar el entrenamiento, aplicar automáticamente las señales RL
+                    # para calcular y reflejar Beneficios/Pérdidas en la barra superior.
+                    try:
+                        self.root.after(0, lambda: (
+                            self.log("Aplicando señales RL post-entrenamiento...", color='yellow'),
+                            self.aplicar_senales_rl()
+                        ))
+                    except Exception:
+                        pass
             except Exception as e:
                 on_complete(success=False, error_msg=str(e))
 

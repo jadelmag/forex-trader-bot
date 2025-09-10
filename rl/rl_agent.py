@@ -55,7 +55,7 @@ class RLTradingAgent:
             self.patrones
         )])
 
-    def entrenar(self, timesteps=10000, progress_cb: Optional[Callable[[int, int], None]] = None):
+    def entrenar(self, timesteps=10000, progress_cb: Optional[Callable[[int, int], None]] = None, cancel_event=None):
         """
         Entrena el modelo PPO con las estrategias seleccionadas.
         """
@@ -76,28 +76,44 @@ class RLTradingAgent:
             outer_progress_cb = progress_cb
 
             class _ProgressCB(BaseCallback):
-                def __init__(self, total_steps: int):
+                def __init__(self, total_steps: int, cancel_event=None):
                     super().__init__()
                     self.total_steps = total_steps
+                    self.cancel_event = cancel_event
 
                 def _on_step(self) -> bool:
+                    # Check for cancellation
+                    if self.cancel_event and self.cancel_event.is_set():
+                        return False  # Stop training
+                    
                     try:
                         outer_progress_cb(int(self.num_timesteps), int(self.total_steps))
                     except Exception:
                         pass
                     return True
 
-            callback = _ProgressCB(timesteps)
+            callback = _ProgressCB(timesteps, cancel_event)
 
         # Entrenar el modelo
         try:
             self.model.learn(total_timesteps=timesteps, callback=callback, reset_num_timesteps=False)
+            
+            # Check if training was cancelled
+            if cancel_event and cancel_event.is_set():
+                self._log("⚠️ ENTRENAMIENTO CANCELADO POR EL USUARIO")
+                return False
+            
             self.guardar_modelo()
             self._log("✅ ENTRENAMIENTO RL COMPLETADO Y MODELO GUARDADO")
             return True
         except Exception as e:
-            self._log(f"❌ ERROR en entrenamiento: {e}")
-            return False
+            # Check if it's a cancellation or actual error
+            if cancel_event and cancel_event.is_set():
+                self._log("⚠️ ENTRENAMIENTO CANCELADO POR EL USUARIO")
+                return False
+            else:
+                self._log(f"❌ ERROR en entrenamiento: {e}")
+                return False
 
     def guardar_modelo(self):
         """Guarda el modelo entrenado en la carpeta especificada."""
