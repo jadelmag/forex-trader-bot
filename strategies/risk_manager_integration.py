@@ -182,6 +182,17 @@ class RiskManagerIntegration:
             try:
                 signal_data = self.signal_queue.get(timeout=self.config.worker_timeout)
                 
+                # Validar signal_data antes de procesarlo
+                if signal_data is None:
+                    logger.warning("Worker recibió signal_data None, saltando")
+                    self.signal_queue.task_done()
+                    continue
+                
+                if not isinstance(signal_data, dict):
+                    logger.warning(f"Worker recibió signal_data inválido: {type(signal_data)}")
+                    self.signal_queue.task_done()
+                    continue
+                
                 start_time = time.time()
                 self._process_single_signal(signal_data)
                 processing_time = time.time() - start_time
@@ -198,6 +209,11 @@ class RiskManagerIntegration:
                 with self._lock:
                     self.metrics.errors_count += 1
                 logger.error(f"Error en signal processing worker: {e}")
+                # Asegurar que task_done se llame incluso si hay error
+                try:
+                    self.signal_queue.task_done()
+                except:
+                    pass
 
     def _dataframe_processing_worker(self):
         """Worker para procesamiento de dataframes completos"""
@@ -242,20 +258,29 @@ class RiskManagerIntegration:
             atr_sl_mult = candle_config.get('atr_sl_multiplier', atr_sl_mult)
             atr_tp_mult = candle_config.get('atr_tp_multiplier', atr_tp_mult)
 
-        signal_data = {
-            'senal': senal,
-            'precio_actual': float(precio_actual),
-            'timestamp': timestamp,
-            'atr_value': float(atr_value) if atr_value else None,
-            'rr_ratio': float(final_rr_ratio),
-            'risk_percent': float(final_risk_percent),
-            'estrategia_nombre': estrategia_nombre,
-            'stop_loss_override': float(stop_loss_override) if stop_loss_override else None,
-            'take_profit_override': float(take_profit_override) if take_profit_override else None,
-            'atr_sl_multiplier': atr_sl_mult,
-            'atr_tp_multiplier': atr_tp_mult,
-            'candle_config': candle_config
-        }
+        # Validar parámetros críticos antes de crear signal_data
+        if senal is None or precio_actual is None or timestamp is None:
+            logger.warning(f"Parámetros críticos faltantes: senal={senal}, precio={precio_actual}, timestamp={timestamp}")
+            return None
+        
+        try:
+            signal_data = {
+                'senal': int(senal),
+                'precio_actual': float(precio_actual),
+                'timestamp': timestamp,
+                'atr_value': float(atr_value) if atr_value is not None and atr_value > 0 else 0.0001,
+                'rr_ratio': float(final_rr_ratio),
+                'risk_percent': float(final_risk_percent),
+                'estrategia_nombre': str(estrategia_nombre) if estrategia_nombre else 'unknown',
+                'stop_loss_override': float(stop_loss_override) if stop_loss_override is not None else None,
+                'take_profit_override': float(take_profit_override) if take_profit_override is not None else None,
+                'atr_sl_multiplier': float(atr_sl_mult),
+                'atr_tp_multiplier': float(atr_tp_mult),
+                'candle_config': candle_config if candle_config is not None else {}
+            }
+        except (ValueError, TypeError) as e:
+            logger.error(f"Error creando signal_data: {e}")
+            return None
 
         # Si se solicita modo síncrono (para GUI), procesar inmediatamente
         if sync_mode:
@@ -294,18 +319,29 @@ class RiskManagerIntegration:
                     logger.warning(f"Clave requerida '{key}' no encontrada en signal_data")
                     return None
             
-            senal = signal_data['senal']
-            precio_actual = signal_data['precio_actual']
-            timestamp = signal_data['timestamp']
-            atr_value = signal_data['atr_value']
-            rr_ratio = signal_data['rr_ratio']
-            risk_percent = signal_data['risk_percent']
-            estrategia_nombre = signal_data['estrategia_nombre']
-            stop_loss_override = signal_data['stop_loss_override']
-            take_profit_override = signal_data['take_profit_override']
-            atr_sl_multiplier = signal_data['atr_sl_multiplier']
-            atr_tp_multiplier = signal_data['atr_tp_multiplier']
+            # Extraer valores de forma segura
+            senal = signal_data.get('senal')
+            precio_actual = signal_data.get('precio_actual')
+            timestamp = signal_data.get('timestamp')
+            atr_value = signal_data.get('atr_value')
+            rr_ratio = signal_data.get('rr_ratio')
+            risk_percent = signal_data.get('risk_percent')
+            estrategia_nombre = signal_data.get('estrategia_nombre')
+            stop_loss_override = signal_data.get('stop_loss_override')
+            take_profit_override = signal_data.get('take_profit_override')
+            atr_sl_multiplier = signal_data.get('atr_sl_multiplier')
+            atr_tp_multiplier = signal_data.get('atr_tp_multiplier')
             candle_config = signal_data.get('candle_config', {})
+            
+            # Validaciones adicionales de valores críticos
+            if senal is None or precio_actual is None or timestamp is None:
+                logger.warning("Valores críticos faltantes en signal_data")
+                return None
+            
+            # Validar que atr_value no sea None para cálculos
+            if atr_value is None or atr_value <= 0:
+                logger.warning(f"ATR inválido: {atr_value}, usando valor por defecto")
+                atr_value = 0.0001  # Valor mínimo por defecto
 
             # Determinar tipo de operación basado en la señal
             if senal == 1:

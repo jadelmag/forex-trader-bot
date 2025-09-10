@@ -75,9 +75,20 @@ class CandleStreamer:
         self.simulation_index = 0
         
         # Thread pool for background tasks
-        self._thread_pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix="CandleStreamer")
+        self._thread_pool = ThreadPoolExecutor(max_workers=5, thread_name_prefix="CandleStreamer")
         self._plot_queue = queue.Queue(maxsize=1)  # Queue for plot updates
         self._data_lock = threading.RLock()  # Thread-safe data access
+        
+        # UI performance optimizations
+        self._last_draw_time = 0
+        self._min_draw_interval = 0.1  # Minimum 100ms between draws
+        self._pending_draw = False
+        self._draw_lock = threading.Lock()
+        
+        # Throttling for callbacks
+        self._last_callback_time = 0
+        self._callback_interval = 0.5  # 500ms between pattern detection callbacks
+        self._pending_callbacks = False
 
         # DataFrame inicial con DatetimeIndex
         self.df = pd.DataFrame(columns=["Open", "High", "Low", "Close", "Volume"])
@@ -506,8 +517,32 @@ class CandleStreamer:
                 self._log(f"Error registrando callback: {e}", 'red')
 
     def _notify_candle_update_callbacks(self):
-        """Notifica a todos los callbacks registrados sobre actualizaciones de velas"""
+        """Notifica a todos los callbacks registrados con throttling para mejor performance"""
+        current_time = time.time()
+        
+        # Throttling para callbacks: evitar procesamiento excesivo
+        if current_time - self._last_callback_time < self._callback_interval:
+            if not self._pending_callbacks:
+                self._pending_callbacks = True
+                # Programar callbacks para más tarde en background thread
+                self._thread_pool.submit(self._execute_pending_callbacks)
+            return
+        
+        self._execute_callbacks_now()
+    
+    def _execute_pending_callbacks(self):
+        """Ejecuta callbacks pendientes después del throttling"""
+        time.sleep(self._callback_interval - (time.time() - self._last_callback_time))
+        if self._pending_callbacks:
+            self._pending_callbacks = False
+            self._execute_callbacks_now()
+    
+    def _execute_callbacks_now(self):
+        """Ejecuta los callbacks inmediatamente"""
         try:
+            self._last_callback_time = time.time()
+            
+            # Preparar datos en background thread para no bloquear UI
             df_current = self.df.copy()
             if self.current_candle is not None:
                 cur = pd.DataFrame([self.current_candle]).set_index('Date')
@@ -515,28 +550,25 @@ class CandleStreamer:
                 if not df_current.empty:
                     df_current.sort_index(inplace=True)
             
-            # Logging detallado para verificar datos enviados a detectores de patrones
+            # Logging reducido para mejor performance
             if self.debug_mode and not df_current.empty:
-                self._log(f"DATOS PARA DETECCIÓN DE PATRONES:", 'cyan')
-                self._log(f"  - Total velas disponibles: {len(df_current)}", 'cyan')
-                self._log(f"  - Rango temporal: {df_current.index[0]} a {df_current.index[-1]}", 'cyan')
-                
-                # Mostrar OHLC de las últimas 5 velas para verificar calidad de datos
-                last_5 = df_current.tail(5)
-                self._log(f"  - Últimas 5 velas OHLC:", 'cyan')
-                for idx, row in last_5.iterrows():
-                    self._log(f"    {idx}: O={row['Open']:.5f} H={row['High']:.5f} L={row['Low']:.5f} C={row['Close']:.5f}", 'cyan')
+                self._log(f"PATRÓN CHECK: {len(df_current)} velas, última: {df_current.index[-1]}", 'cyan')
             
+            # Ejecutar callbacks en background threads para no bloquear UI
             for cb in list(self._candle_update_callbacks):
-                try:
-                    cb(df_current)
-                except Exception as e:
-                    # No romper si un callback falla
-                    if self.debug_mode:
-                        self._log(f"Error en callback de actualización: {e}", 'red')
+                self._thread_pool.submit(self._safe_callback_execution, cb, df_current.copy())
+                
         except Exception as e:
             if self.debug_mode:
                 self._log(f"Error en notificación de vela: {e}", 'red')
+    
+    def _safe_callback_execution(self, callback, df_data):
+        """Ejecuta un callback de forma segura en background thread"""
+        try:
+            callback(df_data)
+        except Exception as e:
+            if self.debug_mode:
+                self._log(f"Error en callback de actualización: {e}", 'red')
 
     def setup_pattern_detection(self, risk_manager=None, candle_strategies=None):
         """Configura automáticamente la detección de patrones y estrategias"""
@@ -1188,23 +1220,45 @@ class CandleStreamer:
             self._log(f"Error creando anotación de hover: {e}", 'red')
 
     def _force_canvas_draw(self):
-        """Fuerza el redibujado del canvas de manera robusta"""
+        """Fuerza el redibujado del canvas con throttling para evitar trompicones"""
+        current_time = time.time()
+        
+        # Throttling: evitar redraws muy frecuentes
+        if current_time - self._last_draw_time < self._min_draw_interval:
+            if not self._pending_draw:
+                self._pending_draw = True
+                # Programar draw para más tarde
+                if hasattr(self, 'parent_frame') and self.parent_frame:
+                    delay_ms = int((self._min_draw_interval - (current_time - self._last_draw_time)) * 1000)
+                    self.parent_frame.after(max(delay_ms, 50), self._execute_pending_draw)
+            return
+        
+        self._execute_canvas_draw()
+    
+    def _execute_pending_draw(self):
+        """Ejecuta el draw pendiente si es necesario"""
+        if self._pending_draw:
+            self._pending_draw = False
+            self._execute_canvas_draw()
+    
+    def _execute_canvas_draw(self):
+        """Ejecuta el redibujado real del canvas"""
         try:
-            if hasattr(self, 'canvas') and self.canvas:
-                # Para TkAgg, usar tanto draw_idle como flush_events
-                self.canvas.draw_idle()
-                self.canvas.flush_events()
-                if self.debug_hover:
-                    self._log("Canvas draw_idle + flush_events executed", 'gray')
-            elif hasattr(self, 'fig') and self.fig:
-                self.fig.canvas.draw_idle()
-                if hasattr(self.fig.canvas, 'flush_events'):
-                    self.fig.canvas.flush_events()
-                if self.debug_hover:
-                    self._log("Fig canvas draw_idle executed", 'gray')
+            with self._draw_lock:
+                self._last_draw_time = time.time()
+                
+                if hasattr(self, 'canvas') and self.canvas:
+                    # Solo usar draw_idle para mejor performance
+                    self.canvas.draw_idle()
+                    if self.debug_hover:
+                        self._log("Canvas draw_idle executed (throttled)", 'gray')
+                elif hasattr(self, 'fig') and self.fig:
+                    self.fig.canvas.draw_idle()
+                    if self.debug_hover:
+                        self._log("Fig canvas draw_idle executed (throttled)", 'gray')
         except Exception as e:
             if self.debug_hover:
-                self._log(f"Error forcing canvas draw: {e}", 'red')
+                self._log(f"Error forzando redibujado: {e}", 'red')
 
     def _on_motion(self, event):
         """Maneja hover, pan (botón derecho) y dibujo de recuadro para zoom (botón izquierdo)."""
@@ -1398,121 +1452,108 @@ class CandleStreamer:
 
         except Exception as e:
             if self.debug_hover:
-                self._log(f"Rect draw error: {e}", 'red')
-        finally:
-            # ocultar hover mientras se dibuja
-            if self._hover_annot is not None and self._hover_annot.get_visible():
-                self._hover_annot.set_visible(False)
-            if self._hover_marker is not None and self._hover_marker.get_visible():
-                self._hover_marker.set_visible(False)
+                self._log(f"Motion event error: {e}", 'red')
 
-        # Asegurar que existe la anotación
-        self._ensure_hover_annotation()
-        
-        if self.debug_hover:
-            self._log(f"Processing hover - last_x length: {len(self._last_x) if self._last_x is not None else 0}", 'gray')
-            if self._last_x is not None and len(self._last_x) > 0:
-                self._log(f"_last_x range: {min(self._last_x):.2f} to {max(self._last_x):.2f}", 'gray')
-                self._log(f"event.xdata: {event.xdata:.2f}", 'gray')
-
-        # Buscar índice de vela más cercano usando coordenadas x numéricas (evita problemas de tz)
-        if self._last_x is None or len(self._last_x) == 0:
-            if self.debug_hover:
-                self._log("No _last_x data available", 'gray')
-            return
-        
-        # Verificar si event.xdata está en el rango de _last_x
-        x_min, x_max = min(self._last_x), max(self._last_x)
-        if event.xdata < x_min or event.xdata > x_max:
-            if self.debug_hover:
-                self._log(f"event.xdata {event.xdata:.2f} fuera del rango [{x_min:.2f}, {x_max:.2f}]", 'yellow')
-            # Intentar mapear a coordenadas del eje
-            xlim = self.ax_price.get_xlim()
-            if xlim[0] <= event.xdata <= xlim[1]:
-                # Mapear desde coordenadas del eje a índice de datos
-                ratio = (event.xdata - xlim[0]) / (xlim[1] - xlim[0])
-                loc = int(ratio * (len(self._last_x) - 1))
-            else:
+    def _on_motion_hover_only(self, event):
+        """Maneja solo el hover sin pan ni zoom para mejor performance"""
+        try:
+            # Requiere eje de precio y datos
+            if not hasattr(self, 'ax_price') or self._last_df is None or self._last_df.empty:
                 return
-        else:
-            loc = int(np.argmin(np.abs(self._last_x - event.xdata)))
-            loc = max(0, min(loc, len(self._last_df) - 1))
+            
+            # Mostrar sólo si el ratón está sobre el eje de precio o volumen
+            if (event.inaxes not in (self.ax_price, getattr(self, 'ax_volume', None)) or
+                event.xdata is None or event.ydata is None):
+                # Ocultar si estaba visible
+                if self._hover_annot is not None and self._hover_annot.get_visible():
+                    self._hover_annot.set_visible(False)
+                    if self._hover_marker is not None and self._hover_marker.get_visible():
+                        self._hover_marker.set_visible(False)
+                    self._force_canvas_draw()
+                return
 
-        # Verificar si la vela está dentro del rango visible (solo hover en velas con opacidad = 1)
-        if loc >= self.visible_candles:
-            # Ocultar tooltip si estaba visible
-            if self._hover_annot is not None and self._hover_annot.get_visible():
-                if self.debug_hover:
-                    self._log(f"Hiding tooltip - candle {loc} is not visible (>= {self.visible_candles})", 'gray')
-                self._hover_annot.set_visible(False)
-                if self._hover_marker is not None and self._hover_marker.get_visible():
-                    self._hover_marker.set_visible(False)
-                self._force_canvas_draw()
-            return
+            # Asegurar que existe la anotación
+            self._ensure_hover_annotation()
+            
+            # Buscar índice de vela más cercano usando coordenadas x numéricas
+            if self._last_x is None or len(self._last_x) == 0:
+                return
+            
+            # Verificar si event.xdata está en el rango de _last_x
+            x_min, x_max = min(self._last_x), max(self._last_x)
+            if event.xdata < x_min or event.xdata > x_max:
+                # Intentar mapear a coordenadas del eje
+                xlim = self.ax_price.get_xlim()
+                if xlim[0] <= event.xdata <= xlim[1]:
+                    ratio = (event.xdata - xlim[0]) / (xlim[1] - xlim[0])
+                    loc = int(ratio * (len(self._last_x) - 1))
+                else:
+                    return
+            else:
+                loc = int(np.argmin(np.abs(self._last_x - event.xdata)))
+                loc = max(0, min(loc, len(self._last_df) - 1))
 
-        ts = self._last_df.index[loc]
-        row = self._last_df.iloc[loc]
-        
-        if self.debug_hover:
-            self._log(f"Found visible candle at index {loc}: {ts}", 'gray')
+            # Verificar si la vela está dentro del rango visible
+            if loc >= self.visible_candles:
+                if self._hover_annot is not None and self._hover_annot.get_visible():
+                    self._hover_annot.set_visible(False)
+                    if self._hover_marker is not None and self._hover_marker.get_visible():
+                        self._hover_marker.set_visible(False)
+                    self._force_canvas_draw()
+                return
 
-        # Calcular cambio y color
-        open_price = float(row['Open'])
-        close_price = float(row['Close'])
-        change = close_price - open_price
-        change_pct = (change / open_price) * 100 if open_price != 0 else 0
-        color = '#28a745' if close_price >= open_price else '#dc3545'  # Verde si sube, rojo si baja
-        
-        # Formatear fecha y valores
-        ts_str = ts.strftime('%Y-%m-%d %H:%M:%S') if hasattr(ts, 'strftime') else str(ts)
-        
-        # Crear texto con formato simple (sin secuencias ANSI)
-        sign = '+' if change >= 0 else ''
-        txt = (
-            f"{ts_str}\n"
-            f"--------------------\n"
-            f"Open:   {open_price:.5f}\n"
-            f"High:   {float(row['High']):.5f}\n"
-            f"Low:    {float(row['Low']):.5f}\n"
-            f"Close:  {close_price:.5f}  ({sign}{change:.5f}, {change_pct:+.2f}%)\n"
-            f"--------------------\n"
-            f"Volume: {float(row['Volume']):.4f}\n"
-        )
+            ts = self._last_df.index[loc]
+            row = self._last_df.iloc[loc]
+            
+            # Calcular cambio y color
+            open_price = float(row['Open'])
+            close_price = float(row['Close'])
+            change = close_price - open_price
+            change_pct = (change / open_price) * 100 if open_price != 0 else 0
+            color = '#28a745' if close_price >= open_price else '#dc3545'
+            
+            # Formatear fecha y valores
+            ts_str = ts.strftime('%Y-%m-%d %H:%M:%S') if hasattr(ts, 'strftime') else str(ts)
+            
+            # Crear texto simplificado
+            sign = '+' if change >= 0 else ''
+            txt = (
+                f"{ts_str}\n"
+                f"--------------------\n"
+                f"Open:   {open_price:.5f}\n"
+                f"High:   {float(row['High']):.5f}\n"
+                f"Low:    {float(row['Low']):.5f}\n"
+                f"Close:  {close_price:.5f}  ({sign}{change:.5f}, {change_pct:+.2f}%)\n"
+                f"--------------------\n"
+                f"Volume: {float(row['Volume']):.4f}\n"
+            )
 
-        # Posicionar anotación usando coordenadas del evento en lugar de mdates
-        # Esto evita problemas de conversión de coordenadas
-        x, y = event.xdata, float(row['High'])
-        xlim = self.ax_price.get_xlim()
-        ylim = self.ax_price.get_ylim()
+            # Posicionar anotación
+            x, y = event.xdata, float(row['High'])
+            xlim = self.ax_price.get_xlim()
+            ylim = self.ax_price.get_ylim()
+            
+            # Ajustar posición para que no se salga de los límites
+            x_offset = 20 if x < (xlim[0] + xlim[1]) / 2 else -120
+            y_offset = 20 if y < (ylim[0] + ylim[1]) / 2 else -120
         
-        if self.debug_hover:
-            self._log(f"Tooltip position: x={x:.2f}, y={y:.5f}", 'gray')
-            self._log(f"Axes limits: xlim=[{xlim[0]:.2f}, {xlim[1]:.2f}], ylim=[{ylim[0]:.5f}, {ylim[1]:.5f}]", 'gray')
-        
-        # Ajustar posición para que no se salga de los límites
-        x_offset = 20 if x < (xlim[0] + xlim[1]) / 2 else -120  # Más espacio para el texto
-        y_offset = 20 if y < (ylim[0] + ylim[1]) / 2 else -120
-        
-        # Actualizar anotación
-        self._hover_annot.xy = (x, y)
-        self._hover_annot.set_position((x_offset, y_offset))
-        self._hover_annot.set_text(txt)
-        self._hover_annot.set_visible(True)
-        
-        # Actualizar marcador en el cierre con el color correspondiente
-        self._hover_marker.set_data([x], [close_price])  # Usar x del evento
-        self._hover_marker.set_markerfacecolor(color)
-        self._hover_marker.set_visible(True)
-        
-        if self.debug_hover:
-            self._log(f"Tooltip updated and made visible at ({x:.2f}, {y:.2f}) with offset ({x_offset}, {y_offset})", 'green')
-            self._log(f"Annotation visible: {self._hover_annot.get_visible()}, Marker visible: {self._hover_marker.get_visible()}", 'blue')
-
-        # Redibujar ligero
-        self._force_canvas_draw()
-        
-        if self.debug_hover:
-            self._log("Canvas draw completed", 'blue')
+            # Actualizar anotación
+            self._hover_annot.xy = (x, y)
+            self._hover_annot.set_position((x_offset, y_offset))
+            self._hover_annot.set_text(txt)
+            self._hover_annot.set_visible(True)
+            
+            # Actualizar marcador en el cierre con el color correspondiente
+            self._hover_marker.set_data([x], [close_price])
+            self._hover_marker.set_markerfacecolor(color)
+            self._hover_marker.set_visible(True)
+            
+            # Redibujar ligero
+            self._force_canvas_draw()
+            
+        except Exception as e:
+            if self.debug_hover:
+                self._log(f"Error en hover optimizado: {e}", 'red')
 
     def _on_button_press(self, event):
         """Inicia pan (botón derecho) o zoom por recuadro (botón izquierdo)."""
