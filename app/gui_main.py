@@ -1932,13 +1932,13 @@ class GUIPrincipal:
                             # Usar ExecSignal si está disponible; fallback a Signal
                             if 'ExecSignal' in df_res.columns:
                                 signals = df_res['ExecSignal']
-                            else:
-                                signals = df_res['Signal'] if 'Signal' in df_res.columns else None
 
                             if signals is not None and not signals.empty and len(signals) > 0:
                                 current_signal = signals.iloc[-1]
                                 # Procesar primero señales de salida (-1)
                                 if current_signal == -1:
+                                    # Explicar el significado de la señal
+                                    self.log(f"🔴 SEÑAL DE VENTA/CIERRE: {strategy_name} = {current_signal} (Patrón indica bajada)", color="red")
                                     try:
                                         # Cerrar operaciones abiertas por esta estrategia en RiskManager
                                         cerradas = self.risk_integration.procesar_senal(

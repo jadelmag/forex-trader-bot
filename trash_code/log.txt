@@ -11,3 +11,12 @@ Señal doji_indecision: -1
 Señal doji_reversal_strategy: -1
 Señal doji_indecision: -1
 Señal doji_reversal_strategy: -1
+
+
+Explicación de las Señales
+Señal marubozu_trend: -1 significa:
+
+-1 = Señal de VENTA/CIERRE (el patrón indica que el precio va a bajar)
+1 = Señal de COMPRA (el patrón indica que el precio va a subir)
+0 = Sin señal (no hay patrón detectado)
+El problema es que faltan los mensajes de COMPRA cuando se abren las operaciones. Voy a arreglar esto:
