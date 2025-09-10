@@ -544,7 +544,13 @@ class CandleStreamer:
                                 timestamp = df.index[-1]
                                 price = df['Close'].iloc[-1]
                                 
-                                self._log(f"🎯 SEÑAL DETECTADA: marubozu_trend = {last_signal}", 'yellow')
+                                # Explicar el significado de la señal
+                                if last_signal == 1:
+                                    self._log(f"🟢 SEÑAL COMPRA: marubozu_trend = {last_signal} (Patrón indica subida)", 'green')
+                                elif last_signal == -1:
+                                    self._log(f"🔴 SEÑAL VENTA: marubozu_trend = {last_signal} (Patrón indica bajada - cerrar posiciones)", 'red')
+                                else:
+                                    self._log(f"⚪ SEÑAL NEUTRA: marubozu_trend = {last_signal}", 'yellow')
                                 
                                 # Abrir operación si hay risk_manager
                                 if risk_manager and last_signal > 0:  # Señal de compra
@@ -561,7 +567,7 @@ class CandleStreamer:
                                     )
                                     
                                     if operacion:
-                                        self._log(f"✅ OPERACIÓN ABIERTA: BUY #{operacion.id} a precio {price:.5f}", 'green')
+                                        self._log(f"💰 COMPRA marubozu_trend: Operación {operacion.id} [BUY] @ {price:.5f}", 'green')
                                         self._log(f"📊 Capital restante: ${risk_manager.capital:,.2f}", 'blue')
                                         self._log(f"🎯 Stop Loss: {stop_loss:.5f} | Take Profit: {take_profit:.5f}", 'blue')
                                     else:

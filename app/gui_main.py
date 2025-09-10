@@ -1885,6 +1885,7 @@ class GUIPrincipal:
                     
                     # Procesar señales
                     if signals is not None and not signals.empty and signals.iloc[-1] == 1:  # Señal de compra
+                        self.log(f"🟢 SEÑAL COMPRA: {strategy_name} = 1 (Estrategia indica subida)", color="green")
                         if self._procesar_senal_compra_risk_manager(last_candle, strategy_name, risk, rr_ratio):
                             forex_orders_opened += 1
                         
@@ -1976,7 +1977,8 @@ class GUIPrincipal:
                                 
                                 # Luego procesar potenciales entradas (+1)
                                 if current_signal == 1:
-                                    self.log(f"SEÑAL DETECTADA: {strategy_name} = {current_signal}", color="cyan")
+                                    # Explicar el significado de la señal
+                                    self.log(f"🟢 SEÑAL COMPRA: {strategy_name} = {current_signal} (Patrón indica subida)", color="green")
                                     if self._procesar_senal_compra_risk_manager(last_candle, f"candle_{strategy_name}", 0.01, 2.0):
                                         candle_orders_opened += 1
                                 elif current_signal != 0:
@@ -2004,6 +2006,7 @@ class GUIPrincipal:
                             df_res = metodo()
                             signals = df_res['Signal'] if 'Signal' in df_res.columns else None
                             if signals is not None and not signals.empty and signals.iloc[-1] == 1:
+                                self.log(f"🟢 SEÑAL COMPRA: {pattern_name} = 1 (Patrón indica subida)", color="green")
                                 if self._procesar_senal_compra_risk_manager(last_candle, f"pattern_{pattern_name}", 0.01, 2.0):
                                     pattern_orders_opened += 1
                     except Exception as e:
@@ -2047,9 +2050,10 @@ class GUIPrincipal:
             )
 
             if operacion:
-                # Log consistente con mensajes existentes
-                strategy_str = strategy_name.replace("_", " ").title()
-                self.log(f"Orden de COMPRA abierta {strategy_str}: {price:.5f} (TP: {operacion.take_profit:.5f}, SL: {operacion.stop_loss:.5f})", color='green')
+                # Log consistente con formato mejorado
+                strategy_display = strategy_name.replace("candle_", "").replace("pattern_", "").replace("_", " ")
+                self.log(f"💰 COMPRA {strategy_display}: Operación {operacion.id} [BUY] @ {price:.5f}", color='green')
+                self.log(f"🎯 Stop Loss: {operacion.stop_loss:.5f} | Take Profit: {operacion.take_profit:.5f}", color='blue')
                 # Refrescar dinero visible y label Dinero
                 try:
                     self._actualizar_dinero_visible(price)
