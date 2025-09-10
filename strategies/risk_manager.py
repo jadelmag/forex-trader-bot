@@ -234,15 +234,6 @@ class RiskManager:
             if not self._puede_aplicar_estrategia_en_vela(estrategia[1], estrategia[0]):  # (timestamp, estrategia)
                 return False
 
-        # Validar unicidad por estrategia
-        if estrategia is not None:
-            for op in self.operaciones_activas:
-                if op.estado == 'ACTIVA' and op.estrategia == estrategia[0]:
-                    if estrategia[0] not in self.estrategias_buy_activa_notificadas:
-                        self.last_error = f"Ya existe operación ACTIVA para la estrategia '{estrategia[0]}'"
-                        self.estrategias_buy_activa_notificadas.add(estrategia[0])
-                    return False
-
         # Validar tipo de operación
         if tipo not in ['BUY', 'SELL']:
             if self.debug_mode:

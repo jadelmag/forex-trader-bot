@@ -274,6 +274,16 @@ class RiskManagerIntegration:
     def _process_single_signal(self, signal_data: Dict):
         """Procesa una señal individual con configuraciones personalizadas y soporte completo BUY/SELL"""
         try:
+            # Validar que signal_data no sea None
+            if signal_data is None:
+                logger.warning("signal_data es None, saltando procesamiento")
+                return None
+            
+            # Validar que signal_data sea un diccionario
+            if not isinstance(signal_data, dict):
+                logger.warning(f"signal_data no es un diccionario: {type(signal_data)}")
+                return None
+            
             senal = signal_data['senal']
             precio_actual = signal_data['precio_actual']
             timestamp = signal_data['timestamp']
