@@ -11,6 +11,19 @@ class CandlestickPatterns:
         'morning_star': 3, 'evening_star': 3, 'three_white_soldiers': 3, 'three_black_crows': 3
     }
 
+    @classmethod
+    def get_patterns_by_candle_count(cls):
+        """Agrupa patrones por número de velas que utilizan."""
+        groups = {1: [], 2: [], 3: [], 'other': []}
+        
+        for pattern, count in cls.PATTERN_CANDLE_COUNTS.items():
+            if count in groups:
+                groups[count].append(pattern)
+            else:
+                groups['other'].append(pattern)
+        
+        return groups
+
     def __init__(self, data, atr_period=14, trend_period=20, volatility_period=20, config=None):
         self.data = data.copy()
         
