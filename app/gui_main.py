@@ -1042,10 +1042,32 @@ class GUIPrincipal:
         if self.df_actual is None:
             messagebox.showwarning("Atención", "Cargue primero un CSV o datos procesados")
             return
-        # Estrategias disponibles a partir de la clase ForexStrategies
+        # Estrategias disponibles - solo métodos que no requieren parámetros externos
         estrategias_disponibles = [
-            nombre for nombre in dir(ForexStrategies)
-            if callable(getattr(ForexStrategies, nombre)) and not nombre.startswith("_")
+            'adx_strategy',
+            'trend_following', 
+            'breakout',
+            'rsi_strategy',
+            'moving_average_crossover',
+            'macd_strategy',
+            'bollinger_bands_strategy',
+            'stochastic_strategy',
+            'ichimoku_cloud_strategy',
+            'support_resistance_strategy',
+            'price_action_patterns',
+            'supply_demand_zones',
+            'trendline_strategy',
+            'scalping_1m_strategy',
+            'range_trading_strategy',
+            'grid_trading_strategy',
+            'mean_reversion_strategy'
+        ]
+        # Excluidas: carry_trade_strategy, hedging_overlay, martingale_overlay, news_trading_strategy
+        # (requieren parámetros externos: rate_diff, base_signal, events_mask)
+        # Filtrar solo las que realmente existen en la clase
+        estrategias_disponibles = [
+            nombre for nombre in estrategias_disponibles
+            if hasattr(ForexStrategies, nombre) and callable(getattr(ForexStrategies, nombre))
         ]
         # Reutilizamos el modal de patrones con sección de estrategias
         PatternsModal(
@@ -1100,9 +1122,10 @@ class GUIPrincipal:
             return
             
         backtester = ForexBacktester(self.df_actual)
+        forex_strategies = ForexStrategies(self.df_actual)
         for nombre in estrategias_sel:
             try:
-                metodo = getattr(backtester, nombre, None)
+                metodo = getattr(forex_strategies, nombre, None)
                 if not callable(metodo):
                     self.log(f"Estrategia no válida: {nombre}", color='red')
                     continue
