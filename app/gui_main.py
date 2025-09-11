@@ -1884,21 +1884,25 @@ class GUIPrincipal:
             from strategies import ForexStrategies
             from patterns.candlestickpatterns import CandlestickPatterns
             
-            # Control de distribución de órdenes por vela: 2/6 forex, 2/6 candle, 2/6 patterns
-            max_orders_per_type = 2
-            forex_orders_opened = 0
-            candle_orders_opened = 0
-            pattern_orders_opened = 0
+            # Control de operaciones por vela: máximo 1 forex, máximo 2 velas, máximo 2 patrones
+            max_forex_operations_per_candle = 1
+            max_candle_operations_per_candle = 2
+            max_pattern_operations_per_candle = 2
+            
+            # Contadores de operaciones abiertas en esta vela
+            forex_operations_opened_this_candle = 0
+            candle_operations_opened_this_candle = 0
+            pattern_operations_opened_this_candle = 0
             
             # Flags por vela para compras forex
             self._stream_opened_buy_for_strategy = set()
             
-            # Aplicar estrategias de Forex (limitado por slots configurados)
-            max_forex_strategies = self.simulation_config.get('max_forex_operations', max_orders_per_type)
+            # Aplicar estrategias de Forex (limitado por slots configurados Y por operaciones por vela)
+            max_forex_strategies = self.simulation_config.get('max_forex_operations', 2)
             forex_strategies_used = 0
             
             for strategy in self.simulation_config.get('forex_strategies', []):
-                if forex_strategies_used >= max_forex_strategies:
+                if forex_strategies_used >= max_forex_strategies or forex_operations_opened_this_candle >= max_forex_operations_per_candle:
                     break
                     
                 try:
@@ -1933,6 +1937,7 @@ class GUIPrincipal:
                         self.log(f"🟢 SEÑAL COMPRA: {strategy_name} = 1 (Estrategia indica subida)", color="green")
                         if self._procesar_senal_compra_risk_manager(last_candle, strategy_name, risk, rr_ratio):
                             forex_strategies_used += 1
+                            forex_operations_opened_this_candle += 1
                         
                 except Exception as e:
                     self.log(f"Error aplicando estrategia {strategy_name}: {str(e)}", color="red")
@@ -1947,12 +1952,12 @@ class GUIPrincipal:
                 # Si no hay suficientes velas, saltar estrategias de velas en esta iteración
                 self.log(f"Esperando más velas para estrategias de velas (actual: {len(df)}, configurado: {min_candles_required})", color="yellow")
             else:
-                max_candle_strategies = self.simulation_config.get('max_candle_operations', max_orders_per_type)
+                max_candle_strategies = self.simulation_config.get('max_candle_operations', 2)
                 candle_strategies_used = 0
                 
                 candle_strategies = CandleStrategies(df)
                 for strat in self.simulation_config.get('candle_strategies', []):
-                    if candle_strategies_used >= max_candle_strategies:
+                    if candle_strategies_used >= max_candle_strategies or candle_operations_opened_this_candle >= max_candle_operations_per_candle:
                         break
 
                     try:
@@ -2029,6 +2034,7 @@ class GUIPrincipal:
                                     self.log(f"🟢 SEÑAL COMPRA: {strategy_name} = {current_signal} (Patrón indica subida)", color="green")
                                     if self._procesar_senal_compra_risk_manager(last_candle, f"candle_{strategy_name}", 0.01, 2.0):
                                         candle_strategies_used += 1
+                                        candle_operations_opened_this_candle += 1
                                 elif current_signal != 0:
                                     # Señales distintas de 1 y -1 (por ejemplo, 2 o valores especiales)
                                     self.log(f"Señal {strategy_name}: {current_signal}", color="gray")
@@ -2045,7 +2051,7 @@ class GUIPrincipal:
                 patterns = CandlestickPatterns(df)
                 df_patterns = patterns.combined_signal_optimized()
                 for pattern_name in self.simulation_config.get('patterns', []):
-                    if pattern_orders_opened >= max_orders_per_type:
+                    if pattern_operations_opened_this_candle >= max_pattern_operations_per_candle:
                         break
                         
                     try:
@@ -2056,7 +2062,7 @@ class GUIPrincipal:
                             if signals is not None and not signals.empty and signals.iloc[-1] == 1:
                                 self.log(f"🟢 SEÑAL COMPRA: {pattern_name} = 1 (Patrón indica subida)", color="green")
                                 if self._procesar_senal_compra_risk_manager(last_candle, f"pattern_{pattern_name}", 0.01, 2.0):
-                                    pattern_orders_opened += 1
+                                    pattern_operations_opened_this_candle += 1
                     except Exception as e:
                         self.log(f"Error aplicando patrón {pattern_name}: {str(e)}", color="red")
             except Exception as e:

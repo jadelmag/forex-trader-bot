@@ -413,7 +413,7 @@ class RiskManagerIntegration:
             else:
                 self.metrics.errors_count += 1
                 error_msg = self.risk_manager.last_error or "Error desconocido"
-                logger.error(f"❌ FALLÓ ABRIR OPERACIÓN: {estrategia_nombre} -> {error_msg}")
+                # logger.error(f"❌ FALLÓ ABRIR OPERACIÓN: {estrategia_nombre} -> {error_msg}")
                 
                 # LOGGING ADICIONAL PARA DEBUG
                 if self.debug_mode:
