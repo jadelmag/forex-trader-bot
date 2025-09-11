@@ -39,7 +39,7 @@ class EstrategiasModal(tk.Toplevel):
         self.update_idletasks()
         w = 700  # Aumentar ancho para acomodar ambos botones
         # Altura total del modal: área de lista (400) + controles inferiores
-        h_total = 500
+        h_total = 550
         # Usar gui_parent.root para obtener coordenadas si es necesario
         parent_widget = self.gui_parent.root if hasattr(self.gui_parent, 'root') else self.gui_parent
         x = parent_widget.winfo_rootx() + (parent_widget.winfo_width() - w) // 2
@@ -236,9 +236,23 @@ class EstrategiasModal(tk.Toplevel):
             btn_candle_sel.pack(side="left", padx=5)
             btn_candle_desel.pack(side="left", padx=5)
             
+            # Segunda fila: Checkbox y botón de configurar detección
+            detection_frame = tk.Frame(self.scrollable_frame)
+            detection_frame.grid(row=start_row + 2, column=0, columnspan=7, pady=(5, 5))
+            
+            # Checkbox para aplicar solo detección
+            self.apply_detection_only = tk.BooleanVar(value=False)
+            chk_detection = tk.Checkbutton(
+                detection_frame,
+                text="Aplicar solo detección",
+                variable=self.apply_detection_only,
+                font=('Arial', 9)
+            )
+            chk_detection.pack(side="left", padx=5)
+            
             # Botón para configurar detección de patrones globalmente
             btn_pattern_detection = ttk.Button(
-                btn_candle_frame,
+                detection_frame,
                 text="Configurar detección",
                 command=self._open_pattern_detection_config,
                 width=20
@@ -259,10 +273,14 @@ class EstrategiasModal(tk.Toplevel):
             )
             self.btn_load_candle_configs.pack(side="left", padx=5)
 
-            ttk.Label(self.scrollable_frame, text="Velas", width=10, anchor="center").grid(row=start_row+2, column=3, padx=5)
+            # Encabezados para Candle Strategies
+            ttk.Label(self.scrollable_frame, text="Estrategia", width=20, anchor="w").grid(row=start_row+3, column=0, padx=5)
+            ttk.Label(self.scrollable_frame, text="Configuración", width=12, anchor="center").grid(row=start_row+3, column=1, padx=5)
+            ttk.Label(self.scrollable_frame, text="", width=14, anchor="center").grid(row=start_row+3, column=2, padx=5)
+            ttk.Label(self.scrollable_frame, text="Velas", width=10, anchor="center").grid(row=start_row+3, column=3, padx=5)
 
             # Estrategias Candle (con configuración personalizada)
-            for idx, nombre in enumerate(self.estrategias_candle, start=start_row+3):
+            for idx, nombre in enumerate(self.estrategias_candle, start=start_row+4):
                 var_check = tk.IntVar()
                 display_name = nombre.replace('_', ' ').capitalize()
                 chk = tk.Checkbutton(self.scrollable_frame, text=display_name, variable=var_check, 
@@ -400,6 +418,25 @@ class EstrategiasModal(tk.Toplevel):
         )
         chk_simulacion.grid(row=options_row + 1, column=0, columnspan=3, sticky="w", padx=5, pady=5)
 
+        # ---------------- OPERACIONES MAXIMAS ----------------
+        frame_operations = tk.Frame(self)
+        frame_operations.pack(pady=5)
+        
+        # Operaciones forex máximas
+        ttk.Label(frame_operations, text="Operaciones forex máximas:").grid(row=0, column=0, padx=5, sticky="e")
+        self.max_forex_var = tk.StringVar(value="2")
+        self.entry_max_forex = tk.Entry(frame_operations, textvariable=self.max_forex_var, width=5)
+        self.entry_max_forex.grid(row=0, column=1, padx=5)
+        
+        # Operaciones velas máximas
+        ttk.Label(frame_operations, text="Operaciones velas máximas:").grid(row=0, column=2, padx=15, sticky="e")
+        self.max_candles_var = tk.StringVar(value="3")
+        self.entry_max_candles = tk.Entry(frame_operations, textvariable=self.max_candles_var, width=5)
+        self.entry_max_candles.grid(row=0, column=3, padx=5)
+        
+        # Centrar el frame
+        frame_operations.pack_configure(anchor="center")
+
         # ---------------- CAMPO MAX ORDENES ----------------
         frame_max = tk.Frame(self)
         frame_max.pack(pady=5)
@@ -507,29 +544,30 @@ class EstrategiasModal(tk.Toplevel):
                         continue
                     seleccion[nombre] = {"riesgo": riesgo, "rr": rr, "tipo": "forex"}
                 else:
-                    # Para Candle Strategies: incluir configuración si es Custom
+                    # Para Candle Strategies: incluir configuración según modo y checkbox
                     if ctrl["tipo"] == "candle":
                         config = None  # Inicializar config por defecto
                         try:
-                            # Primero aplicar configuración global de detección si existe
+                            # Obtener configuración base
                             base_config = self._get_default_candle_config(nombre)
-                            if hasattr(self, 'global_pattern_config') and self.global_pattern_config:
-                                # Fusionar configuración global de detección con config base
-                                base_config.update(self.global_pattern_config)
                             
-                            if ctrl.get("config_type") and ctrl["config_type"].get() == "Custom":
-                                # Para Custom, usar config individual que puede sobrescribir la global
-                                custom_config = ctrl.get("custom_config") or base_config
-                                # Asegurar que la config global esté incluida
+                            # Verificar si el checkbox "Aplicar solo detección" está activado
+                            apply_detection = getattr(self, 'apply_detection_only', None) and self.apply_detection_only.get()
+                            
+                            if apply_detection:
+                                # Si checkbox activado: usar solo configuración global de detección
                                 if hasattr(self, 'global_pattern_config') and self.global_pattern_config:
-                                    merged_config = dict(base_config)
-                                    merged_config.update(custom_config)
-                                    config = merged_config
+                                    config = self.global_pattern_config.copy()
                                 else:
-                                    config = custom_config
+                                    config = {}
                             else:
-                                # Para Default, usar config base + global
-                                config = base_config
+                                # Si checkbox desactivado: comportamiento según modo
+                                if ctrl.get("config_type") and ctrl["config_type"].get() == "Custom":
+                                    # Para Custom, usar solo config individual (sin global)
+                                    config = ctrl.get("custom_config") or base_config
+                                else:
+                                    # Para Default, usar solo config base estándar (sin global)
+                                    config = base_config
                         except Exception:
                             config = None
                         seleccion[nombre] = {"tipo": "candle", "config": config}
@@ -551,11 +589,30 @@ class EstrategiasModal(tk.Toplevel):
             messagebox.showerror("Error", "Los datos están vacíos. Cargue un archivo CSV válido.")
             return
         
-        # Añadir max_orders y opciones de visualización al resultado
+        # Validar campos numéricos
         try:
             max_orders = int(self.max_orders_var.get())
         except ValueError:
-            max_orders = 5  # valor por defecto en caso de error
+            messagebox.showerror("Error", "El número máximo de órdenes debe ser un número entero válido")
+            return
+            
+        try:
+            max_forex = int(self.max_forex_var.get())
+        except ValueError:
+            messagebox.showerror("Error", "Las operaciones forex máximas deben ser un número entero válido")
+            return
+            
+        try:
+            max_candles = int(self.max_candles_var.get())
+        except ValueError:
+            messagebox.showerror("Error", "Las operaciones velas máximas deben ser un número entero válido")
+            return
+        
+        # Validar que la suma de forex y velas sea igual al máximo de órdenes
+        if max_forex + max_candles != max_orders:
+            messagebox.showerror("Error", 
+                f"La suma de operaciones forex ({max_forex}) y velas ({max_candles}) debe ser igual al número máximo de órdenes ({max_orders})")
+            return
 
         opciones = {
             "mostrar_deteccion": bool(self.var_mostrar_deteccion.get()),
@@ -880,7 +937,7 @@ class EstrategiasModal(tk.Toplevel):
                     risk_manager.capital += beneficio
 
             # Mostrar estadísticas finales
-            self._show_final_stats(risk_manager)
+            self._show_final_stats(risk_manager, seleccion)
 
             # Actualizar interfaz principal
             self._update_parent_interface(risk_manager)
@@ -906,17 +963,76 @@ class EstrategiasModal(tk.Toplevel):
 
         self.after(0, log)
 
-    def _show_final_stats(self, risk_manager):
+    def _show_final_stats(self, risk_manager, seleccion=None):
         """Mostrar estadísticas finales"""
         stats = risk_manager.obtener_estadisticas()
+        
+        # Contar operaciones por tipo de estrategia usando la selección real
+        operaciones_forex = 0
+        operaciones_candle = 0
+        
+        # Crear mapas de estrategias seleccionadas por tipo
+        forex_strategies = set()
+        candle_strategies = set()
+        
+        if seleccion:
+            for nombre, config in seleccion.items():
+                if config.get("tipo") == "forex":
+                    forex_strategies.add(nombre)
+                elif config.get("tipo") == "candle":
+                    candle_strategies.add(nombre)
+        
+        # Contar en operaciones cerradas
+        for operacion in risk_manager.operaciones_cerradas:
+            estrategia_nombre = getattr(operacion, 'estrategia', '')
+            if estrategia_nombre:
+                if estrategia_nombre in forex_strategies:
+                    operaciones_forex += 1
+                elif estrategia_nombre in candle_strategies:
+                    operaciones_candle += 1
+        
+        # Contar en operaciones activas
+        for operacion in risk_manager.operaciones_activas:
+            estrategia_nombre = getattr(operacion, 'estrategia', '')
+            if estrategia_nombre:
+                if estrategia_nombre in forex_strategies:
+                    operaciones_forex += 1
+                elif estrategia_nombre in candle_strategies:
+                    operaciones_candle += 1
 
         self._log_to_parent("============================================================", 'cyan')
         self._log_to_parent("ESTADÍSTICAS FINALES DE SIMULACIÓN CONTINUA", 'cyan')
         self._log_to_parent("============================================================", 'cyan')
+        
+        # Mostrar estrategias seleccionadas
+        if seleccion:
+            self._log_to_parent("ESTRATEGIAS SELECCIONADAS:", 'white')
+            if forex_strategies:
+                self._log_to_parent(f"  Forex ({len(forex_strategies)}): {', '.join(forex_strategies)}", 'cyan')
+            if candle_strategies:
+                self._log_to_parent(f"  Candle ({len(candle_strategies)}): {', '.join(candle_strategies)}", 'cyan')
+            if not forex_strategies and not candle_strategies:
+                self._log_to_parent("  Ninguna estrategia seleccionada", 'yellow')
+        
         self._log_to_parent(f"Capital final: ${stats['capital_final']:,.2f}", 'white')
         self._log_to_parent(f"Beneficio total: ${stats['beneficio_total']:,.2f}", 'green' if stats['beneficio_total'] > 0 else 'red')
         self._log_to_parent(f"Operaciones ganadas: {stats['operaciones_ganadas']} [${stats['ganancia_ganadoras_total']:,.2f}]", 'green')
         self._log_to_parent(f"Operaciones perdidas: {stats['operaciones_perdidas']} [${stats['perdida_perdedoras_total']:,.2f}]", 'red')
+        
+        # Mostrar aplicación de estrategias
+        self._log_to_parent("APLICACIÓN DE ESTRATEGIAS:", 'white')
+        self._log_to_parent(f"  Operaciones forex aplicadas: {operaciones_forex}", 'yellow')
+        self._log_to_parent(f"  Patrones de vela aplicados: {operaciones_candle}", 'yellow')
+        
+        # Mostrar eficiencia de aplicación
+        total_seleccionadas = len(forex_strategies) + len(candle_strategies)
+        total_aplicadas = operaciones_forex + operaciones_candle
+        if total_seleccionadas > 0:
+            if total_aplicadas > 0:
+                self._log_to_parent(f"  Eficiencia: {total_aplicadas} operaciones de {total_seleccionadas} estrategias", 'green')
+            else:
+                self._log_to_parent(f"  ⚠️ NINGUNA operación aplicada de {total_seleccionadas} estrategias seleccionadas", 'red')
+        
         self._log_to_parent(f"Win Rate: {stats['win_rate']:.1f}%", 'white')
         self._log_to_parent("============================================================", 'cyan')
 
