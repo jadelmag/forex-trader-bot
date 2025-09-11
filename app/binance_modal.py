@@ -26,7 +26,7 @@ class BinanceSimulationModal(tk.Toplevel):
 
         # Centrar ventana sobre el padre - optimizado
         w = 650
-        h_total = 550
+        h_total = 600
         # Usar after_idle para evitar bloqueo durante inicialización
         self.after_idle(lambda: self._center_window(w, h_total))
         # Establecer geometría inicial para mostrar el modal inmediatamente
@@ -408,12 +408,30 @@ class BinanceSimulationModal(tk.Toplevel):
         config_fields = tk.Frame(frame_config)
         config_fields.pack(pady=0, expand=True)
         
+        # Frame para operaciones máximas (forex y velas)
+        frame_operations = tk.Frame(config_fields)
+        frame_operations.pack(pady=2)
+        
+        # Operaciones forex máximas
+        ttk.Label(frame_operations, text="Operaciones forex máximas:").pack(side="left", padx=6)
+        self.max_forex_var = tk.StringVar(value="0")
+        vcmd = (self.register(self._validate_int), '%P')
+        self.entry_max_forex = tk.Entry(frame_operations, textvariable=self.max_forex_var, width=5, 
+                                      validate="key", validatecommand=vcmd)
+        self.entry_max_forex.pack(side="left", padx=2)
+        
+        # Operaciones velas máximas
+        ttk.Label(frame_operations, text="Operaciones velas máximas:").pack(side="left", padx=6)
+        self.max_candle_var = tk.StringVar(value="0")
+        self.entry_max_candle = tk.Entry(frame_operations, textvariable=self.max_candle_var, width=5, 
+                                       validate="key", validatecommand=vcmd)
+        self.entry_max_candle.pack(side="left", padx=2)
+        
         # Frame para velas de espera
         frame_wait = tk.Frame(config_fields)
         frame_wait.pack(pady=2)
         ttk.Label(frame_wait, text="Velas a esperar:").pack(side="left", padx=6)
         self.wait_candles_var = tk.StringVar(value="20")
-        vcmd = (self.register(self._validate_int), '%P')
         self.entry_wait_candles = tk.Entry(frame_wait, textvariable=self.wait_candles_var, width=5, 
                                          validate="key", validatecommand=vcmd)
         self.entry_wait_candles.pack(side="left", padx=2)
@@ -547,6 +565,32 @@ class BinanceSimulationModal(tk.Toplevel):
                 )
                 return
             
+            # Validate forex and candle operations
+            try:
+                max_forex = int(self.max_forex_var.get() or 0)
+                max_candle = int(self.max_candle_var.get() or 0)
+                
+                if max_forex < 0 or max_candle < 0:
+                    tk.messagebox.showerror(
+                        "Error de Validación",
+                        "Las operaciones forex y velas máximas deben ser números positivos o cero."
+                    )
+                    return
+                
+                if max_forex + max_candle != max_orders:
+                    tk.messagebox.showerror(
+                        "Error de Validación",
+                        f"La suma de operaciones forex máximas ({max_forex}) y operaciones velas máximas ({max_candle}) debe ser igual al máximo de órdenes ({max_orders})."
+                    )
+                    return
+                    
+            except (ValueError, AttributeError):
+                tk.messagebox.showerror(
+                    "Error de Validación",
+                    "Los campos de operaciones máximas deben contener números válidos."
+                )
+                return
+            
             # Get display options
             show_detection = bool(self.var_mostrar_deteccion.get())
             show_simulation = bool(self.var_mostrar_simulacion.get())
@@ -558,6 +602,8 @@ class BinanceSimulationModal(tk.Toplevel):
                 'patterns': [],  # Patterns are now handled by CandleStrategies
                 'wait_candles': wait_candles,
                 'max_orders': max_orders,
+                'max_forex_operations': max_forex,
+                'max_candle_operations': max_candle,
                 'show_detection': show_detection,
                 'show_simulation': show_simulation,
                 'candles_elapsed': 0,  # Track number of candles processed
