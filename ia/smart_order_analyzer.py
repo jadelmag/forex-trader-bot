@@ -48,9 +48,13 @@ class SmartOrderAnalyzer:
         self.strategies_used_on_candle.clear()
         self.pattern_cache.clear()
         
-    def analyze_candle_for_buy_opportunity(self, candle_index: int, current_price: float) -> Dict:
+    def analyze_candle_for_buy_opportunity(self, candle_index, current_price: float) -> Dict:
         """
         Analiza una vela específica para determinar si es una buena oportunidad de compra.
+        
+        Args:
+            candle_index: Puede ser int (posición) o Timestamp (índice del DataFrame)
+            current_price: Precio actual
         
         Returns:
             Dict con información del análisis:
@@ -63,23 +67,34 @@ class SmartOrderAnalyzer:
                 'reason': str
             }
         """
+        # Convertir candle_index a posición numérica si es necesario
+        try:
+            if isinstance(candle_index, (pd.Timestamp, str)):
+                # Si es Timestamp o string, encontrar la posición numérica
+                numeric_index = self.df.index.get_loc(candle_index)
+            else:
+                # Si ya es numérico, usarlo directamente
+                numeric_index = int(candle_index)
+        except (KeyError, ValueError, TypeError):
+            return self._create_analysis_result(False, None, [], [], 0.0, "Índice de vela inválido")
+            
         # Verificar si es una nueva vela
-        if candle_index != self.last_candle_index:
-            self.last_candle_index = candle_index
+        if numeric_index != self.last_candle_index:
+            self.last_candle_index = numeric_index
             self.strategies_used_on_candle.clear()
             
         # Obtener datos de la vela actual y anteriores
-        if candle_index < 20:  # Necesitamos al menos 20 velas para análisis completo
+        if numeric_index < 20:  # Necesitamos al menos 20 velas para análisis completo
             return self._create_analysis_result(False, None, [], [], 0.0, "Datos insuficientes para análisis")
             
         # Análizar patrones de velas
-        pattern_analysis = self._analyze_candlestick_patterns(candle_index)
+        pattern_analysis = self._analyze_candlestick_patterns(numeric_index)
         
         # Analizar estrategias forex
-        forex_analysis = self._analyze_forex_strategies(candle_index, current_price)
+        forex_analysis = self._analyze_forex_strategies(numeric_index, current_price)
         
         # Analizar estrategias de velas
-        candle_strategy_analysis = self._analyze_candle_strategies(candle_index)
+        candle_strategy_analysis = self._analyze_candle_strategies(numeric_index)
         
         # Combinar análisis y tomar decisión
         decision = self._make_buy_decision(pattern_analysis, forex_analysis, candle_strategy_analysis)
