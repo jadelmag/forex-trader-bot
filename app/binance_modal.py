@@ -230,27 +230,40 @@ class BinanceSimulationModal(tk.Toplevel):
                 btn_candle_frame,
                 text="Cargar configuraciones",
                 command=self._load_all_candle_configs_async,
-                width=22
+                width=20
             )
             btn_candle_cargar.pack(side="left", padx=5)
             
+            # Frame para checkbox y botón de configurar detección
+            detection_frame = tk.Frame(self.scrollable_frame)
+            detection_frame.grid(row=start_row + 2, column=0, columnspan=7, pady=(5, 10))
+            
+            # Checkbox para aplicar solo detección
+            self.aplicar_solo_deteccion = tk.BooleanVar(value=False)
+            chk_deteccion = ttk.Checkbutton(
+                detection_frame,
+                text="Aplicar solo detección",
+                variable=self.aplicar_solo_deteccion
+            )
+            chk_deteccion.pack(side="left", padx=5)
+            
             # Botón para configurar detección de patrones globalmente
             btn_pattern_detection = ttk.Button(
-                btn_candle_frame,
+                detection_frame,
                 text="Configurar detección",
                 command=self._open_pattern_detection_config,
                 width=20
             )
             btn_pattern_detection.pack(side="left", padx=5)
 
-            # Encabezado para Candle Strategies (con configuración personalizada)
-            ttk.Label(self.scrollable_frame, text="Estrategia", width=20, anchor="w").grid(row=start_row+2, column=0, padx=5)
-            ttk.Label(self.scrollable_frame, text="Configuración", width=15).grid(row=start_row+2, column=1, padx=5)
-            ttk.Label(self.scrollable_frame, text="", width=15).grid(row=start_row+2, column=2, padx=5)
-            ttk.Label(self.scrollable_frame, text="Velas", width=10, anchor="center").grid(row=start_row+2, column=3, padx=5)
+            # Encabezado para Candle Strategies
+            ttk.Label(self.scrollable_frame, text="Estrategia", width=20, anchor="w").grid(row=start_row+3, column=0, padx=5)
+            ttk.Label(self.scrollable_frame, text="Configuración", width=15).grid(row=start_row+3, column=1, padx=5)
+            ttk.Label(self.scrollable_frame, text="", width=15).grid(row=start_row+3, column=2, padx=5)
+            ttk.Label(self.scrollable_frame, text="Velas", width=10, anchor="center").grid(row=start_row+3, column=3, padx=5)
 
             # Estrategias Candle (con configuración personalizada)
-            for idx, nombre in enumerate(self.estrategias_candle, start=start_row+3):
+            for idx, nombre in enumerate(self.estrategias_candle, start=start_row+4):
                 var_check = tk.IntVar()
                 display_name = nombre.replace('_', ' ').capitalize()
                 chk = tk.Checkbutton(self.scrollable_frame, text=display_name, variable=var_check, 
@@ -473,14 +486,20 @@ class BinanceSimulationModal(tk.Toplevel):
                             'rr_ratio': rr
                         })
                     elif ctrl["tipo"] == "candle":
-                        # Handle custom configuration for candle strategies
+                        # Handle configuration based on checkbox and mode
                         config = None
                         try:
-                            if ctrl.get("config_type") and ctrl["config_type"].get() == "Custom":
-                                # Use custom config if available, else preset for that strategy
-                                config = ctrl.get("custom_config") or self._get_default_candle_config(name)
+                            # Check if "Aplicar solo detección" checkbox is active
+                            if hasattr(self, 'aplicar_solo_deteccion') and self.aplicar_solo_deteccion.get():
+                                # Use global detection configuration
+                                config = getattr(self, 'global_pattern_config', None) or self._get_default_pattern_detection_config()
                             else:
-                                config = None  # Default => None
+                                # Original logic: Custom vs Default mode
+                                if ctrl.get("config_type") and ctrl["config_type"].get() == "Custom":
+                                    # Use custom config if available, else preset for that strategy
+                                    config = ctrl.get("custom_config") or self._get_default_candle_config(name)
+                                else:
+                                    config = None  # Default => None
                         except Exception:
                             config = None
                         

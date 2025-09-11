@@ -409,7 +409,7 @@ class RiskManagerIntegration:
                         logger.info(f"Trailing stop configurado para operación {operacion.id_operacion}")
 
                 self.metrics.signals_processed += 1
-                logger.info(f"✅ OPERACIÓN ABIERTA: {estrategia_nombre} - ID: {operacion.id} - Precio: {precio_actual}, SL: {stop_loss:.5f}, TP: {take_profit:.5f}")
+                # logger.info(f"✅ OPERACIÓN ABIERTA: {estrategia_nombre} - ID: {operacion.id} - Precio: {precio_actual}, SL: {stop_loss:.5f}, TP: {take_profit:.5f}")
             else:
                 self.metrics.errors_count += 1
                 error_msg = self.risk_manager.last_error or "Error desconocido"
