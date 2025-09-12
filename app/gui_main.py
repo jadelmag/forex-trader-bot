@@ -1990,8 +1990,6 @@ class GUIPrincipal:
                                 current_signal = signals.iloc[-1]
                                 # Procesar primero señales de salida (-1)
                                 if current_signal == -1:
-                                    # Explicar el significado de la señal
-                                    self.log(f"🔴 SEÑAL DE VENTA/CIERRE: {strategy_name} = {current_signal} (Patrón indica bajada)", color="red")
                                     try:
                                         # Cerrar operaciones abiertas por esta estrategia en RiskManager
                                         cerradas = self.risk_integration.procesar_senal(
@@ -2002,6 +2000,14 @@ class GUIPrincipal:
                                             estrategia_nombre=f"candle_{strategy_name}",
                                             sync_mode=True
                                         )
+                                        
+                                        # SEÑAL SELL (-1) = Oportunidad de ganancia bajista = VERDE
+                                        # El color debe basarse en el tipo de oportunidad, no en resultados pasados
+                                        emoji = "🟢"
+                                        signal_color = "green"
+                                        
+                                        self.log(f"{emoji} SEÑAL DE VENTA/CIERRE: {strategy_name} = {current_signal} (Patrón indica bajada)", color=signal_color)
+                                        
                                         # Registrar cierres y actualizar métricas/labels si aplica
                                         if isinstance(cerradas, list) and cerradas:
                                             for op in cerradas:
