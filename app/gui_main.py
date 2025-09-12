@@ -1456,10 +1456,41 @@ class GUIPrincipal:
                         self.root.after(0, lambda: self.log(str(msg), color=color))
                     except Exception:
                         pass
+                # Obtener estrategias seleccionadas actualmente en la GUI
+                estrategias_fx_seleccionadas = {}
+                estrategias_candle_seleccionadas = []
+                
+                # Obtener estrategias forex seleccionadas
+                try:
+                    if hasattr(self, 'forex_strategies') and self.forex_strategies:
+                        for nombre_estrategia in self.forex_strategies.get_strategy_names():
+                            if hasattr(self, f'var_fx_{nombre_estrategia}'):
+                                var = getattr(self, f'var_fx_{nombre_estrategia}')
+                                if var.get():
+                                    estrategias_fx_seleccionadas[nombre_estrategia] = {}
+                except Exception as e:
+                    _log_ts(f"Error obteniendo estrategias forex: {e}", 'yellow')
+                
+                # Obtener estrategias de velas seleccionadas
+                try:
+                    if hasattr(self, 'candle_strategies') and self.candle_strategies:
+                        for nombre_estrategia in self.candle_strategies.get_strategy_names():
+                            if hasattr(self, f'var_candle_{nombre_estrategia}'):
+                                var = getattr(self, f'var_candle_{nombre_estrategia}')
+                                if var.get():
+                                    estrategias_candle_seleccionadas.append(nombre_estrategia)
+                except Exception as e:
+                    _log_ts(f"Error obteniendo estrategias de velas: {e}", 'yellow')
+                
+                
+                # Log de selecciones para debugging
+                _log_ts(f"Estrategias FX seleccionadas: {list(estrategias_fx_seleccionadas.keys())}", 'cyan')
+                _log_ts(f"Estrategias Candle seleccionadas: {estrategias_candle_seleccionadas}", 'cyan')
+                
                 self.rl_agent = RLTradingAgent(
                     self.df_actual,
-                    estrategias_fx={},
-                    estrategias_candle=[],
+                    estrategias_fx=estrategias_fx_seleccionadas,
+                    estrategias_candle=estrategias_candle_seleccionadas,
                     patrones=[],
                     log_fn=lambda m: _log_ts(m, 'cyan')
                 )

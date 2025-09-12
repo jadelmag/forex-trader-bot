@@ -65,13 +65,16 @@ class TradingEnv(gym.Env):
         
         # Métricas específicas para objetivos de aprendizaje
         self.forex_strategy_profits = {strategy: 0.0 for strategy in self.estrategias_fx.keys()}
-        self.candle_pattern_profits = {pattern: 0.0 for pattern in self.estrategias_candle + self.patrones}
+        
+        # Combinar estrategias de velas y patrones de forma segura
+        all_patterns = list(self.estrategias_candle) + list(self.patrones)
+        self.candle_pattern_profits = {pattern: 0.0 for pattern in all_patterns}
         self.strategy_timing_rewards = {strategy: [] for strategy in self.estrategias_fx.keys()}
-        self.pattern_detection_rewards = {pattern: [] for pattern in self.estrategias_candle + self.patrones}
+        self.pattern_detection_rewards = {pattern: [] for pattern in all_patterns}
         
         # Tracking para aprendizaje de timing óptimo
         self.last_strategy_signals = {strategy: 0 for strategy in self.estrategias_fx.keys()}
-        self.last_pattern_signals = {pattern: 0 for pattern in self.estrategias_candle + self.patrones}
+        self.last_pattern_signals = {pattern: 0 for pattern in all_patterns}
         self.strategy_entry_steps = {}
         self.pattern_entry_steps = {}
 
@@ -172,11 +175,14 @@ class TradingEnv(gym.Env):
         
         # Reset métricas de aprendizaje
         self.forex_strategy_profits = {strategy: 0.0 for strategy in self.estrategias_fx.keys()}
-        self.candle_pattern_profits = {pattern: 0.0 for pattern in self.estrategias_candle + self.patrones}
+        
+        # Combinar estrategias de velas y patrones de forma segura
+        all_patterns = list(self.estrategias_candle) + list(self.patrones)
+        self.candle_pattern_profits = {pattern: 0.0 for pattern in all_patterns}
         self.strategy_timing_rewards = {strategy: [] for strategy in self.estrategias_fx.keys()}
-        self.pattern_detection_rewards = {pattern: [] for pattern in self.estrategias_candle + self.patrones}
+        self.pattern_detection_rewards = {pattern: [] for pattern in all_patterns}
         self.last_strategy_signals = {strategy: 0 for strategy in self.estrategias_fx.keys()}
-        self.last_pattern_signals = {pattern: 0 for pattern in self.estrategias_candle + self.patrones}
+        self.last_pattern_signals = {pattern: 0 for pattern in all_patterns}
         self.strategy_entry_steps = {}
         self.pattern_entry_steps = {}
         

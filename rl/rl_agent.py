@@ -68,8 +68,10 @@ class RLTradingAgent:
         Entrena el modelo PPO con las estrategias seleccionadas.
         """
         if self.model is None:
+            # Ajustar n_steps para que respete el número de timesteps especificado
+            n_steps = min(timesteps, 2048)  # No exceder timesteps solicitados
             self.model = PPO("MlpPolicy", self.env, verbose=0, 
-                           learning_rate=0.0003, n_steps=2048, batch_size=64,
+                           learning_rate=0.0003, n_steps=n_steps, batch_size=64,
                            tensorboard_log="./tensorboard_logs/")
         
         self._log(f"🧠 ENTRENANDO MODELO RL con {timesteps} pasos...")
@@ -77,7 +79,6 @@ class RLTradingAgent:
         self._log(f"📊 Estrategias FX: {list(self.estrategias_fx.keys())}")
         self._log(f"🎯 OBJETIVO 2: Detectar patrones de vela para BUY/SELL óptimos")
         self._log(f"📊 Estrategias Candle: {self.estrategias_candle}")
-        self._log(f"📊 Patrones: {self.patrones}")
         self._log(f"🤖 El modelo aprenderá automáticamente parámetros de riesgo, RR y gestión de órdenes")
 
         # Callback de progreso
