@@ -5,10 +5,22 @@ import numpy as np
 
 class CandlestickPatterns:
     PATTERN_CANDLE_COUNTS = {
-        'doji': 1, 'hammer': 1, 'hanging_man': 1, 'shooting_star': 1, 'spinning_top': 1, 'inverted_hammer': 1,
-        'bullish_engulfing': 2, 'bearish_engulfing': 2, 'piercing_line': 2, 'dark_cloud_cover': 2,
-        'tweezer_top': 2, 'tweezer_bottom': 2,
-        'morning_star': 3, 'evening_star': 3, 'three_white_soldiers': 3, 'three_black_crows': 3
+        'doji': 1, 
+        'hammer': 1, 
+        'hanging_man': 1, 
+        'shooting_star': 1, 
+        'spinning_top': 1, 
+        'inverted_hammer': 1,
+        'bullish_engulfing': 2, 
+        'bearish_engulfing': 2, 
+        'piercing_line': 2, 
+        'dark_cloud_cover': 2,
+        'tweezer_top': 2, 
+        'tweezer_bottom': 2,
+        'morning_star': 3, 
+        'evening_star': 3, 
+        'three_white_soldiers': 3, 
+        'three_black_crows': 3
     }
 
     @classmethod

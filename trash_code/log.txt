@@ -1,1 +1,91 @@
-2025-09-10 17:27:51,186 - RiskManagerIntegration - ERROR - Error en _process_single_signal: 'NoneType' object has no attribute 'get'
+Dinero inicial actualizado a: $1,000.00
+CandleStreamer conectado correctamente
+Símbolo: EURUSDT | Intervalo: 1m | Máx. velas: 500
+Iniciando precarga histórica...
+Revelado progresivo activado - velas aparecerán cada 5 segundos
+✓ Conexión WebSocket establecida
+✅ Descarga completada: se alcanzaron 501 velas
+📊 Sistema de reports configurado: Capital 1000.0€, 30 estrategias
+Simulación iniciada. Esperando 5 velas antes de operar...
+Esperando 4 velas más antes de operar...
+Esperando 3 velas más antes de operar...
+Esperando 2 velas más antes de operar...
+Esperando 1 velas más antes de operar...
+Simulación en progreso!!
+Simulación en progreso - Velas procesadas: 10
+Simulación en progreso - Velas procesadas: 20
+🟢 SEÑAL COMPRA: marubozu_trend = 1 (Patrón indica subida)
+💰 COMPRA marubozu trend: Operación 1 [BUY] @ 1.17280
+🎯 Stop Loss: 1.17233 | Take Profit: 1.17327
+Simulación en progreso - Velas procesadas: 30
+🔴 SEÑAL DE VENTA/CIERRE: marubozu_trend = -1 (Patrón indica bajada)
+CIERRE POR ESTRATEGIA candle_marubozu_trend: Operacion 1 [BUY] CERRADA @ 1.17280 | Profit: $-4.24
+Señal marubozu_trend: -1
+Simulación en progreso - Velas procesadas: 40
+Simulación en progreso - Velas procesadas: 50
+🟢 SEÑAL COMPRA: filter_with_trend = 1 (Patrón indica subida)
+💰 COMPRA filter with trend: Operación 2 [BUY] @ 1.17300
+🎯 Stop Loss: 1.17253 | Take Profit: 1.17347
+🟢 SEÑAL COMPRA: stop_loss_take_profit = 1 (Patrón indica subida)
+💰 COMPRA stop loss take profit: Operación 3 [BUY] @ 1.17300
+🎯 Stop Loss: 1.17253 | Take Profit: 1.17347
+🟢 SEÑAL COMPRA: marubozu_trend = 1 (Patrón indica subida)
+💰 COMPRA marubozu trend: Operación 4 [BUY] @ 1.17300
+🎯 Stop Loss: 1.17253 | Take Profit: 1.17347
+Simulación en progreso - Velas procesadas: 60
+🔴 SEÑAL DE VENTA/CIERRE: filter_with_trend = -1 (Patrón indica bajada)
+CIERRE POR ESTRATEGIA candle_filter_with_trend: Operacion 2 [BUY] CERRADA @ 1.17300 | Profit: $-6.34
+Señal filter_with_trend: -1
+🔴 SEÑAL DE VENTA/CIERRE: marubozu_trend = -1 (Patrón indica bajada)
+CIERRE POR ESTRATEGIA candle_marubozu_trend: Operacion 4 [BUY] CERRADA @ 1.17300 | Profit: $-6.21
+Señal marubozu_trend: -1
+🔴 SEÑAL DE VENTA/CIERRE: stop_loss_take_profit = -1 (Patrón indica bajada)
+CIERRE POR ESTRATEGIA candle_stop_loss_take_profit: Operacion 3 [BUY] CERRADA @ 1.17300 | Profit: $-6.27
+Señal stop_loss_take_profit: -1
+🟢 SEÑAL COMPRA: doji_indecision = 1 (Patrón indica subida)
+💰 COMPRA doji indecision: Operación 5 [BUY] @ 1.17250
+🎯 Stop Loss: 1.17203 | Take Profit: 1.17297
+🟢 SEÑAL COMPRA: doji_reversal_strategy = 1 (Patrón indica subida)
+💰 COMPRA doji reversal strategy: Operación 6 [BUY] @ 1.17250
+🎯 Stop Loss: 1.17203 | Take Profit: 1.17297
+Simulación en progreso - Velas procesadas: 70
+🔴 SEÑAL DE VENTA/CIERRE: doji_indecision = -1 (Patrón indica bajada)
+CIERRE POR ESTRATEGIA candle_doji_indecision: Operacion 5 [BUY] CERRADA @ 1.17250 | Profit: $-2.07
+Señal doji_indecision: -1
+🔴 SEÑAL DE VENTA/CIERRE: doji_reversal_strategy = -1 (Patrón indica bajada)
+CIERRE POR ESTRATEGIA candle_doji_reversal_strategy: Operacion 6 [BUY] CERRADA @ 1.17250 | Profit: $-2.05
+Señal doji_reversal_strategy: -1
+Simulación en progreso - Velas procesadas: 80
+Simulación en progreso - Velas procesadas: 90
+🟢 SEÑAL COMPRA: marubozu_trend = 1 (Patrón indica subida)
+💰 COMPRA marubozu trend: Operación 7 [BUY] @ 1.17260
+🎯 Stop Loss: 1.17213 | Take Profit: 1.17307
+Simulación en progreso - Velas procesadas: 100
+🔴 SEÑAL DE VENTA/CIERRE: marubozu_trend = -1 (Patrón indica bajada)
+CIERRE POR ESTRATEGIA candle_marubozu_trend: Operacion 7 [BUY] CERRADA @ 1.17260 | Profit: $-6.19
+Señal marubozu_trend: -1
+🟢 SEÑAL COMPRA: marubozu_trend = 1 (Patrón indica subida)
+💰 COMPRA marubozu trend: Operación 8 [BUY] @ 1.17250
+🎯 Stop Loss: 1.17203 | Take Profit: 1.17297
+Simulación en progreso - Velas procesadas: 110
+🔴 SEÑAL DE VENTA/CIERRE: marubozu_trend = -1 (Patrón indica bajada)
+CIERRE POR ESTRATEGIA candle_marubozu_trend: Operacion 8 [BUY] CERRADA @ 1.17250 | Profit: $-6.15
+Señal marubozu_trend: -1
+Simulación en progreso - Velas procesadas: 120
+🟢 SEÑAL COMPRA: marubozu_trend = 1 (Patrón indica subida)
+💰 COMPRA marubozu trend: Operación 9 [BUY] @ 1.17240
+🎯 Stop Loss: 1.17193 | Take Profit: 1.17287
+Simulación en progreso - Velas procesadas: 130
+🔴 SEÑAL DE VENTA/CIERRE: doji_indecision = -1 (Patrón indica bajada)
+Señal doji_indecision: -1
+🔴 SEÑAL DE VENTA/CIERRE: doji_reversal_strategy = -1 (Patrón indica bajada)
+Señal doji_reversal_strategy: -1
+Simulación en progreso - Velas procesadas: 140
+🟢 SEÑAL COMPRA: doji_indecision = 1 (Patrón indica subida)
+💰 COMPRA doji indecision: Operación 10 [BUY] @ 1.17230
+🎯 Stop Loss: 1.17183 | Take Profit: 1.17277
+🟢 SEÑAL COMPRA: doji_reversal_strategy = 1 (Patrón indica subida)
+💰 COMPRA doji reversal strategy: Operación 11 [BUY] @ 1.17230
+🎯 Stop Loss: 1.17183 | Take Profit: 1.17277
+Simulación en progreso - Velas procesadas: 150
+
