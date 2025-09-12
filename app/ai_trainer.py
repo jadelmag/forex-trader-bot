@@ -81,6 +81,15 @@ class AITrainer:
         self._best_candle: List[str] = list(self._current_candle)
         self._best_model_path: Optional[str] = None
 
+        # Límite por tipo de estrategia (solicitado: 10 forex, 10 candle)
+        # Nota: el RiskManager limita el total (max_orders). Aquí imponemos reparto por tipo.
+        try:
+            self.max_forex_ops = 10
+            self.max_candle_ops = 10
+        except Exception:
+            self.max_forex_ops = 10
+            self.max_candle_ops = 10
+
         # --- Candle strategies configuration management ---
         # Maintain per-strategy CandleExitConfig-like dicts that we can optimize
         self._config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config')
@@ -98,6 +107,27 @@ class AITrainer:
         self.operaciones_track = []
         self.estadisticas_por_estrategia = {}
         self.mejor_configuracion = None
+
+    def _count_active_ops_by_type(self) -> Dict[str, int]:
+        """Cuenta operaciones activas por tipo usando el prefijo de estrategia.
+        Prefijos: AI_FOREX_, AI_CANDLE_ (cualquier otro cuenta como 'other').
+        """
+        counts = {"forex": 0, "candle": 0, "other": 0}
+        try:
+            for op in getattr(self.risk_manager, 'operaciones_activas', []) or []:
+                name = getattr(op, 'estrategia', '')
+                if isinstance(name, str):
+                    if name.startswith('AI_FOREX_'):
+                        counts["forex"] += 1
+                    elif name.startswith('AI_CANDLE_'):
+                        counts["candle"] += 1
+                    else:
+                        counts["other"] += 1
+                else:
+                    counts["other"] += 1
+        except Exception:
+            pass
+        return counts
 
     def _initialize_rl_agent(self):
         """Inicializa el agente RL con las estrategias actuales"""
@@ -182,6 +212,18 @@ class AITrainer:
         # Añadir ATR para gestión de riesgo
         df_signals['ATR'] = (df_signals['High'] - df_signals['Low']).rolling(14).mean()
         df_signals['ATR'] = df_signals['ATR'].fillna(df_signals['ATR'].mean())
+        
+        # Guardar una copia rápida de las señales para inspección
+        try:
+            project_root = os.path.dirname(os.path.dirname(__file__))
+            reports_dir = os.path.join(project_root, 'reports')
+            os.makedirs(reports_dir, exist_ok=True)
+            ts = int(time.time())
+            out_csv = os.path.join(reports_dir, f"rl_signals_{ts}.csv")
+            df_signals.to_csv(out_csv, index=False)
+            self._emit_log(f"💾 Señales RL guardadas en: {out_csv}", 'cyan')
+        except Exception as e:
+            self._emit_log(f"⚠️ No se pudo guardar CSV de señales RL: {e}", 'yellow')
         
         return df_signals
 
@@ -554,6 +596,12 @@ class AITrainer:
                 self._emit_progress(0, total_rows)
 
                 self._emit_log(f"🚀 INICIO BACKTESTING (intento {attempt})", 'green')
+                # Mostrar reparto de límites por tipo
+                try:
+                    self._emit_log(f"🔒 Límite total RiskManager: {self.risk_manager.max_operaciones_activas}", 'white')
+                    self._emit_log(f"🔢 Reparto por tipo -> Forex: {self.max_forex_ops} | Candle: {self.max_candle_ops}", 'white')
+                except Exception:
+                    pass
                 if self.use_winrate:
                     try:
                         fx_resumen = ", ".join([f"{k}(riesgo={v.get('riesgo',0.01):.3f}, rr={v.get('rr',2.0):.2f})" for k,v in self._current_fx.items()]) or "-"
@@ -628,34 +676,53 @@ class AITrainer:
                     if senal is not None and senal != 0 and not np.isnan(senal):
                         if not self.risk_manager.puede_abrir_operacion():
                             continue
-                            
+
                         # ANÁLISIS INTELIGENTE DE LA VELA
                         analysis = self.smart_analyzer.analyze_candle_for_buy_opportunity(idx, row['Close'])
-                        
+
                         if analysis['should_buy']:
                             atr_value = row.get('ATR')
                             if np.isnan(atr_value) or atr_value <= 0:
                                 atr_value = (df_work['High'] - df_work['Low']).mean() * 0.1
-                                
+
                             # Usar estrategia recomendada por el análisis inteligente
                             strategy_name = analysis['recommended_strategy']
                             strategy_type = analysis.get('strategy_type', 'rl')
-                            
+
+                            # Resolver tipo cuando venga 'rl' o valores inesperados
+                            stype = str(strategy_type).lower() if strategy_type is not None else 'rl'
+                            if stype not in ('forex', 'candle'):
+                                if strategy_name in self._current_fx:
+                                    stype = 'forex'
+                                elif strategy_name in self._current_candle:
+                                    stype = 'candle'
+                                else:
+                                    stype = 'forex'  # fallback razonable
+
+                            # Enforzar límites por tipo (10/10)
+                            type_counts = self._count_active_ops_by_type()
+                            if stype == 'forex' and type_counts.get('forex', 0) >= self.max_forex_ops:
+                                self._emit_log(f"⛔ Límite Forex alcanzado ({type_counts.get('forex',0)}/{self.max_forex_ops}). Saltando apertura.", 'yellow')
+                                continue
+                            if stype == 'candle' and type_counts.get('candle', 0) >= self.max_candle_ops:
+                                self._emit_log(f"⛔ Límite Candle alcanzado ({type_counts.get('candle',0)}/{self.max_candle_ops}). Saltando apertura.", 'yellow')
+                                continue
+
                             # Determinar parámetros según tipo de estrategia
-                            if strategy_type == 'forex' and strategy_name in self._current_fx:
+                            if stype == 'forex' and strategy_name in self._current_fx:
                                 rr_ratio = self._current_fx[strategy_name].get('rr', 2.0)
                                 riesgo = self._current_fx[strategy_name].get('riesgo', 0.01)
                             else:
                                 rr_ratio = 2.0
                                 riesgo = 0.01
-                                
+
                             operacion = self.risk_integration.procesar_senal(
                                 senal=senal,
                                 precio_actual=row['Close'],
                                 timestamp=idx,
                                 atr_value=atr_value,
                                 rr_ratio=rr_ratio,
-                                estrategia=f"AI_{strategy_name}" if strategy_name else "AI_RL"
+                                estrategia=(f"AI_{'FOREX' if stype=='forex' else 'CANDLE'}_{strategy_name}" if strategy_name else f"AI_{'FOREX' if stype=='forex' else 'CANDLE'}")
                             )
                             
                             if operacion:
