@@ -16,6 +16,9 @@ import threading
 from typing import Dict, List, Optional, Callable, Any, Tuple
 import sys
 from pathlib import Path
+import queue
+from concurrent.futures import ThreadPoolExecutor
+import weakref
 
 # Añadir el directorio raíz al path para importar módulos
 root_dir = str(Path(__file__).parent.parent)
@@ -104,6 +107,34 @@ class GUIPrincipal:
         
         # Configurar limpieza al cerrar la aplicación
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
+        # ===== OPTIMIZACIONES DE THREADING =====
+        # Pool de hilos para procesamiento asíncrono (limitado a 3 hilos)
+        self._thread_pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix="ForexBot")
+        
+        # Queue thread-safe para comunicación entre hilos
+        self._gui_update_queue = queue.Queue()
+        self._log_queue = queue.Queue()
+        
+        # Cache para instancias pesadas (evitar recreación constante)
+        self._forex_strategies_cache = None
+        self._candle_strategies_cache = None
+        self._patterns_cache = None
+        self._last_df_hash = None
+        
+        # ATR precalculado (evitar recálculos repetitivos)
+        self._cached_atr = None
+        self._atr_last_update = None
+        
+        # Throttling para actualizaciones de GUI
+        self._last_gui_update = 0
+        self._gui_update_interval = 0.1  # 100ms mínimo entre actualizaciones
+        self._last_log_update = 0
+        self._log_update_interval = 0.05  # 50ms mínimo entre logs
+        
+        # Flags de control
+        self._processing_candle = False
+        self._shutdown_requested = False
 
         # Frames principales
         self.frame_controls = tk.Frame(self.root, bg="#F0F0F0")
@@ -407,6 +438,12 @@ class GUIPrincipal:
             style='Small.TButton'
         )
         self.btn_reiniciar.pack(side="left", padx=2)
+
+        # Inicializar worker de threading al final (después de crear toda la GUI)
+        try:
+            self._start_gui_update_worker()
+        except Exception as e:
+            print(f"Error iniciando worker de threading: {e}")
 
     # Fin de __init__
 
@@ -1815,11 +1852,22 @@ class GUIPrincipal:
             self.log(traceback.format_exc(), color="red")
 
     def _on_candle_update(self, df):
-        """Maneja la actualización de velas durante la simulación"""
+        """Maneja la actualización de velas durante la simulación - VERSIÓN OPTIMIZADA"""
         if not hasattr(self, 'simulation_active') or not self.simulation_active:
             return
+        
+        # Evitar procesamiento concurrente
+        if self._processing_candle:
+            return
             
+        # Procesar en hilo separado para no bloquear GUI
+        self._thread_pool.submit(self._process_candle_async, df.copy())
+
+    def _process_candle_async(self, df):
+        """Procesa la vela en hilo separado - NO BLOQUEA LA GUI"""
         try:
+            self._processing_candle = True
+            
             # Incrementar el contador de velas
             if not hasattr(self, 'simulation_candles_elapsed'):
                 self.simulation_candles_elapsed = 0
@@ -1834,34 +1882,23 @@ class GUIPrincipal:
             except Exception:
                 self._last_close = None
             
-            # Actualizar el log con el progreso
-            if self.simulation_candles_elapsed % 10 == 0:  # Cada 10 velas
-                self.log(f"Simulación en progreso - Velas procesadas: {self.simulation_candles_elapsed}", color="blue")
+            # Log throttled (solo cada 10 velas)
+            if self.simulation_candles_elapsed % 10 == 0:
+                self._queue_log_update(f"Simulación en progreso - Velas procesadas: {self.simulation_candles_elapsed}", "blue")
             
-            # Verificar si ya pasaron las velas de espera (usar el valor del modal)
+            # Verificar si ya pasaron las velas de espera
             wait_candles = int(self.simulation_config['wait_candles'])
             remaining = wait_candles - self.simulation_candles_elapsed
             if remaining > 0:
-                # Mostrar siempre el estado de espera en azul
-                self.log(f"Esperando {remaining} velas más antes de operar...", color="blue")
-                # Actualizar estado visual (azul durante la espera)
-                if hasattr(self, 'label_sim_status'):
-                    try:
-                        self.label_sim_status.configure(text=f"Esperando {remaining} velas...", fg="blue")
-                    except Exception:
-                        pass
+                self._queue_log_update(f"Esperando {remaining} velas más antes de operar...", "blue")
+                self._queue_gui_update('status', f"Esperando {remaining} velas...", "blue")
                 return
             else:
-                # Justo al alcanzar 0 velas de espera, anunciar inicio de la simulación en progreso
+                # Justo al alcanzar 0 velas de espera
                 if not getattr(self, '_sim_started_logged', False):
-                    self.log("Simulación en progreso!!", color="blue")
+                    self._queue_log_update("Simulación en progreso!!", "blue")
                     self._sim_started_logged = True
-                    # Actualizar estado visual (mantener azul como solicitado)
-                    if hasattr(self, 'label_sim_status'):
-                        try:
-                            self.label_sim_status.configure(text="Simulación en progreso!!", fg="blue")
-                        except Exception:
-                            pass
+                    self._queue_gui_update('status', "Simulación en progreso!!", "blue")
                 
             # Asegurar RiskManager inicializado para simulación en streaming
             if not hasattr(self, 'risk_manager') or self.risk_manager is None:
@@ -1880,9 +1917,13 @@ class GUIPrincipal:
                 except Exception:
                     pass
 
-            # Aplicar estrategias de Forex y Patrones (usar paquetes de nivel superior)
-            from strategies import ForexStrategies
-            from patterns.candlestickpatterns import CandlestickPatterns
+            # ===== OPTIMIZACIÓN: PRECALCULAR ATR UNA SOLA VEZ =====
+            atr_value = self._get_cached_atr(df, last_candle)
+            
+            # ===== OPTIMIZACIÓN: USAR INSTANCIAS CACHEADAS =====
+            forex_strategies = self._get_cached_forex_strategies(df)
+            candle_strategies = self._get_cached_candle_strategies(df)
+            patterns = self._get_cached_patterns(df)
             
             # Control de operaciones por vela: máximo 1 forex, máximo 2 velas, máximo 2 patrones
             max_forex_operations_per_candle = 1
@@ -1923,9 +1964,8 @@ class GUIPrincipal:
                     if ya_activa:
                         continue
                     
-                    # Instanciar y ejecutar el método de estrategia correspondiente
-                    fx = ForexStrategies(df)
-                    metodo = getattr(fx, strategy_name, None)
+                    # Usar instancia cacheada y ejecutar método
+                    metodo = getattr(forex_strategies, strategy_name, None)
                     if not callable(metodo):
                         raise AttributeError(f"Estrategia no encontrada: {strategy_name}")
                     df_res = metodo(risk_per_trade=risk, rr_ratio=rr_ratio)
@@ -1934,13 +1974,13 @@ class GUIPrincipal:
                     
                     # Procesar señales
                     if signals is not None and not signals.empty and signals.iloc[-1] == 1:  # Señal de compra
-                        self.log(f"🟢 SEÑAL COMPRA: {strategy_name} = 1 (Estrategia indica subida)", color="green")
-                        if self._procesar_senal_compra_risk_manager(last_candle, strategy_name, risk, rr_ratio):
+                        self._queue_log_update(f"🟢 SEÑAL COMPRA: {strategy_name} = 1 (Estrategia indica subida)", "green")
+                        if self._procesar_senal_compra_risk_manager_async(last_candle, strategy_name, risk, rr_ratio, atr_value):
                             forex_strategies_used += 1
                             forex_operations_opened_this_candle += 1
                         
                 except Exception as e:
-                    self.log(f"Error aplicando estrategia {strategy_name}: {str(e)}", color="red")
+                    self._queue_log_update(f"Error aplicando estrategia {strategy_name}: {str(e)}", "red")
             
             # Aplicar estrategias de velas (limitado por slots configurados)
             from strategies.candle_strategies import CandleStrategies
@@ -2078,9 +2118,11 @@ class GUIPrincipal:
             self._verificar_cierre_ordenes_risk_manager(last_candle)
             
         except Exception as e:
-            self.log(f"Error en _on_candle_update: {str(e)}", color="red")
+            self._queue_log_update(f"Error en _on_candle_update: {str(e)}", "red")
             import traceback
-            self.log(traceback.format_exc(), color="red")
+            self._queue_log_update(traceback.format_exc(), "red")
+        finally:
+            self._processing_candle = False
 
     def _procesar_senal_compra_risk_manager(self, candle, strategy_name, risk, rr_ratio):
         """Procesa una señal de compra mediante RiskManager con reglas de unicidad"""
@@ -2290,7 +2332,7 @@ class GUIPrincipal:
                         
             except Exception as e:
                 self.log(f"Error verificando cierre de orden: {str(e)}", color="red")
-    
+
     def detener_simulacion_binance(self):
         """Detiene la simulación del mercado"""
         try:
@@ -3358,6 +3400,199 @@ class GUIPrincipal:
             except:
                 sys.exit(0)
     
+    # ===== MÉTODOS AUXILIARES PARA OPTIMIZACIÓN DE THREADING =====
+    
+    def _start_gui_update_worker(self):
+        """Inicia el worker que procesa actualizaciones de GUI en hilo separado"""
+        def gui_worker():
+            while not self._shutdown_requested:
+                try:
+                    # Procesar actualizaciones de GUI con throttling
+                    current_time = time.time()
+                    if current_time - self._last_gui_update >= self._gui_update_interval:
+                        try:
+                            update_type, *args = self._gui_update_queue.get(timeout=0.1)
+                            self.root.after_idle(self._process_gui_update, update_type, *args)
+                            self._last_gui_update = current_time
+                        except queue.Empty:
+                            pass
+                    
+                    # Procesar logs con throttling
+                    if current_time - self._last_log_update >= self._log_update_interval:
+                        try:
+                            message, color = self._log_queue.get(timeout=0.1)
+                            self.root.after_idle(self.log, message, color)
+                            self._last_log_update = current_time
+                        except queue.Empty:
+                            pass
+                            
+                except Exception as e:
+                    print(f"Error en gui_worker: {e}")
+                    
+        # Iniciar worker en hilo daemon
+        worker_thread = threading.Thread(target=gui_worker, daemon=True, name="GUI-Worker")
+        worker_thread.start()
+    
+    def _queue_gui_update(self, update_type, *args):
+        """Encola una actualización de GUI para procesamiento asíncrono"""
+        try:
+            self._gui_update_queue.put((update_type, *args), block=False)
+        except queue.Full:
+            pass  # Descartar si la cola está llena
+    
+    def _queue_log_update(self, message, color):
+        """Encola un log para procesamiento asíncrono"""
+        try:
+            self._log_queue.put((message, color), block=False)
+        except queue.Full:
+            pass  # Descartar si la cola está llena
+    
+    def _process_gui_update(self, update_type, *args):
+        """Procesa actualizaciones de GUI en el hilo principal"""
+        try:
+            if update_type == 'status' and hasattr(self, 'label_sim_status'):
+                text, color = args
+                self.label_sim_status.configure(text=text, fg=color)
+            elif update_type == 'cash' and hasattr(self, 'label_cash'):
+                cash_value = args[0]
+                self.label_cash.config(text=f"Dinero: {cash_value:,.2f}$")
+            elif update_type == 'benefits' and hasattr(self, 'label_beneficios'):
+                benefits_value = args[0]
+                self.label_beneficios.config(text=f"Beneficios: {benefits_value:,.2f}$")
+            elif update_type == 'losses' and hasattr(self, 'label_perdidas'):
+                losses_value = args[0]
+                self.label_perdidas.config(text=f"Pérdidas: {losses_value:,.2f}$")
+        except Exception as e:
+            print(f"Error procesando GUI update: {e}")
+    
+    def _get_cached_atr(self, df, last_candle):
+        """Obtiene ATR precalculado o lo calcula una sola vez por vela"""
+        try:
+            current_time = time.time()
+            # Recalcular ATR solo si han pasado más de 1 segundo o es la primera vez
+            if (self._cached_atr is None or 
+                self._atr_last_update is None or 
+                current_time - self._atr_last_update > 1.0):
+                
+                try:
+                    atr_series = (df['High'] - df['Low']).rolling(14).mean()
+                    atr_value = float(atr_series.iloc[-1]) if not np.isnan(atr_series.iloc[-1]) else float((df['High'] - df['Low']).mean())
+                except Exception:
+                    try:
+                        high_low_range = (df['High'] - df['Low']).tail(20).mean()
+                        atr_value = float(high_low_range) if not np.isnan(high_low_range) else float(last_candle['Close']) * 0.002
+                    except Exception:
+                        atr_value = float(last_candle['Close']) * 0.002
+                
+                self._cached_atr = atr_value
+                self._atr_last_update = current_time
+            
+            return self._cached_atr
+        except Exception:
+            return float(last_candle['Close']) * 0.002
+    
+    def _get_cached_forex_strategies(self, df):
+        """Obtiene instancia cacheada de ForexStrategies o la crea"""
+        try:
+            # Calcular hash del DataFrame para detectar cambios
+            df_hash = hash(str(df.shape) + str(df.iloc[-1].to_dict()) if not df.empty else "empty")
+            
+            if (self._forex_strategies_cache is None or 
+                self._last_df_hash != df_hash):
+                from strategies import ForexStrategies
+                self._forex_strategies_cache = ForexStrategies(df)
+                self._last_df_hash = df_hash
+            
+            return self._forex_strategies_cache
+        except Exception:
+            from strategies import ForexStrategies
+            return ForexStrategies(df)
+    
+    def _get_cached_candle_strategies(self, df):
+        """Obtiene instancia cacheada de CandleStrategies o la crea"""
+        try:
+            df_hash = hash(str(df.shape) + str(df.iloc[-1].to_dict()) if not df.empty else "empty")
+            
+            if (self._candle_strategies_cache is None or 
+                self._last_df_hash != df_hash):
+                from strategies.candle_strategies import CandleStrategies
+                self._candle_strategies_cache = CandleStrategies(df)
+                self._last_df_hash = df_hash
+            
+            return self._candle_strategies_cache
+        except Exception:
+            from strategies.candle_strategies import CandleStrategies
+            return CandleStrategies(df)
+    
+    def _get_cached_patterns(self, df):
+        """Obtiene instancia cacheada de CandlestickPatterns o la crea"""
+        try:
+            df_hash = hash(str(df.shape) + str(df.iloc[-1].to_dict()) if not df.empty else "empty")
+            
+            if (self._patterns_cache is None or 
+                self._last_df_hash != df_hash):
+                from patterns.candlestickpatterns import CandlestickPatterns
+                self._patterns_cache = CandlestickPatterns(df)
+                self._last_df_hash = df_hash
+            
+            return self._patterns_cache
+        except Exception:
+            from patterns.candlestickpatterns import CandlestickPatterns
+            return CandlestickPatterns(df)
+    
+    def _procesar_senal_compra_risk_manager_async(self, candle, strategy_name, risk, rr_ratio, atr_value):
+        """Versión optimizada que usa ATR precalculado"""
+        try:
+            price = float(candle['Close'])
+            
+            operacion = self.risk_integration.procesar_senal(
+                senal=1,
+                precio_actual=price,
+                timestamp=candle.name if hasattr(candle, 'name') else datetime.now(),
+                atr_value=atr_value,  # Usar ATR precalculado
+                rr_ratio=rr_ratio,
+                risk_percent=risk * 100,
+                estrategia_nombre=strategy_name,
+                sync_mode=True
+            )
+
+            if operacion:
+                strategy_display = strategy_name.replace("candle_", "").replace("pattern_", "").replace("_", " ")
+                self._queue_log_update(f"💰 COMPRA {strategy_display}: Operación {operacion.id} [BUY] @ {price:.5f}", 'green')
+                self._queue_log_update(f"🎯 Stop Loss: {operacion.stop_loss:.5f} | Take Profit: {operacion.take_profit:.5f}", 'blue')
+                
+                # Actualizar GUI de forma asíncrona
+                try:
+                    self._actualizar_dinero_visible(price)
+                    cash_now = float(getattr(self.risk_manager, 'capital', self.dinero_ficticio))
+                    self._queue_gui_update('cash', cash_now)
+                except Exception:
+                    pass
+                return True
+            else:
+                # Manejar errores de forma asíncrona
+                try:
+                    err = getattr(self.risk_manager, 'last_error', None)
+                    if err:
+                        only_debug_msgs = (
+                            'Parámetros de riesgo inválidos (riesgo_por_pip <= 0)',
+                            'Tamaño de lote inválido',
+                        )
+                        debug_on = bool(getattr(getattr(self, 'candle_streamer', None), 'debug_mode', False))
+                        if any(msg in err for msg in only_debug_msgs) and not debug_on:
+                            pass
+                        else:
+                            if 'Fondos insuficientes' in err or 'Capital insuficiente' in err:
+                                self._queue_log_update(f"OPERACIÓN SALTADA ({strategy_name}) -> {err}", 'yellow')
+                            else:
+                                self._queue_log_update(f"OPEN BUY FALLÓ ({strategy_name}) -> {err}", 'red')
+                except Exception:
+                    pass
+                return False
+        except Exception as e:
+            self._queue_log_update(f"Error al procesar señal de compra: {str(e)}", 'red')
+            return False
+
     # ---------------- Run ----------------
     def run(self):
         self.root.mainloop()

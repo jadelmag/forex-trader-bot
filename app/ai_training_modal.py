@@ -21,7 +21,7 @@ class AITrainingModal(tk.Toplevel):
         
         # Tamaño y posición inicial
         self.width = 550
-        self.height = 780
+        self.height = 700
         self.geometry(f"{self.width}x{self.height}")
         self.resizable(False, True)  # Permitir redimensionar en altura
         self.grab_set()  # Hace la ventana modal
@@ -174,21 +174,6 @@ class AITrainingModal(tk.Toplevel):
         scrollable_frame.bind('<Enter>', _bind_to_mousewheel)
         scrollable_frame.bind('<Leave>', _unbind_from_mousewheel)
         
-        # Frame para el número máximo de órdenes
-        orders_frame = ttk.Frame(content_frame)
-        orders_frame.pack(fill="x", pady=(15, 5))
-        
-        ttk.Label(orders_frame, text="Máximo de órdenes simultáneas (0 = ilimitado):").pack(side="left", padx=(0, 10))
-        
-        self.max_orders = tk.StringVar(value="5")
-        orders_spinbox = ttk.Spinbox(
-            orders_frame,
-            from_=0,
-            to=1000000,
-            textvariable=self.max_orders,
-            width=5
-        )
-        orders_spinbox.pack(side="left")
         
         # Opciones avanzadas: intentos, semilla, guardar mejor config
         advanced_frame = ttk.Frame(content_frame)
@@ -314,7 +299,6 @@ class AITrainingModal(tk.Toplevel):
         self._check_rl_models()
         # Enlazar cambios de controles globales a la lógica de habilitación
         try:
-            self.max_orders.trace_add('write', lambda *_: self._recompute_accept_state())
             self.use_winrate_var.trace_add('write', lambda *_: self._recompute_accept_state())
             self.winrate_var.trace_add('write', lambda *_: self._recompute_accept_state())
         except Exception:
@@ -393,42 +377,6 @@ class AITrainingModal(tk.Toplevel):
         # Recalcular condiciones de habilitación
         self._recompute_accept_state()
         
-    def _create_risk_controls(self, parent, show_labels=False):
-        """Crea los controles de riesgo y RR para una estrategia"""
-        # Frame principal para los controles de riesgo
-        main_frame = ttk.Frame(parent)
-        
-        # Nota: Las etiquetas de cabecera se gestionan en la sección superior,
-        # por lo que aquí no se crean etiquetas.
-        
-        # Frame para los textboxes
-        entries_frame = ttk.Frame(main_frame)
-        entries_frame.pack(fill="x")
-        
-        # Variables para los controles
-        risk_var = tk.StringVar(value="1.0")
-        rr_var = tk.StringVar(value="2.0")
-        
-        # Entradas (una al lado de la otra)
-        risk_entry = ttk.Entry(
-            entries_frame,
-            textvariable=risk_var,
-            width=5,
-            font=("Arial", 8),
-            justify="right"
-        )
-        risk_entry.pack(side="left", padx=(0, 10))
-        
-        rr_entry = ttk.Entry(
-            entries_frame,
-            textvariable=rr_var,
-            width=5,
-            font=("Arial", 8),
-            justify="right"
-        )
-        rr_entry.pack(side="left")
-        
-        return main_frame, risk_var, rr_var
     
     def _load_strategies(self, parent_frame):
         """Carga las estrategias disponibles en el frame especificado"""
@@ -470,16 +418,9 @@ class AITrainingModal(tk.Toplevel):
             width=18
         ).pack(side="right", padx=(5, 10))
         
-        # Cabecera de controles a la derecha (alineada con los inputs)
-        controls_header = ttk.Frame(header_frame)
-        controls_header.pack(side="right", padx=10)
-        ttk.Label(controls_header, text="% Riesgo:", font=("Arial", 8)).pack(side="left", padx=(0, 10))
-        ttk.Label(controls_header, text="RR Ratio:", font=("Arial", 8)).pack(side="left")
         
         # Inicializar estructuras
         self.strategy_vars = {}  # Forex
-        self.risk_vars = {}
-        self.rr_vars = {}
         self.candle_vars = {}    # Candle strategies
         
         # Estrategias Forex (alias desde el registro)
@@ -500,26 +441,14 @@ class AITrainingModal(tk.Toplevel):
             )
             cb.pack(side="left", anchor="w")
             
-            # Frame para los controles de la derecha
-            controls_frame = ttk.Frame(strategy_frame)
-            controls_frame.pack(side="right", padx=10)
-            
-            # Controles de riesgo y RR (sin etiquetas aquí; cabecera ya creada)
-            risk_frame, risk_var, rr_var = self._create_risk_controls(controls_frame, show_labels=False)
-            # Primero empaquetar los controles, luego la etiqueta para que quede a la derecha del RR
-            risk_frame.pack(side="right", padx=(10, 0))
-            # Etiqueta de versión junto al RR según el nombre real de la estrategia
+            # Etiqueta de versión
             try:
                 real_name = resolve_strategy_name(strategy, "forex")
                 v1_names = {"adx_strategy", "trend_following", "breakout", "rsi_strategy"}
                 version_text = "(versión 1.0)" if real_name in v1_names else "(versión 2.0)"
-                ttk.Label(controls_frame, text=version_text, font=("Arial", 8, "italic")).pack(side="right", padx=(8, 0))
+                ttk.Label(strategy_frame, text=version_text, font=("Arial", 8, "italic")).pack(side="right", padx=(8, 0))
             except Exception:
                 pass
-            
-            # Almacenar las variables de control
-            self.risk_vars[strategy] = risk_var
-            self.rr_vars[strategy] = rr_var
         
         # Separador
         ttk.Separator(parent_frame, orient='horizontal').pack(fill='x', pady=10)
@@ -623,16 +552,10 @@ class AITrainingModal(tk.Toplevel):
         any_fx = any(v.get() for v in getattr(self, 'strategy_vars', {}).values()) if hasattr(self, 'strategy_vars') else False
         any_cd = any(v.get() for v in getattr(self, 'candle_vars', {}).values()) if hasattr(self, 'candle_vars') else False
         has_selection = any_fx or any_cd
-        # 3) Máx. órdenes simultáneas >= 0 (0 = ilimitado)
-        try:
-            max_orders_val = int(str(getattr(self, 'max_orders', tk.StringVar(value='0')).get()).strip()) if hasattr(self, 'max_orders') else 0
-        except Exception:
-            max_orders_val = 0
-        max_ok = (max_orders_val >= 0)
-        # 4) Condición de finalización: sólo WinRate activo y > 0
+        # 3) Condición de finalización: sólo WinRate activo y > 0
         win_ok = bool(self.use_winrate_var.get()) and self._parse_positive_float(self.winrate_var.get()) > 0.0 if hasattr(self, 'use_winrate_var') else False
 
-        enabled = has_model and has_selection and max_ok and win_ok
+        enabled = has_model and has_selection and win_ok
 
         desired_state = 'normal' if enabled else 'disabled'
         if hasattr(self, 'btn_accept'):
@@ -650,8 +573,6 @@ class AITrainingModal(tk.Toplevel):
                 msgs.append("• Cargue un modelo")
             if not has_selection:
                 msgs.append("• Seleccione al menos una estrategia Forex o Candle")
-            if not max_ok:
-                msgs.append("• Máximo de órdenes simultáneas debe ser ≥ 0 (0 = ilimitado)")
             if not win_ok:
                 if hasattr(self, 'use_winrate_var') and self.use_winrate_var.get() and self._parse_positive_float(self.winrate_var.get()) <= 0.0:
                     msgs.append("• Win Rate debe ser > 0")
@@ -668,17 +589,8 @@ class AITrainingModal(tk.Toplevel):
         seleccion_fx = {}
         for metodo, var in self.strategy_vars.items():
             if var.get():
-                # Tratar siempre el input de riesgo como porcentaje (ej. 1.0 => 0.01)
-                try:
-                    riesgo_input = float(self.risk_vars[metodo].get() or 0.0)
-                except Exception:
-                    riesgo_input = 0.0
-                riesgo = riesgo_input / 100.0
-                try:
-                    rr = float(self.rr_vars[metodo].get() or 0.0)
-                except Exception:
-                    rr = 0.0
-                seleccion_fx[metodo] = {"tipo": "forex", "riesgo": riesgo, "rr": rr}
+                # El modelo IA aprenderá los parámetros óptimos de riesgo y RR
+                seleccion_fx[metodo] = {"tipo": "forex"}
 
         seleccion_candle = {}
         for metodo, var in getattr(self, 'candle_vars', {}).items():
@@ -715,7 +627,8 @@ class AITrainingModal(tk.Toplevel):
         # Los patrones de velas ahora están incluidos en CandleStrategies
         seleccion_patterns = []
 
-        max_orders = int(self.max_orders.get()) if hasattr(self, 'max_orders') else 5
+        # El modelo IA gestionará las órdenes simultáneas de forma óptima
+        max_orders = 0  # Sin límite, el IA decidirá
         # Parám. de parada
         use_winrate = bool(self.use_winrate_var.get()) if hasattr(self, 'use_winrate_var') else False
         winrate = self._parse_positive_float(self.winrate_var.get()) if hasattr(self, 'winrate_var') else 0.0
