@@ -62,6 +62,7 @@ class AITrainer:
         self.on_finish = on_finish
         self._thread: Optional[threading.Thread] = None
         self._stop = False
+        self._stopped_by_user = False
 
         # Risk Manager
         self.risk_manager = RiskManager(max_operaciones_activas=self.max_orders, capital_inicial=self.capital_inicial)
@@ -147,7 +148,9 @@ class AITrainer:
         self._thread.start()
 
     def stop(self):
+        # Señal de parada solicitada por el usuario
         self._stop = True
+        self._stopped_by_user = True
 
     def _emit_log(self, msg: str, color: str = "white"):
         if self.on_log:
@@ -623,8 +626,13 @@ class AITrainer:
                 failed_ops: List[Dict] = []
 
                 # 3. EJECUTAR BACKTESTING CON ANÁLISIS INTELIGENTE
+                # Flag para no spamear el log de stop
+                stop_log_emitted = False
                 for idx, row in df_work.iterrows():
                     if self._stop:
+                        if not stop_log_emitted:
+                            self._emit_log("🛑 Señal de parada recibida. Deteniendo backtesting de forma segura...", 'yellow')
+                            stop_log_emitted = True
                         break
                     
                     processed += 1
@@ -863,11 +871,14 @@ class AITrainer:
                     'patterns': copy.deepcopy(self._best_patterns),
                 }
 
-            # Mensaje final
-            if reached_winrate_target:
-                self._emit_log(f"🎉 ENTRENAMIENTO FINALIZADO - OBJETIVO ALCANZADO", 'green')
+            # Mensaje final diferenciado
+            if self._stopped_by_user:
+                self._emit_log("🛑 ENTRENAMIENTO DETENIDO POR EL USUARIO (finalizado el apagado)", 'yellow')
             else:
-                self._emit_log(f"🏁 ENTRENAMIENTO FINALIZADO", 'green')
+                if reached_winrate_target:
+                    self._emit_log(f"🎉 ENTRENAMIENTO FINALIZADO - OBJETIVO ALCANZADO", 'green')
+                else:
+                    self._emit_log(f"🏁 ENTRENAMIENTO FINALIZADO", 'green')
 
             # Escribir siempre el reporte TXT final
             try:
