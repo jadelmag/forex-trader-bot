@@ -1181,7 +1181,7 @@ class EstrategiasModal(tk.Toplevel):
                 cfg = self._load_config_from_file(nombre)
                 if cfg is None:
                     continue
-                # Asignar y cambiar a Custom
+                # Asignar configuración y cambiar dropdown a Custom
                 ctrl['custom_config'] = cfg
                 if ctrl.get('config_type') is not None:
                     ctrl['config_type'].set('Custom')
@@ -1381,98 +1381,131 @@ class PatternDetectionModal(tk.Toplevel):
         super().__init__(parent)
         self.parent = parent
         self.on_save = on_save
+        self.current_config = current_config
         self.title("Configuración de Detección de Patrones")
         self.resizable(False, False)
         self.grab_set()
 
         # Posicionar
-        self.geometry(f"420x500+{pos_x}+{pos_y}")
+        self.geometry(f"600x450+{pos_x}+{pos_y}")
 
+        # Diccionario para almacenar variables de configuración
+        self.config_vars = {}
+
+        # Crear widgets
+        self._create_widgets()
+
+    def _create_widgets(self):
+        """Crea los widgets del modal."""
+        main_frame = ttk.Frame(self, padding=15)
+        main_frame.pack(fill="both", expand=True)
+        
         # Título
-        ttk.Label(self, text="Parámetros de Detección de Patrones", font=("Arial", 12, "bold")).pack(pady=(10, 5))
-        ttk.Label(self, text="Estos parámetros afectan a TODAS las estrategias de velas", 
-                 font=("Arial", 9), foreground="blue").pack(pady=(0, 10))
-
-        # Área scrollable
-        scroll_wrap = tk.Frame(self)
-        scroll_wrap.pack(fill="both", expand=True, padx=10, pady=5)
-        canvas = tk.Canvas(scroll_wrap, highlightthickness=0)
-        vscroll = ttk.Scrollbar(scroll_wrap, orient="vertical", command=canvas.yview)
-        content = tk.Frame(canvas)
-        content.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=content, anchor="nw")
-        canvas.configure(yscrollcommand=vscroll.set)
-        canvas.pack(side="left", fill="both", expand=True)
-        vscroll.pack(side="right", fill="y")
-
-        # Activar scroll con rueda
-        content.bind("<Enter>", lambda e: self._bind_mousewheel(canvas))
-        content.bind("<Leave>", lambda e: self._unbind_mousewheel())
-
-        # Contenedor centrado
-        content.grid_columnconfigure(0, weight=1)
-        content.grid_columnconfigure(2, weight=1)
-        inner_container = tk.Frame(content)
-        inner_container.grid(row=0, column=1, sticky="n", padx=15, pady=5)
-
-        # Validación para números flotantes
-        vcmd_float = (self.register(self._validate_float), '%P')
-
-        # Campos numéricos
-        self.num_fields = {}
-        def add_num(title, key, help_text=""):
-            frame = tk.Frame(inner_container)
-            frame.pack(fill="x", pady=6)
-            ttk.Label(frame, text=title, font=("Arial", 9, "bold")).pack(anchor="w")
-            var = tk.StringVar(value=str(current_config.get(key, 0.0)))
-            entry = tk.Entry(frame, textvariable=var, validate="key", validatecommand=vcmd_float, width=15)
-            entry.pack(anchor="w", pady=2)
-            if help_text:
-                ttk.Label(frame, text=help_text, foreground="#666", font=("Arial", 8)).pack(anchor="w")
-            self.num_fields[key] = var
-
-        # Separador: Parámetros de Patrones
-        ttk.Separator(inner_container, orient='horizontal').pack(fill="x", pady=10)
-        ttk.Label(inner_container, text="🕯️ Parámetros de Patrones", font=("Arial", 10, "bold")).pack(anchor="w")
+        title_label = ttk.Label(main_frame, text="Configuración Global de Patrones", 
+                               font=("Arial", 12, "bold"))
+        title_label.pack(pady=(0, 5))
         
-        add_num("Doji Threshold", "doji_threshold", "Sensibilidad para detectar patrones doji (0.01-0.1)")
-        add_num("Tweezer Tolerance", "tweezer_tolerance", "Tolerancia para patrones tweezer (0.0005-0.005)")
-        add_num("Hammer Body Ratio", "hammer_body_ratio", "Ratio cuerpo/sombra para hammer (1.0-3.0)")
-        add_num("Shooting Star Ratio", "shooting_star_ratio", "Ratio sombra superior para shooting star (1.5-4.0)")
-        add_num("Spinning Top Ratio", "spinning_top_ratio", "Ratio para spinning top (0.1-0.5)")
-        add_num("Marubozu Ratio", "marubozu_ratio", "Ratio para marubozu (0.7-0.95)")
-
-        # Separador: Parámetros de Confianza
-        ttk.Separator(inner_container, orient='horizontal').pack(fill="x", pady=10)
-        ttk.Label(inner_container, text="📊 Parámetros de Confianza", font=("Arial", 10, "bold")).pack(anchor="w")
+        # Subtítulo
+        subtitle_label = ttk.Label(main_frame, text="Estos parámetros afectan a TODAS las estrategias de velas", 
+                                  font=("Arial", 9), foreground="blue")
+        subtitle_label.pack(pady=(0, 15))
         
-        add_num("Min Confidence", "min_confidence", "Confianza mínima para señales (0.3-0.9)")
-        add_num("Partial Factor", "partial_factor", "Factor para señales parciales (0.3-0.7)")
-
-        # Separador: Indicadores Técnicos
-        ttk.Separator(inner_container, orient='horizontal').pack(fill="x", pady=10)
-        ttk.Label(inner_container, text="📈 Indicadores Técnicos", font=("Arial", 10, "bold")).pack(anchor="w")
+        # Notebook para organizar por categorías
+        notebook = ttk.Notebook(main_frame)
+        notebook.pack(fill="both", expand=True, pady=(0, 15))
         
-        add_num("ATR Period", "atr_period", "Período para ATR (10-30)")
-        add_num("Trend Period", "trend_period", "Período para tendencia (15-50)")
-        add_num("Volatility Period", "volatility_period", "Período para volatilidad (15-50)")
-
-        # Separador: Patrones Avanzados
-        ttk.Separator(inner_container, orient='horizontal').pack(fill="x", pady=10)
-        ttk.Label(inner_container, text="🎯 Patrones Avanzados", font=("Arial", 10, "bold")).pack(anchor="w")
+        # Pestaña 1: Parámetros de Patrones
+        patterns_frame = ttk.Frame(notebook, padding=10)
+        notebook.add(patterns_frame, text="🕯️ Patrones")
         
-        add_num("Engulfing Min Body Ratio", "engulfing_min_body_ratio", "Ratio mínimo para engulfing (1.0-2.0)")
-        add_num("Harami Max Body Ratio", "harami_max_body_ratio", "Ratio máximo para harami (0.5-1.0)")
-        add_num("Star Gap Threshold", "star_gap_threshold", "Umbral de gap para star patterns (0.0005-0.01)")
-        add_num("Three Methods Trend Strength", "three_methods_trend_strength", "Fuerza de tendencia para three methods (0.5-0.9)")
-
+        self._create_pattern_fields(patterns_frame)
+        
+        # Pestaña 2: Indicadores Técnicos
+        indicators_frame = ttk.Frame(notebook, padding=10)
+        notebook.add(indicators_frame, text="📈 Indicadores")
+        
+        self._create_indicator_fields(indicators_frame)
+        
+        # Pestaña 3: Parámetros Avanzados
+        advanced_frame = ttk.Frame(notebook, padding=10)
+        notebook.add(advanced_frame, text="🎯 Avanzado")
+        
+        self._create_advanced_fields(advanced_frame)
+        
         # Botones
-        btn_frame = tk.Frame(self)
-        btn_frame.pack(pady=10)
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill="x", pady=(10, 0))
         
-        ttk.Button(btn_frame, text="Guardar", command=self._save_config, width=12).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="Cancelar", command=self.destroy, width=12).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="Restaurar", command=self._restore_defaults, width=12).pack(side="left", padx=5)
+        ttk.Button(button_frame, text="Cancelar", 
+                  command=self.destroy).pack(side="right", padx=(5, 0))
+        ttk.Button(button_frame, text="Guardar", 
+                  command=self._save_config).pack(side="right")
+        ttk.Button(button_frame, text="Restaurar Defaults", 
+                  command=self._restore_defaults).pack(side="left")
+    
+    def _create_pattern_fields(self, parent):
+        """Crea campos para parámetros de patrones."""
+        fields = [
+            ("doji_threshold", "Umbral Doji:", 0.05, "Sensibilidad para detectar patrones Doji (0.01-0.1)"),
+            ("tweezer_tolerance", "Tolerancia Tweezer:", 0.001, "Tolerancia para patrones Tweezer (0.0005-0.005)"),
+            ("hammer_body_ratio", "Ratio Cuerpo Hammer:", 1.5, "Ratio cuerpo/sombra para Hammer (1.0-3.0)"),
+            ("shooting_star_ratio", "Ratio Shooting Star:", 2.0, "Ratio sombra superior para Shooting Star (1.5-4.0)"),
+            ("spinning_top_ratio", "Ratio Spinning Top:", 0.3, "Ratio para Spinning Top (0.1-0.5)"),
+            ("marubozu_ratio", "Ratio Marubozu:", 0.8, "Ratio para Marubozu (0.7-0.95)"),
+            ("min_confidence", "Confianza Mínima:", 0.6, "Confianza mínima para señales (0.3-0.9)"),
+            ("partial_factor", "Factor Parcial:", 0.5, "Factor para señales parciales (0.3-0.7)")
+        ]
+        
+        for i, (key, label, default, tooltip) in enumerate(fields):
+            self._create_field(parent, key, label, default, tooltip, i)
+    
+    def _create_indicator_fields(self, parent):
+        """Crea campos para indicadores técnicos."""
+        fields = [
+            ("atr_period", "Período ATR:", 14, "Período para Average True Range (10-30)"),
+            ("trend_period", "Período Tendencia:", 20, "Período para análisis de tendencia (15-50)"),
+            ("volatility_period", "Período Volatilidad:", 20, "Período para análisis de volatilidad (15-50)")
+        ]
+        
+        for i, (key, label, default, tooltip) in enumerate(fields):
+            self._create_field(parent, key, label, default, tooltip, i)
+    
+    def _create_advanced_fields(self, parent):
+        """Crea campos para parámetros avanzados."""
+        fields = [
+            ("engulfing_min_body_ratio", "Ratio Mín. Engulfing:", 1.2, "Ratio mínimo para patrones Engulfing (1.0-2.0)"),
+            ("harami_max_body_ratio", "Ratio Máx. Harami:", 0.8, "Ratio máximo para patrones Harami (0.5-1.0)"),
+            ("star_gap_threshold", "Umbral Gap Star:", 0.001, "Umbral para gaps en patrones Star (0.0005-0.01)"),
+            ("three_methods_trend_strength", "Fuerza Tendencia 3M:", 0.7, "Fuerza de tendencia para Three Methods (0.5-0.9)")
+        ]
+        
+        for i, (key, label, default, tooltip) in enumerate(fields):
+            self._create_field(parent, key, label, default, tooltip, i)
+    
+    def _create_field(self, parent, key, label, default, tooltip, row):
+        """Crea un campo individual."""
+        # Configurar grid para que las columnas se expandan apropiadamente
+        parent.grid_columnconfigure(0, weight=0)  # Label column - fixed width
+        parent.grid_columnconfigure(1, weight=0)  # Entry column - fixed width  
+        parent.grid_columnconfigure(2, weight=1)  # Tooltip column - expandable
+        
+        # Label
+        lbl = ttk.Label(parent, text=label, font=("Arial", 9, "bold"))
+        lbl.grid(row=row, column=0, sticky="w", padx=(0, 10), pady=4)
+        
+        # Entry con validación
+        current_value = self.current_config.get(key, default)
+        var = tk.StringVar(value=str(current_value))
+        vcmd_float = (self.register(self._validate_float), '%P')
+        entry = ttk.Entry(parent, textvariable=var, width=12, validate="key", validatecommand=vcmd_float)
+        entry.grid(row=row, column=1, sticky="w", pady=4)
+        
+        # Tooltip (como label pequeño)
+        tooltip_lbl = ttk.Label(parent, text=tooltip, font=("Arial", 8), 
+                               foreground="gray", wraplength=250)
+        tooltip_lbl.grid(row=row, column=2, sticky="w", padx=(10, 0), pady=4)
+        
+        self.config_vars[key] = var
 
     def _validate_float(self, value):
         """Valida que el valor sea un número flotante válido."""
@@ -1498,7 +1531,7 @@ class PatternDetectionModal(tk.Toplevel):
         """Guarda la configuración y cierra el modal."""
         try:
             config = {}
-            for key, var in self.num_fields.items():
+            for key, var in self.config_vars.items():
                 try:
                     config[key] = float(var.get() or 0.0)
                 except ValueError:
@@ -1512,6 +1545,6 @@ class PatternDetectionModal(tk.Toplevel):
     def _restore_defaults(self):
         """Restaura valores por defecto."""
         defaults = self.parent._get_default_pattern_detection_config()
-        for key, var in self.num_fields.items():
+        for key, var in self.config_vars.items():
             if key in defaults:
                 var.set(str(defaults[key]))
