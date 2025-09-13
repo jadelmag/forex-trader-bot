@@ -452,8 +452,6 @@ class GUIPrincipal:
         except Exception as e:
             print(f"Error iniciando worker de threading: {e}")
 
-    # Fin de __init__
-
     def _on_csv_cargado(self, df_seleccion):
         self.df_actual = df_seleccion
         self._dibujar_grafico(df_seleccion)
@@ -1727,11 +1725,6 @@ class GUIPrincipal:
             import traceback
             self.log(traceback.format_exc(), color="red")
             
-    def test_iniciar_streamer(self):
-        """Método de prueba para iniciar el streamer"""
-        print("DEBUG: Test button clicked")  # Debug log
-        self.iniciar_streamer()
-    
     def test_iniciar_streamer(self):
         """Método de prueba para iniciar el streamer"""
         print("DEBUG: Test button clicked")  # Debug log
