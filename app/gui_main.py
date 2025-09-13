@@ -321,6 +321,7 @@ class GUIPrincipal:
         self.menu_streamer.add_command(label="Cambiar símbolo/intervalo", command=self.cambiar_config_streamer, state="disabled")
         self.menu_streamer.add_separator()
         self.menu_streamer.add_command(label="Iniciar simulación Binance", command=self.iniciar_simulacion_binance, state="disabled")
+        self.menu_streamer.add_command(label="Modificar configuración simulación Binance", command=self.modificar_config_simulacion_binance, state="disabled")
         self.menu_streamer.add_command(label="Detener simulación Binance", command=self.detener_simulacion_binance, state="disabled")
         self.menu_streamer.add_separator()
         self.menu_streamer.add_command(label="Activar Debug", command=lambda: self.toggle_debug_mode(True), state="disabled")
@@ -1797,6 +1798,7 @@ class GUIPrincipal:
         """Inicia la simulación del mercado"""
         print("Iniciando simulación Binance")
         try:
+            self.menu_streamer.entryconfig("Modificar configuración simulación Binance", state="normal")
             # Get available strategies
             import sys
             import os
@@ -1876,11 +1878,74 @@ class GUIPrincipal:
                 patrones_list=patrones_list,
                 callback=on_simulation_config
             )
-            
+        
         except Exception as e:
-            self.log(f"Error al iniciar la simulación: {str(e)}", color="red")
+            self.log(f"Error al iniciar la simulación: {e}", color='red')
             import traceback
-            self.log(traceback.format_exc(), color="red")
+            self.log(traceback.format_exc(), color='red')
+
+    def modificar_config_simulacion_binance(self):
+        """Muestra el modal de configuración de la simulación Binance"""
+        try:
+            # Validaciones básicas
+            if not getattr(self, 'simulation_active', False) or not hasattr(self, 'simulation_config'):
+                messagebox.showwarning(
+                    "Simulación no activa",
+                    "No hay una simulación Binance en ejecución. Inicie una simulación antes de modificar su configuración.")
+                return
+
+            # Obtener estrategias disponibles (mismo criterio que iniciar_simulacion_binance)
+            try:
+                import os, sys
+                project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                if project_root not in sys.path:
+                    sys.path.append(project_root)
+                from strategies import get_available_strategies
+            except Exception:
+                from strategies.strategy_utils import get_available_strategies
+
+            estrategias_fx, estrategias_candle = get_available_strategies()
+
+            # Importar modal de configuración
+            from .binance_modal_config import BinanceSimulationConfigModal
+
+            def on_apply(new_config):
+                try:
+                    candles_elapsed = int(getattr(self, 'simulation_candles_elapsed', 0))
+                    active_orders = list(getattr(self, 'active_orders', []))
+
+                    if not hasattr(self, 'simulation_config') or self.simulation_config is None:
+                        self.simulation_config = {}
+                    self.simulation_config.update(new_config)
+                    self.simulation_config['candles_elapsed'] = candles_elapsed
+                    self.simulation_config['active_orders'] = active_orders
+
+                    # Actualizar estado visual
+                    wait_candles = int(self.simulation_config.get('wait_candles', 20))
+                    remaining = max(0, wait_candles - candles_elapsed)
+                    try:
+                        if remaining > 0:
+                            self.label_sim_status.configure(text=f"Esperando {remaining} velas...", fg="blue")
+                        else:
+                            self.label_sim_status.configure(text="Simulación en progreso!!", fg="blue")
+                    except Exception:
+                        pass
+
+                    self.log("⚙️ Configuración de simulación actualizada.", color='blue')
+                except Exception as e:
+                    self.log(f"Error aplicando nueva configuración: {e}", color='red')
+
+            # Mostrar modal poblado con la configuración actual
+            BinanceSimulationConfigModal(
+                parent=self.root,
+                estrategias_fx=estrategias_fx,
+                estrategias_candle=estrategias_candle,
+                current_config=self.simulation_config,
+                callback=on_apply,
+            )
+
+        except Exception as e:
+            self.log(f"Error al abrir el configurador de simulación: {str(e)}", color='red')
 
     def _on_candle_update(self, df):
         """Maneja la actualización de velas durante la simulación - VERSIÓN OPTIMIZADA"""
@@ -1893,7 +1958,6 @@ class GUIPrincipal:
             
         # Procesar en hilo separado para no bloquear GUI
         self._thread_pool.submit(self._process_candle_async, df.copy())
-
     def _process_candle_async(self, df):
         """Procesa la vela en hilo separado - NO BLOQUEA LA GUI"""
         try:

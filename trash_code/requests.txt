@@ -6,7 +6,6 @@ combined_signal_optimized
 get_trading_signals
 
 1. Optimizar operaciones (detecciones de patrones de vela)
-2. Opcion de modificar estrategias en tiempo real
-3. Añadir IA a datos en tiempo real.
-4. Conectar con metatrader [TODO]
+2. Añadir IA a datos en tiempo real.
+3. Conectar con metatrader [TODO]
 
