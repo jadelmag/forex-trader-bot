@@ -1966,13 +1966,13 @@ class GUIPrincipal:
 
                     # Log del escenario cada 10 velas
                     if (current_scenario is not None and 
-                        self.simulation_candles_elapsed - self._last_scenario_logged_at >= 10):
+                        (not hasattr(self, '_last_logged_scenario') or self._last_logged_scenario != current_scenario)):
                         scenario_label = current_scenario.value if hasattr(current_scenario, 'value') else str(current_scenario)
                         self._queue_log_update(f"📈 Escenario detectado: {scenario_label}", "cyan")
-                        self._last_scenario_logged_at = self.simulation_candles_elapsed
+                        self._last_logged_scenario = current_scenario
             except Exception:
                 current_scenario = None
-
+            
             # Obtener la última vela
             last_candle = df.iloc[-1]
             # Guardar último close para cálculo de PnL no realizado
@@ -2103,18 +2103,80 @@ class GUIPrincipal:
                 candle_strategies_used = 0
                 
                 candle_strategies = CandleStrategies(df)
-                for strat in self.simulation_config.get('candle_strategies', []):
+                
+                # ===== SISTEMA DE PRIORIZACIÓN DINÁMICA POR ESCENARIO =====
+                # Inicializar el mapeador de estrategias si no existe
+                if not hasattr(self, '_strategy_mapper'):
+                    from strategies.market_strategy_mapper import MarketStrategyMapper
+                    self._strategy_mapper = MarketStrategyMapper()
+                
+                # Obtener escenario actual (usar el detectado anteriormente)
+                market_scenario = getattr(self, '_last_market_scenario', None)
+                if market_scenario is None:
+                    from app.market_scene_detector import MarketScenario
+                    market_scenario = MarketScenario.UNCLEAR
+                
+                # Crear lista de estrategias priorizadas según escenario
+                original_strategies = self.simulation_config.get('candle_strategies', [])
+                prioritized_strategies = []
+                
+                # Separar estrategias por prioridad
+                high_priority = []
+                medium_priority = []
+                low_priority = []
+                
+                for strat in original_strategies:
+                    # Soportar tanto formato string como dict
+                    if isinstance(strat, dict):
+                        strategy_name = strat.get('name')
+                        strategy_config = strat.get('config')
+                    else:
+                        strategy_name = str(strat)
+                        strategy_config = None
+                    
+                    # Obtener peso de prioridad para el escenario actual
+                    priority_weight = self._strategy_mapper.get_priority_weight(strategy_name, market_scenario)
+                    
+                    strategy_item = {
+                        'name': strategy_name,
+                        'config': strategy_config,
+                        'priority_weight': priority_weight,
+                        'original': strat
+                    }
+                    
+                    if priority_weight >= 1.0:  # Alta prioridad
+                        high_priority.append(strategy_item)
+                    elif priority_weight >= 0.5:  # Media prioridad
+                        medium_priority.append(strategy_item)
+                    elif priority_weight > 0.0:  # Baja prioridad
+                        low_priority.append(strategy_item)
+                    # Las deshabilitadas (0.0) se omiten automáticamente
+                
+                # Ordenar por peso dentro de cada categoría (mayor peso primero)
+                high_priority.sort(key=lambda x: x['priority_weight'], reverse=True)
+                medium_priority.sort(key=lambda x: x['priority_weight'], reverse=True)
+                low_priority.sort(key=lambda x: x['priority_weight'], reverse=True)
+                
+                # Combinar en orden de prioridad: alta -> media -> baja
+                prioritized_strategies = high_priority + medium_priority + low_priority
+                
+                # Log de priorización (solo una vez por cambio de escenario)
+                if not hasattr(self, '_last_logged_scenario') or self._last_logged_scenario != market_scenario:
+                    scenario_name = market_scenario.value if hasattr(market_scenario, 'value') else str(market_scenario)
+                    self._queue_log_update(f"🎯 Priorizando estrategias para escenario: {scenario_name}", "cyan")
+                    if high_priority:
+                        high_names = [s['name'] for s in high_priority[:3]]  # Mostrar solo las primeras 3
+                        self._queue_log_update(f"   Alta prioridad: {', '.join(high_names)}", "cyan")
+                    self._last_logged_scenario = market_scenario
+                
+                # Procesar estrategias en orden de prioridad
+                for strategy_item in prioritized_strategies:
                     if candle_strategies_used >= max_candle_strategies or candle_operations_opened_this_candle >= max_candle_operations_per_candle:
                         break
 
                     try:
-                        # Soportar tanto formato string como dict {'name': ..., 'config': ...}
-                        if isinstance(strat, dict):
-                            strategy_name = strat.get('name')
-                            strategy_config = strat.get('config')
-                        else:
-                            strategy_name = str(strat)
-                            strategy_config = None
+                        strategy_name = strategy_item['name']
+                        strategy_config = strategy_item['config']
 
                         metodo = getattr(candle_strategies, strategy_name, None)
                         if callable(metodo):
@@ -2126,15 +2188,34 @@ class GUIPrincipal:
                             
                             # Verificar que el resultado tenga datos
                             if df_res is None or df_res.empty:
-                                self.log(f"Estrategia {strategy_name} no generó señales", color="yellow")
                                 continue
                                 
                             # Usar ExecSignal si está disponible; fallback a Signal
                             if 'ExecSignal' in df_res.columns:
                                 signals = df_res['ExecSignal']
+                            else:
+                                signals = df_res.get('Signal')
 
                             if signals is not None and not signals.empty and len(signals) > 0:
                                 current_signal = signals.iloc[-1]
+                                
+                                # ===== FILTRADO POR ESCENARIO Y TIPO DE SEÑAL =====
+                                should_execute, reason = self._strategy_mapper.should_execute_strategy(
+                                    strategy_name, market_scenario, current_signal
+                                )
+                                
+                                if not should_execute:
+                                    # Log de estrategia bloqueada (throttled)
+                                    if not hasattr(self, '_blocked_strategies_logged'):
+                                        self._blocked_strategies_logged = set()
+                                    
+                                    block_key = f"{strategy_name}_{current_signal}_{market_scenario}"
+                                    if block_key not in self._blocked_strategies_logged:
+                                        signal_type = "COMPRA" if current_signal == 1 else "VENTA" if current_signal == -1 else "NEUTRAL"
+                                        self._queue_log_update(f"🚫 {strategy_name} ({signal_type}) bloqueada: {reason}", "orange")
+                                        self._blocked_strategies_logged.add(block_key)
+                                    continue
+                                
                                 # Procesar primero señales de salida (-1)
                                 if current_signal == -1:
                                     try:
@@ -2149,11 +2230,10 @@ class GUIPrincipal:
                                         )
                                         
                                         # SEÑAL SELL (-1) = Oportunidad de ganancia bajista = VERDE
-                                        # El color debe basarse en el tipo de oportunidad, no en resultados pasados
                                         emoji = "🟢"
                                         signal_color = "green"
                                         
-                                        self.log(f"{emoji} SEÑAL DE VENTA/CIERRE: {strategy_name} = {current_signal} (Patrón indica bajada)", color=signal_color)
+                                        self._queue_log_update(f"{emoji} SEÑAL DE VENTA/CIERRE: {strategy_name} = {current_signal} (Patrón indica bajada) | {reason}", signal_color)
                                         
                                         # Registrar cierres y actualizar métricas/labels si aplica
                                         if isinstance(cerradas, list) and cerradas:
@@ -2161,7 +2241,7 @@ class GUIPrincipal:
                                                 try:
                                                     profit = op.calcular_profit(op.precio_cierre)
                                                     color = 'green' if profit >= 0 else 'red'
-                                                    self.log(f"CIERRE POR ESTRATEGIA {op.estrategia}: {op} | Profit: ${profit:+.2f}", color=color)
+                                                    self._queue_log_update(f"CIERRE POR ESTRATEGIA {op.estrategia}: {op} | Profit: ${profit:+.2f}", color)
                                                     if profit >= 0:
                                                         self.beneficios = float(getattr(self, 'beneficios', 0.0) or 0.0) + float(profit)
                                                         self.label_beneficios.config(text=f"Beneficios: {self.beneficios:,.2f}$")
@@ -2179,25 +2259,23 @@ class GUIPrincipal:
                                             except Exception:
                                                 pass
                                     except Exception as e:
-                                        self.log(f"Error cerrando por estrategia {strategy_name}: {str(e)}", color='red')
+                                        self._queue_log_update(f"Error cerrando por estrategia {strategy_name}: {str(e)}", "red")
                                 
                                 # Luego procesar potenciales entradas (+1)
-                                if current_signal == 1:
-                                    # Explicar el significado de la señal
-                                    self.log(f"🟢 SEÑAL COMPRA: {strategy_name} = {current_signal} (Patrón indica subida)", color="green")
+                                elif current_signal == 1:
+                                    # Explicar el significado de la señal con contexto de escenario
+                                    self._queue_log_update(f"🟢 SEÑAL COMPRA: {strategy_name} = {current_signal} (Patrón indica subida) | {reason}", "green")
                                     if self._procesar_senal_compra_risk_manager(last_candle, f"candle_{strategy_name}", 0.01, 2.0):
                                         candle_strategies_used += 1
                                         candle_operations_opened_this_candle += 1
                                 elif current_signal != 0:
                                     # Señales distintas de 1 y -1 (por ejemplo, 2 o valores especiales)
-                                    self.log(f"Señal {strategy_name}: {current_signal}", color="gray")
-                            else:
-                                self.log(f"No hay señales válidas para {strategy_name}", color="gray")
+                                    self._queue_log_update(f"Señal {strategy_name}: {current_signal} | {reason}", "gray")
                                 
                     except Exception as e:
-                        self.log(f"Error aplicando estrategia de vela {strat}: {str(e)}", color="red")
+                        self._queue_log_update(f"Error aplicando estrategia de vela {strategy_item['name']}: {str(e)}", "red")
                         import traceback
-                        self.log(f"Traceback: {traceback.format_exc()}", color="red")
+                        self._queue_log_update(f"Traceback: {traceback.format_exc()}", "red")
             
             # Aplicar patrones (máximo 2 por vela)
             try:
@@ -2213,13 +2291,13 @@ class GUIPrincipal:
                             df_res = metodo()
                             signals = df_res['Signal'] if 'Signal' in df_res.columns else None
                             if signals is not None and not signals.empty and signals.iloc[-1] == 1:
-                                self.log(f"🟢 SEÑAL COMPRA: {pattern_name} = 1 (Patrón indica subida)", color="green")
+                                self._queue_log_update(f"🟢 SEÑAL COMPRA: {pattern_name} = 1 (Patrón indica subida)", "green")
                                 if self._procesar_senal_compra_risk_manager(last_candle, f"pattern_{pattern_name}", 0.01, 2.0):
                                     pattern_operations_opened_this_candle += 1
                     except Exception as e:
-                        self.log(f"Error aplicando patrón {pattern_name}: {str(e)}", color="red")
+                        self._queue_log_update(f"Error aplicando patrón {pattern_name}: {str(e)}", "red")
             except Exception as e:
-                self.log(f"Error aplicando patrones: {str(e)}", color="red")
+                self._queue_log_update(f"Error aplicando patrones: {str(e)}", "red")
             
             # Verificar si hay órdenes activas que necesiten ser cerradas
             self._verificar_cierre_ordenes_risk_manager(last_candle)
@@ -2282,23 +2360,22 @@ class GUIPrincipal:
             if operacion:
                 # Log consistente con formato mejorado
                 strategy_display = strategy_name.replace("candle_", "").replace("pattern_", "").replace("_", " ")
-                self.log(f"💰 COMPRA {strategy_display}: Operación {operacion.id} [BUY] @ {price:.5f}", color='green')
-                self.log(f"🎯 Stop Loss: {operacion.stop_loss:.5f} | Take Profit: {operacion.take_profit:.5f}", color='blue')
-                # Refrescar dinero visible y label Dinero
+                self._queue_log_update(f"💰 COMPRA {strategy_display}: Operación {operacion.id} [BUY] @ {price:.5f}", 'green')
+                self._queue_log_update(f"🎯 Stop Loss: {operacion.stop_loss:.5f} | Take Profit: {operacion.take_profit:.5f}", 'blue')
+                
+                # Actualizar GUI de forma asíncrona
                 try:
                     self._actualizar_dinero_visible(price)
                     cash_now = float(getattr(self.risk_manager, 'capital', self.dinero_ficticio))
-                    self.label_cash.config(text=f"Dinero: {cash_now:,.2f}$")
-                    self.root.update_idletasks()
+                    self._queue_gui_update('cash', cash_now)
                 except Exception:
                     pass
                 return True
             else:
-                # Registrar motivo si hay error (fondos insuficientes -> amarillo)
+                # Manejar errores de forma asíncrona
                 try:
                     err = getattr(self.risk_manager, 'last_error', None)
                     if err:
-                        # Mensajes que solo se muestran en modo debug
                         only_debug_msgs = (
                             'Parámetros de riesgo inválidos (riesgo_por_pip <= 0)',
                             'Tamaño de lote inválido',
@@ -2308,14 +2385,14 @@ class GUIPrincipal:
                             pass  # suprimir en no-debug
                         else:
                             if 'Fondos insuficientes' in err or 'Capital insuficiente' in err:
-                                self.log(f"OPERACIÓN SALTADA ({strategy_name}) -> {err}", color='yellow')
+                                self._queue_log_update(f"OPERACIÓN SALTADA ({strategy_name}) -> {err}", 'yellow')
                             else:
-                                self.log(f"OPEN BUY FALLÓ ({strategy_name}) -> {err}", color='red')
+                                self._queue_log_update(f"OPEN BUY FALLÓ ({strategy_name}) -> {err}", 'red')
                 except Exception:
                     pass
                 return False
         except Exception as e:
-            self.log(f"Error al procesar señal de compra: {str(e)}", color='red')
+            self._queue_log_update(f"Error al procesar señal de compra: {str(e)}", 'red')
             return False
     
     def _verificar_cierre_ordenes_risk_manager(self, candle):
@@ -2340,24 +2417,23 @@ class GUIPrincipal:
                     except Exception:
                         pass
                 color = 'green' if profit >= 0 else 'red'
-                self.log(f"CIERRE {op.estrategia}: {op} | Profit: ${profit:+.2f}", color=color)
+                self._queue_log_update(f"CIERRE {op.estrategia}: {op} | Profit: ${profit:+.2f}", color)
 
             # Refrescar equity/cash tras cierres
             if operaciones_cerradas:
                 try:
                     self._actualizar_dinero_visible(current_price)
                     cash_now = float(getattr(self.risk_manager, 'capital', self.dinero_ficticio))
-                    self.label_cash.config(text=f"Dinero: {cash_now:,.2f}$")
-                    self.root.update_idletasks()
+                    self._queue_gui_update('cash', cash_now)
                 except Exception:
                     pass
         except Exception as e:
-            self.log(f"Error verificando cierre de orden: {str(e)}", color='red')
+            self._queue_log_update(f"Error verificando cierre de orden: {str(e)}", 'red')
             
         except Exception as e:
-            self.log(f"Error en _on_candle_update: {str(e)}", color="red")
+            self._queue_log_update(f"Error en _on_candle_update: {str(e)}", "red")
             import traceback
-            self.log(traceback.format_exc(), color="red")
+            self._queue_log_update(traceback.format_exc(), "red")
 
     def _update_sim_status_color(self):
         """Actualiza el color del label de estado de simulación según el PnL.
@@ -2408,7 +2484,7 @@ class GUIPrincipal:
             if len(self.active_orders) >= max_orders:
                 # Mostrar el mensaje solo la primera vez que se alcanza el límite
                 if not getattr(self, '_limit_orders_alerted', False):
-                    self.log(f"Límite de {max_orders} órdenes activas alcanzado", color="orange")
+                    self._queue_log_update(f"Límite de {max_orders} órdenes activas alcanzado", "orange")
                     self._limit_orders_alerted = True
                 return
                 
@@ -2431,11 +2507,11 @@ class GUIPrincipal:
             
             self.active_orders.append(order)
             strategy_str = strategy_name.replace("_", " ").title()
-            self.log(f"Orden de COMPRA abierta {strategy_str}: {entry_price:.5f} (TP: {take_profit:.5f}, SL: {stop_loss:.5f})", 
+            self._queue_log_update(f"Orden de COMPRA abierta {strategy_str}: {entry_price:.5f} (TP: {take_profit:.5f}, SL: {stop_loss:.5f})", 
                     color="green")
                     
         except Exception as e:
-            self.log(f"Error al procesar señal de compra: {str(e)}", color="red")
+            self._queue_log_update(f"Error al procesar señal de compra: {str(e)}", color="red")
     
     def _verificar_cierre_ordenes(self, candle):
         """Verifica si alguna orden activa necesita ser cerrada"""
@@ -2452,14 +2528,14 @@ class GUIPrincipal:
                     if current_price >= order['take_profit']:
                         profit = (order['take_profit'] - order['entry_price']) * order['size']
                         self.active_orders.remove(order)
-                        self.log(f"Take Profit alcanzado: +{profit:.5f} pips", color="green")
+                        self._queue_log_update(f"Take Profit alcanzado: +{profit:.5f} pips", color="green")
                     elif current_price <= order['stop_loss']:
                         loss = (order['entry_price'] - current_price) * order['size']
                         self.active_orders.remove(order)
-                        self.log(f"Stop Loss alcanzado: -{loss:.5f} pips", color="red")
+                        self._queue_log_update(f"Stop Loss alcanzado: -{loss:.5f} pips", color="red")
                         
             except Exception as e:
-                self.log(f"Error verificando cierre de orden: {str(e)}", color="red")
+                self._queue_log_update(f"Error verificando cierre de orden: {str(e)}", color="red")
 
     def detener_simulacion_binance(self):
         """Detiene la simulación del mercado"""
@@ -2470,9 +2546,9 @@ class GUIPrincipal:
                 
                 # Mostrar resumen de la simulación
                 if hasattr(self, 'simulation_candles_elapsed'):
-                    self.log(f"\n--- SIMULACIÓN FINALIZADA ---", color="blue")
-                    self.log(f"Velas procesadas: {self.simulation_candles_elapsed}", color="white")
-                    self.log(f"Órdenes abiertas al finalizar: {len(self.active_orders) if hasattr(self, 'active_orders') else 0}", 
+                    self._queue_log_update(f"\n--- SIMULACIÓN FINALIZADA ---", color="blue")
+                    self._queue_log_update(f"Velas procesadas: {self.simulation_candles_elapsed}", color="white")
+                    self._queue_log_update(f"Órdenes abiertas al finalizar: {len(self.active_orders) if hasattr(self, 'active_orders') else 0}", 
                             color="white")
                 
                 # Limpiar estado de simulación
@@ -2487,16 +2563,16 @@ class GUIPrincipal:
                 try:
                     from app.reports import clear_all_operations
                     clear_all_operations()
-                    self.log("📊 Sistema de reports limpiado", color="blue")
+                    self._queue_log_update("📊 Sistema de reports limpiado", color="blue")
                 except Exception as e:
-                    self.log(f"⚠️ Error limpiando sistema de reports: {str(e)}", color="orange")
+                    self._queue_log_update(f"⚠️ Error limpiando sistema de reports: {str(e)}", color="orange")
                 
                 # Actualizar UI
                 # Rehabilitar inicio solo si el streamer sigue conectado
                 start_state = "normal" if getattr(self, 'candle_streamer', None) is not None else "disabled"
                 self.menu_streamer.entryconfig("Iniciar simulación Binance", state=start_state)
                 self.menu_streamer.entryconfig("Detener simulación Binance", state="disabled")
-                self.log("Simulación detenida correctamente", color="green")
+                self._queue_log_update("Simulación detenida correctamente", color="green")
                 # Resetear estado visual
                 if hasattr(self, 'label_sim_status'):
                     try:
@@ -2504,32 +2580,32 @@ class GUIPrincipal:
                     except Exception:
                         pass
             else:
-                self.log("No hay ninguna simulación activa", color="orange")
+                self._queue_log_update("No hay ninguna simulación activa", color="orange")
                 
         except Exception as e:
-            self.log(f"Error al detener la simulación: {str(e)}", color="red")
+            self._queue_log_update(f"Error al detener la simulación: {str(e)}", color="red")
             import traceback
-            self.log(traceback.format_exc(), color="red")
+            self._queue_log_update(traceback.format_exc(), color="red")
     
     def generar_informe(self):
         """Genera un informe con los datos actuales"""
         try:
             from app.reports import generate_trading_report
             
-            self.log("Generando informe de trading...")
+            self._queue_log_update("Generando informe de trading...")
             
             # Generar el informe
             report_path = generate_trading_report()
             
             if report_path:
-                self.log(f"✅ Informe generado exitosamente: {report_path}", color="green")
+                self._queue_log_update(f"✅ Informe generado exitosamente: {report_path}", color="green")
             else:
-                self.log("❌ Error al generar el informe", color="red")
+                self._queue_log_update("❌ Error al generar el informe", color="red")
                 
         except Exception as e:
-            self.log(f"❌ Error generando informe: {str(e)}", color="red")
+            self._queue_log_update(f"❌ Error generando informe: {str(e)}", color="red")
             import traceback
-            self.log(traceback.format_exc(), color="red")
+            self._queue_log_update(traceback.format_exc(), color="red")
 
     def configuracion(self):
         """Abre el modal de configuración de la aplicación"""
@@ -2543,11 +2619,11 @@ class GUIPrincipal:
                 self.scheduler.restart_if_config_changed()
                 status = self.scheduler.get_status()
                 if status['running']:
-                    self.log(f"📧 Reportes automáticos activados (cada {status['report_hours']} horas)", color="green")
+                    self._queue_log_update(f"📧 Reportes automáticos activados (cada {status['report_hours']} horas)", color="green")
                 else:
-                    self.log("📧 Reportes automáticos desactivados", color="orange")
+                    self._queue_log_update("📧 Reportes automáticos desactivados", color="orange")
         except Exception as e:
-            self.log(f"❌ Error abriendo configuración: {str(e)}", color="red")
+            self._queue_log_update(f"❌ Error abriendo configuración: {str(e)}", color="red")
 
     def cambiar_config_streamer(self):
         """Abre el modal para cambiar símbolo/intervalo y reinicia el streamer con la nueva configuración."""
@@ -2556,7 +2632,7 @@ class GUIPrincipal:
             from trading_view.candle_streamer import CandleStreamer
             symbols = CandleStreamer._load_or_fetch_symbols()
             if not symbols:
-                self.log("No se pudieron cargar los símbolos disponibles", color="red")
+                self._queue_log_update("No se pudieron cargar los símbolos disponibles", color="red")
                 return
 
             # Valores iniciales desde el streamer actual si existe
@@ -2584,9 +2660,9 @@ class GUIPrincipal:
                 initial_values=initial
             )
         except Exception as e:
-            self.log(f"Error al cambiar la configuración del streamer: {str(e)}", color="red")
+            self._queue_log_update(f"Error al cambiar la configuración del streamer: {str(e)}", color="red")
             import traceback
-            self.log(traceback.format_exc(), color="red")
+            self._queue_log_update(traceback.format_exc(), color="red")
 
     def _procesar_senal_rl(self, idx, timestamp, row):
         """Procesa una señal individual RL"""
@@ -2610,7 +2686,7 @@ class GUIPrincipal:
             patt = int(self._pattern_signals.iloc[idx])
             if patt != 1:
                 mensaje = mensaje_base + " | SEÑAL RL: COMPRA NO CONFIRMADA POR PATRONES"
-                self.log(mensaje, color="gray")
+                self._queue_log_update(mensaje, color="gray")
                 return
 
         # Abrir nueva posición (multi-posición permitida)
@@ -2622,7 +2698,7 @@ class GUIPrincipal:
         self.posiciones_activas.append(pos)
 
         mensaje = mensaje_base + f" | SEÑAL RL: COMPRA a {row['Close']:.5f} (posiciones activas: {len(self.posiciones_activas)})"
-        self.log(mensaje, color="green")
+        self._queue_log_update(mensaje, color="green")
 
         # Registrar operación (apertura)
         self.operaciones.append({
@@ -2641,7 +2717,7 @@ class GUIPrincipal:
             mensaje_base = "[RL]"
         if not self.posiciones_activas:
             mensaje = mensaje_base + " | SEÑAL RL: VENTA IGNORADA (no hay posiciones activas)"
-            self.log(mensaje, color="orange")
+            self._queue_log_update(mensaje, color="orange")
             return
 
         # Confirmación por patrones (si disponible): solo vender si Final_Signal == -1
@@ -2649,7 +2725,7 @@ class GUIPrincipal:
             patt = int(self._pattern_signals.iloc[idx])
             if patt != -1:
                 mensaje = mensaje_base + " | SEÑAL RL: VENTA NO CONFIRMADA POR PATRONES"
-                self.log(mensaje, color="gray")
+                self._queue_log_update(mensaje, color="gray")
                 return
 
         precio_venta = float(row["Close"])
@@ -2663,7 +2739,7 @@ class GUIPrincipal:
             color, msg_gan = self._formatear_resultado_rl(ganancia, porcentaje_ganancia)
             msg = (f"{mensaje_base} | SEÑAL RL: VENTA a {precio_venta:.5f} | "
                    f"Compra: {precio_compra:.5f} | {msg_gan}")
-            self.log(msg, color=color)
+            self._queue_log_update(msg, color=color)
 
             # Actualizar operación correspondiente a esta compra (por indice)
             if pos['indice'] < len(self.operaciones):
@@ -2678,7 +2754,7 @@ class GUIPrincipal:
             cerradas += 1
 
         if cerradas > 0:
-            self.log(f"Cerradas {cerradas} posiciones", color="blue")
+            self._queue_log_update(f"Cerradas {cerradas} posiciones", color="blue")
 
     def _formatear_resultado_rl(self, ganancia, porcentaje):
         """Formatea el resultado de la operación RL"""
@@ -2699,7 +2775,7 @@ class GUIPrincipal:
             ganancia_total = sum(ganancias)
             porcentaje_total = sum(op['porcentaje_ganancia'] for op in operaciones_completas)
             
-            self.log(f"\nRESUMEN RL: {len(operaciones_completas)} operaciones | "
+            self._queue_log_update(f"\nRESUMEN RL: {len(operaciones_completas)} operaciones | "
                     f"Ganancia total: {ganancia_total:.5f} | "
                     f"Rendimiento: {porcentaje_total:.2f}%", 
                     color="blue" if ganancia_total >= 0 else "red")
@@ -2715,14 +2791,14 @@ class GUIPrincipal:
             ganancia_neta = beneficios_totales - perdidas_totales
             capital_final = capital_inicial + ganancia_neta
 
-            self.log("="*60, color='white')
-            self.log("RESUMEN MONETARIO RL", color='yellow')
-            self.log(f"Capital inicial: ${capital_inicial:,.2f}", color='white')
-            self.log(f"Beneficios: ${beneficios_totales:,.2f}", color='green')
-            self.log(f"Pérdidas: ${perdidas_totales:,.2f}", color='red')
-            self.log(f"Resultado neto: ${ganancia_neta:+,.2f}", color='cyan' if ganancia_neta >= 0 else 'orange')
-            self.log(f"Capital final: ${capital_final:,.2f}", color='cyan')
-            self.log("="*60, color='white')
+            self._queue_log_update("="*60, color='white')
+            self._queue_log_update("RESUMEN MONETARIO RL", color='yellow')
+            self._queue_log_update(f"Capital inicial: ${capital_inicial:,.2f}", color='white')
+            self._queue_log_update(f"Beneficios: ${beneficios_totales:,.2f}", color='green')
+            self._queue_log_update(f"Pérdidas: ${perdidas_totales:,.2f}", color='red')
+            self._queue_log_update(f"Resultado neto: ${ganancia_neta:+,.2f}", color='cyan' if ganancia_neta >= 0 else 'orange')
+            self._queue_log_update(f"Capital final: ${capital_final:,.2f}", color='cyan')
+            self._queue_log_update("="*60, color='white')
 
             # Actualizar etiquetas de la interfaz
             self.dinero_ficticio = capital_final
@@ -3708,7 +3784,7 @@ class GUIPrincipal:
                         )
                         debug_on = bool(getattr(getattr(self, 'candle_streamer', None), 'debug_mode', False))
                         if any(msg in err for msg in only_debug_msgs) and not debug_on:
-                            pass
+                            pass  # suprimir en no-debug
                         else:
                             if 'Fondos insuficientes' in err or 'Capital insuficiente' in err:
                                 self._queue_log_update(f"OPERACIÓN SALTADA ({strategy_name}) -> {err}", 'yellow')
