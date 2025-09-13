@@ -62,9 +62,24 @@ class MenuBar:
         self.menu_streamer = tk.Menu(self.btn_streamer, tearoff=0)
         self.btn_streamer.configure(menu=self.menu_streamer)
         
-        # Añadir opciones al menú (implementación simplificada)
+        # Añadir opciones al menú
         self.menu_streamer.add_command(label="Conectar", command=self.main_app.simulation_handler.iniciar_streamer)
         self.menu_streamer.add_command(label="Desconectar", command=self.main_app.simulation_handler.detener_streamer, state="disabled")
+        self.menu_streamer.add_command(label="Cambiar símbolo/intervalo", command=self.main_app.simulation_handler.cambiar_config_streamer, state="disabled")
+        self.menu_streamer.add_separator()
+        self.menu_streamer.add_command(label="Iniciar simulación Binance", command=self.main_app.simulation_handler.iniciar_simulacion_binance, state="disabled")
+        self.menu_streamer.add_command(label="Modificar configuración simulación Binance", command=self.main_app.simulation_handler.modificar_config_simulacion_binance, state="disabled")
+        self.menu_streamer.add_command(label="Detener simulación Binance", command=self.main_app.simulation_handler.detener_simulacion_binance, state="disabled")
+        self.menu_streamer.add_separator()
+        self.menu_streamer.add_command(label="Activar Debug", command=lambda: self.main_app.simulation_handler.toggle_debug_mode(True), state="disabled")
+        self.menu_streamer.add_command(label="Desactivar Debug", command=lambda: self.main_app.simulation_handler.toggle_debug_mode(False), state="disabled")
+        self.menu_streamer.add_separator()
+        self.menu_streamer.add_command(label="Generar informe", command=self.main_app.simulation_handler.generar_informe, state="normal")
+        self.menu_streamer.add_command(label="Configuración", command=self.main_app.simulation_handler.configuracion, state="normal")
+        
+        # Botón de prueba temporal
+        self.test_btn = ttk.Button(self.frame_left, text="Test", command=self.main_app.simulation_handler.test_iniciar_streamer, style='Small.TButton')
+        self.test_btn.pack(side="left", padx=2)
         
     def _create_money_section(self):
         """Crea la sección de dinero ficticio"""
@@ -90,21 +105,53 @@ class MenuBar:
         self.menu_opciones = tk.Menu(self.btn_opciones, tearoff=0)
         self.btn_opciones.configure(menu=self.menu_opciones)
         
+        # Etiquetas para controlar el estado por nombre
+        self._menu_label_estrategias = "Mostrar Estrategias"
+        self._menu_label_patrones = "Aplicar Patrones"
+        self._menu_label_candle_strategies = "Aplicar Estrategias de velas"
+        self._menu_label_backtesting = "Iniciar Backtesting"
+        self._menu_label_entrenar_ia = "Entrenar IA"
+        self._menu_label_detener_ia = "Detener IA"
+        
         # Añadir opciones al menú
         self.menu_opciones.add_command(
-            label="Mostrar Estrategias", 
+            label=self._menu_label_estrategias, 
             command=self.main_app.strategy_handler.cargar_estrategias,
             state="disabled"
         )
         self.menu_opciones.add_command(
-            label="Aplicar Patrones", 
-            command=self.main_app.pattern_handler.abrir_modal_patrones,
+            label=self._menu_label_patrones, 
+            command=self.main_app.pattern_modal_handler.abrir_modal_patrones,
             state="disabled"
         )
-        # ... más opciones
+        self.menu_opciones.add_command(
+            label=self._menu_label_candle_strategies, 
+            command=self.main_app.abrir_modal_candle_strategies,
+            state="disabled"
+        )
+        self.menu_opciones.add_command(
+            label=self._menu_label_backtesting, 
+            command=self.main_app.strategy_handler.abrir_modal_backtesting,
+            state="disabled"
+        )
+        self.menu_opciones.add_separator()
+        self.menu_opciones.add_command(
+            label=self._menu_label_entrenar_ia, 
+            command=self.main_app.strategy_handler.entrenar_ia,
+            state="disabled"
+        )
+        self.menu_opciones.add_command(
+            label=self._menu_label_detener_ia, 
+            command=self.main_app.strategy_handler.detener_entrenamiento_ia,
+            state="disabled"
+        )
         
     def _create_ai_menu(self):
         """Crea el menú de IA"""
+        self._ia_label_crear_rl = "Crear Modelo RL"
+        self._ia_label_cargar_rl = "Cargar Modelo RL"
+        self._ia_label_aplicar_rl = "Aplicar Señales RL"
+        
         self.btn_modelo_ia = ttk.Menubutton(self.frame_right, text="Modelo IA", state="disabled")
         self.btn_modelo_ia.pack(side="left", padx=5)
         self.menu_modelo_ia = tk.Menu(self.btn_modelo_ia, tearoff=0)
@@ -112,11 +159,20 @@ class MenuBar:
         
         # Añadir opciones al menú
         self.menu_modelo_ia.add_command(
-            label="Crear Modelo RL", 
+            label=self._ia_label_crear_rl, 
             command=self.main_app.rl_handler.entrenar_rl,
             state="disabled"
         )
-        # ... más opciones
+        self.menu_modelo_ia.add_command(
+            label=self._ia_label_cargar_rl, 
+            command=self.main_app.rl_handler.cargar_rl,
+            state="disabled"
+        )
+        self.menu_modelo_ia.add_command(
+            label=self._ia_label_aplicar_rl, 
+            command=self.main_app.rl_handler.aplicar_senales_rl,
+            state="disabled"
+        )
         
     def _create_telegram_button(self):
         """Crea el botón de Telegram"""
@@ -140,19 +196,139 @@ class MenuBar:
         self.btn_reiniciar.pack(side="left", padx=2)
         
     def update_buttons_state(self):
-        """Actualiza el estado de los botones según el estado de la aplicación"""
-        has_data = self.main_app.csv_handler.df_actual is not None
-        has_money = self.main_app.strategy_handler.dinero_ficticio > 0
+        """Actualiza el estado de los botones según las condiciones actuales"""
+        # Verificar si hay datos cargados - usar main_app.df_actual directamente
+        has_data = hasattr(self.main_app, 'df_actual') and self.main_app.df_actual is not None
+        has_money = hasattr(self.main_app, 'strategy_handler') and self.main_app.strategy_handler.dinero_ficticio > 0
         
-        # Habilitar/deshabilitar botones según condiciones
-        state = "normal" if (has_data and has_money) else "disabled"
+        # Habilitar/deshabilitar botones según las condiciones
+        enable_analysis = has_data and has_money
         
-        self.btn_opciones.config(state=state)
-        self.btn_modelo_ia.config(state=state)
-        self.btn_telegram.config(state=state)
+        # Actualizar estado de botones de análisis
+        if hasattr(self, 'btn_patrones'):
+            self.btn_patrones.config(state="normal" if enable_analysis else "disabled")
+        if hasattr(self, 'btn_estrategias'):
+            self.btn_estrategias.config(state="normal" if enable_analysis else "disabled")
+        if hasattr(self, 'btn_backtesting'):
+            self.btn_backtesting.config(state="normal" if enable_analysis else "disabled")
+            
+        # Actualizar menús desplegables Opciones y Modelo IA
+        state = "normal" if enable_analysis else "disabled"
         
-        # Actualizar estado de las opciones del menú
-        self._update_menu_states()
+        # Menú Opciones
+        if hasattr(self, "btn_opciones"):
+            self.btn_opciones.config(state=state)
+            try:
+                if state == "normal":
+                    self.btn_opciones.state(["!disabled"])
+                else:
+                    self.btn_opciones.state(["disabled"])
+            except Exception:
+                pass
+                
+        # Menú Modelo IA
+        if hasattr(self, "btn_modelo_ia"):
+            self.btn_modelo_ia.config(state=state)
+            try:
+                if state == "normal":
+                    self.btn_modelo_ia.state(["!disabled"])
+                else:
+                    self.btn_modelo_ia.state(["disabled"])
+            except Exception:
+                pass
+                
+        # Botón Telegram
+        if hasattr(self, "btn_telegram"):
+            self.btn_telegram.config(state=state)
+            
+        # Actualizar elementos dentro de los menús
+        self._update_menu_items_state(enable_analysis)
+            
+    def _update_btn_aplicar_patrones(self):
+        """Habilita 'Mostrar Patrones' solo si se han cargado procesados y se ha añadido dinero ficticio (> 0)."""
+        has_data = hasattr(self.main_app, 'df_actual') and self.main_app.df_actual is not None
+        has_money = hasattr(self.main_app, 'strategy_handler') and self.main_app.strategy_handler.dinero_ficticio > 0
+        habilitar = has_data and has_money
+        
+        if hasattr(self, "btn_backtesting"):
+            self.btn_backtesting.config(state="normal" if habilitar else "disabled")
+        if hasattr(self, "btn_telegram"):
+            self.btn_telegram.config(state="normal" if habilitar else "disabled")
+            
+        # Sincronizar menú 'Modelo IA'
+        state = "normal" if habilitar else "disabled"
+        if hasattr(self, "btn_modelo_ia"):
+            self.btn_modelo_ia.config(state=state)
+            try:
+                if state == "normal":
+                    self.btn_modelo_ia.state(["!disabled"])
+                else:
+                    self.btn_modelo_ia.state(["disabled"])
+            except Exception:
+                pass
+                
+        # Sincronizar menú 'Opciones'
+        if hasattr(self, "btn_opciones"):
+            self.btn_opciones.config(state=state)
+            try:
+                if state == "normal":
+                    self.btn_opciones.state(["!disabled"])
+                else:
+                    self.btn_opciones.state(["disabled"])
+            except Exception:
+                pass
+                
+    def _update_btn_cargar_estrategias(self):
+        """Habilita 'Mostrar Estrategias' solo si se han cargado procesados y se ha añadido dinero ficticio (> 0)."""
+        has_data = hasattr(self.main_app, 'df_actual') and self.main_app.df_actual is not None
+        has_money = hasattr(self.main_app, 'strategy_handler') and self.main_app.strategy_handler.dinero_ficticio > 0
+        habilitar = has_data and has_money
+        
+        if hasattr(self, "btn_estrategias"):
+            self.btn_estrategias.config(state="normal" if habilitar else "disabled")
+        if hasattr(self, "btn_patrones"):
+            self.btn_patrones.config(state="normal" if habilitar else "disabled")
+            
+    def _update_menu_items_state(self, enable_analysis):
+        """Actualiza el estado de los elementos dentro de los menús desplegables"""
+        menu_state = "normal" if enable_analysis else "disabled"
+        
+        # Actualizar elementos del menú Opciones
+        if hasattr(self, 'menu_opciones'):
+            try:
+                # Cargar estrategias
+                self.menu_opciones.entryconfig(self._menu_label_cargar_estrategias, state=menu_state)
+                # Mostrar patrones
+                self.menu_opciones.entryconfig(self._menu_label_patrones, state=menu_state)
+                # Estrategias de velas
+                self.menu_opciones.entryconfig(self._menu_label_candle_strategies, state=menu_state)
+                # Backtesting
+                self.menu_opciones.entryconfig(self._menu_label_backtesting, state=menu_state)
+                # Entrenar IA - siempre habilitado si hay datos y dinero
+                self.menu_opciones.entryconfig(self._menu_label_entrenar_ia, state=menu_state)
+                # Detener IA - habilitado solo durante entrenamiento
+                detener_state = "normal" if (enable_analysis and self._is_training_active()) else "disabled"
+                self.menu_opciones.entryconfig(self._menu_label_detener_ia, state=detener_state)
+            except Exception:
+                pass
+                
+        # Actualizar elementos del menú Modelo IA
+        if hasattr(self, 'menu_modelo_ia'):
+            try:
+                # Crear Modelo RL
+                self.menu_modelo_ia.entryconfig(self._ia_label_crear_rl, state=menu_state)
+                # Cargar Modelo RL
+                self.menu_modelo_ia.entryconfig(self._ia_label_cargar_rl, state=menu_state)
+                # Aplicar Señales RL
+                self.menu_modelo_ia.entryconfig(self._ia_label_aplicar_rl, state=menu_state)
+            except Exception:
+                pass
+                
+    def _is_training_active(self):
+        """Verifica si hay un entrenamiento de IA activo"""
+        if hasattr(self.main_app, 'rl_handler'):
+            return getattr(self.main_app.rl_handler, '_training_active', False)
+        return False
         
     def _update_menu_states(self):
         """Actualiza el estado de las opciones del menú"""
