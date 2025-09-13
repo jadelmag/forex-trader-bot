@@ -93,8 +93,12 @@ class LogPanel:
             
     def limpiar_log(self):
         """Limpia el contenido del log"""
-        self.text_log.delete(1.0, tk.END)
-        self.log("Log limpiado", color='cyan')
+        try:
+            self.text_log.configure(state="normal")
+            self.text_log.delete(1.0, tk.END)
+            self.text_log.configure(state="disabled")
+        except Exception as e:
+            print(f"Error al limpiar el log: {str(e)}")
         
     def show_progress_bar(self):
         """Muestra la barra de progreso"""

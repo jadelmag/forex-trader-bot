@@ -12,7 +12,7 @@ class MenuBar:
         self.frame_left.pack(side="left", anchor="w")
         
         self.frame_center = tk.Frame(parent_frame, bg="#F0F0F0")
-        self.frame_center.pack(side="left", expand=True)
+        self.frame_center.pack(side="left", padx=10)
         
         self.frame_right = tk.Frame(parent_frame, bg="#F0F0F0")
         self.frame_right.pack(side="right", anchor="e")
@@ -84,14 +84,14 @@ class MenuBar:
     def _create_money_section(self):
         """Crea la sección de dinero ficticio"""
         # Label y entry para dinero
-        self.label_entry_dinero = tk.Label(self.frame_right, text="Dinero ficticio:", bg="#F0F0F0")
-        self.label_entry_dinero.pack(side="left", padx=5)
+        self.label_entry_dinero = tk.Label(self.frame_center, text="Dinero ficticio:", bg="#F0F0F0")
+        self.label_entry_dinero.pack(side="left", padx=(0, 5))
         
-        self.entry_dinero = ttk.Entry(self.frame_right, width=12)
+        self.entry_dinero = ttk.Entry(self.frame_center, width=12)
         self.entry_dinero.pack(side="left", padx=5)
         
         self.btn_add_dinero = ttk.Button(
-            self.frame_right, 
+            self.frame_center, 
             text="Añadir", 
             command=self.main_app.strategy_handler.add_dinero,
             style='Small.TButton'
@@ -100,7 +100,7 @@ class MenuBar:
         
     def _create_options_menu(self):
         """Crea el menú de opciones"""
-        self.btn_opciones = ttk.Menubutton(self.frame_right, text="Opciones", state="disabled")
+        self.btn_opciones = ttk.Menubutton(self.frame_center, text="Opciones", state="disabled")
         self.btn_opciones.pack(side="left", padx=5)
         self.menu_opciones = tk.Menu(self.btn_opciones, tearoff=0)
         self.btn_opciones.configure(menu=self.menu_opciones)
@@ -121,7 +121,7 @@ class MenuBar:
         )
         self.menu_opciones.add_command(
             label=self._menu_label_patrones, 
-            command=self.main_app.pattern_modal_handler.abrir_modal_patrones,
+            command=self.main_app.abrir_modal_patrones,
             state="disabled"
         )
         self.menu_opciones.add_command(
@@ -152,7 +152,7 @@ class MenuBar:
         self._ia_label_cargar_rl = "Cargar Modelo RL"
         self._ia_label_aplicar_rl = "Aplicar Señales RL"
         
-        self.btn_modelo_ia = ttk.Menubutton(self.frame_right, text="Modelo IA", state="disabled")
+        self.btn_modelo_ia = ttk.Menubutton(self.frame_center, text="Modelo IA", state="disabled")
         self.btn_modelo_ia.pack(side="left", padx=5)
         self.menu_modelo_ia = tk.Menu(self.btn_modelo_ia, tearoff=0)
         self.btn_modelo_ia.configure(menu=self.menu_modelo_ia)
@@ -177,7 +177,7 @@ class MenuBar:
     def _create_telegram_button(self):
         """Crea el botón de Telegram"""
         self.btn_telegram = ttk.Button(
-            self.frame_right, 
+            self.frame_center, 
             text="Telegram", 
             command=self.main_app.telegram_handler.abrir_modal_telegram, 
             state="disabled", 
@@ -188,7 +188,7 @@ class MenuBar:
     def _create_restart_button(self):
         """Crea el botón de reinicio"""
         self.btn_reiniciar = ttk.Button(
-            self.frame_right, 
+            self.frame_center, 
             text="Reiniciar", 
             command=self.main_app.reiniciar_app,
             style='Small.TButton'
@@ -197,8 +197,8 @@ class MenuBar:
         
     def update_buttons_state(self):
         """Actualiza el estado de los botones según las condiciones actuales"""
-        # Verificar si hay datos cargados - usar main_app.df_actual directamente
-        has_data = hasattr(self.main_app, 'df_actual') and self.main_app.df_actual is not None
+        # Verificar si hay datos cargados - usar csv_handler.df_actual
+        has_data = hasattr(self.main_app, 'csv_handler') and self.main_app.csv_handler.df_actual is not None
         has_money = hasattr(self.main_app, 'strategy_handler') and self.main_app.strategy_handler.dinero_ficticio > 0
         
         # Habilitar/deshabilitar botones según las condiciones
@@ -246,7 +246,7 @@ class MenuBar:
             
     def _update_btn_aplicar_patrones(self):
         """Habilita 'Mostrar Patrones' solo si se han cargado procesados y se ha añadido dinero ficticio (> 0)."""
-        has_data = hasattr(self.main_app, 'df_actual') and self.main_app.df_actual is not None
+        has_data = hasattr(self.main_app, 'csv_handler') and self.main_app.csv_handler.df_actual is not None
         has_money = hasattr(self.main_app, 'strategy_handler') and self.main_app.strategy_handler.dinero_ficticio > 0
         habilitar = has_data and has_money
         
@@ -280,7 +280,7 @@ class MenuBar:
                 
     def _update_btn_cargar_estrategias(self):
         """Habilita 'Mostrar Estrategias' solo si se han cargado procesados y se ha añadido dinero ficticio (> 0)."""
-        has_data = hasattr(self.main_app, 'df_actual') and self.main_app.df_actual is not None
+        has_data = hasattr(self.main_app, 'csv_handler') and self.main_app.csv_handler.df_actual is not None
         has_money = hasattr(self.main_app, 'strategy_handler') and self.main_app.strategy_handler.dinero_ficticio > 0
         habilitar = has_data and has_money
         
@@ -297,7 +297,7 @@ class MenuBar:
         if hasattr(self, 'menu_opciones'):
             try:
                 # Cargar estrategias
-                self.menu_opciones.entryconfig(self._menu_label_cargar_estrategias, state=menu_state)
+                self.menu_opciones.entryconfig(self._menu_label_estrategias, state=menu_state)
                 # Mostrar patrones
                 self.menu_opciones.entryconfig(self._menu_label_patrones, state=menu_state)
                 # Estrategias de velas

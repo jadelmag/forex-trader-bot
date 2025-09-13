@@ -126,18 +126,6 @@ class CandleStrategiesModal(tk.Toplevel):
             )
             chk.pack(fill="x", anchor="w", pady=2, padx=10)
         
-        # Campo para número máximo de operaciones
-        operations_frame = ttk.Frame(self)
-        operations_frame.pack(fill="x", padx=20, pady=(10, 10))
-        
-        operations_label = ttk.Label(operations_frame, 
-                                   text="Número máximo de operaciones:")
-        operations_label.pack(anchor="center")
-        
-        self.operations_entry = ttk.Entry(operations_frame, width=10, justify="center")
-        self.operations_entry.pack(anchor="center", pady=(5, 0))
-        self.operations_entry.insert(0, "5")  # Valor por defecto
-        
         # Barra de progreso
         self.progress_frame = ttk.Frame(self)
         self.progress_frame.pack(fill="x", padx=20, pady=(10, 0))
@@ -197,14 +185,8 @@ class CandleStrategiesModal(tk.Toplevel):
             messagebox.showwarning("Atención", "Seleccione al menos una estrategia")
             return
         
-        # Obtener número máximo de operaciones
-        try:
-            max_operations = int(self.operations_entry.get())
-            if max_operations <= 0:
-                raise ValueError("El número debe ser mayor a 0")
-        except ValueError:
-            messagebox.showerror("Error", "Ingrese un número válido de operaciones")
-            return
+        # Usar valor por defecto para operaciones
+        max_operations = 5
         
         # Mostrar barra de progreso
         self.progress_frame.pack(fill="x", padx=20, pady=(10, 0))
@@ -217,18 +199,17 @@ class CandleStrategiesModal(tk.Toplevel):
         
         # Ejecutar simulación en hilo separado
         thread = threading.Thread(target=self._run_simulation, 
-                                 args=(selected_strategies, max_operations))
+                                 args=(selected_strategies,))
         thread.daemon = True
         thread.start()
 
-    def _run_simulation(self, selected_strategies, max_operations):
+    def _run_simulation(self, selected_strategies):
         """Ejecutar la simulación de estrategias de velas"""
         try:
             # Llamar al método de simulación en gui_principal
             if hasattr(self.gui_principal, 'simular_estrategias_velas'):
                 self.gui_principal.simular_estrategias_velas(
-                    selected_strategies, 
-                    max_operations,
+                    selected_strategies, 0,
                     progress_callback=self._update_progress
                 )
             else:

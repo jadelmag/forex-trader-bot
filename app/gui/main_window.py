@@ -95,10 +95,24 @@ class GUIPrincipal:
         
     def on_closing(self):
         """Maneja el cierre de la aplicación"""
-        # Limpiar recursos antes de cerrar
-        self.thread_manager.shutdown()
-        self.simulation_handler.cleanup()
-        self.root.quit()
+        try:
+            # Ejecutar limpieza completa
+            self.cleanup_on_exit()
+        except Exception as e:
+            print(f"Error durante limpieza: {e}")
+        finally:
+            # Forzar cierre de la aplicación
+            try:
+                self.root.quit()
+            except:
+                pass
+            try:
+                self.root.destroy()
+            except:
+                pass
+            # Terminar el proceso Python completamente
+            import sys
+            sys.exit(0)
         
     def reiniciar_app(self):
         """Reinicia la aplicación reemplazando el proceso actual por `python -m app.main`."""
@@ -145,7 +159,7 @@ class GUIPrincipal:
         """Abre el modal de patrones"""
         if self.csv_handler.df_actual is not None:
             try:
-                from app.gui.modals.patterns_modal import PatternsModal
+                from app.patterns_modal import PatternsModal
                 PatternsModal(self.root, self.csv_handler.df_actual, self.grafico_manager, self, callback=self._on_patrones_aplicados)
             except Exception as e:
                 self.log(f"Error abriendo modal de patrones: {str(e)}", color='red')
@@ -157,13 +171,60 @@ class GUIPrincipal:
         """Abre el modal de estrategias de velas"""
         if self.csv_handler.df_actual is not None:
             try:
-                from app.gui.modals.candle_strategies_modal import CandleStrategiesModal
+                from app.candle_strategies_modal import CandleStrategiesModal
                 CandleStrategiesModal(self.root, self.csv_handler.df_actual, self)
             except Exception as e:
                 self.log(f"Error abriendo modal de estrategias de velas: {str(e)}", color='red')
         else:
             from tkinter import messagebox
             messagebox.showwarning("Atención", "No hay datos cargados para aplicar candle estrategias")
+            
+    def simular_estrategias_velas(self, selected_strategies, max_operations, progress_callback=None):
+        """Simula las estrategias de velas seleccionadas"""
+        try:
+            from strategies.candle_strategies import CandleStrategies
+            
+            # Crear instancia de estrategias de velas
+            candle_strategies = CandleStrategies(self.csv_handler.df_actual)
+            
+            self.log(f"Iniciando simulación de {len(selected_strategies)} estrategias de velas", color='cyan')
+            
+            total_signals = 0
+            for i, strategy_name in enumerate(selected_strategies):
+                if progress_callback:
+                    progress = (i / len(selected_strategies)) * 100
+                    progress_callback(progress, f"Procesando {strategy_name}")
+                
+                # Obtener método de la estrategia
+                if hasattr(candle_strategies, strategy_name):
+                    method = getattr(candle_strategies, strategy_name)
+                    if callable(method):
+                        try:
+                            result_df = method()
+                            if result_df is not None and 'Signal' in result_df.columns:
+                                signals = result_df['Signal'][result_df['Signal'] != 0]
+                                bullish_signals = len(signals[signals > 0])
+                                bearish_signals = len(signals[signals < 0])
+                                total_signals += len(signals)
+                                self.log(f"Estrategia {strategy_name}: {len(signals)} señales ({bullish_signals} alcistas, {bearish_signals} bajistas)", color='green')
+                            else:
+                                self.log(f"Estrategia {strategy_name}: Sin señales", color='yellow')
+                        except Exception as e:
+                            self.log(f"Error en estrategia {strategy_name}: {str(e)}", color='red')
+                    else:
+                        self.log(f"Estrategia {strategy_name} no es callable", color='red')
+                else:
+                    self.log(f"Estrategia {strategy_name} no encontrada", color='red')
+            
+            if progress_callback:
+                progress_callback(100, "Simulación completada")
+                
+            self.log(f"Simulación completada. Total de señales: {total_signals}", color='cyan')
+            
+        except Exception as e:
+            self.log(f"Error durante la simulación: {str(e)}", color='red')
+            if progress_callback:
+                progress_callback(100, "Error en simulación")
             
     def cleanup_on_exit(self):
         """Limpieza completa al cerrar la aplicación"""

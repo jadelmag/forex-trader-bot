@@ -61,7 +61,7 @@ class StatusBar:
         # Etiqueta de tipo de mercado
         self.label_market_type = tk.Label(
             self.parent_frame, 
-            text="Tipo de mercado: Indeterminado", 
+            text="Mercado: Indeterminado", 
             fg="black", 
             bg=COLORS['BACKGROUND']
         )
@@ -70,7 +70,7 @@ class StatusBar:
         # Etiqueta de estado de conexión del streamer
         self.label_streamer_status = tk.Label(
             self.parent_frame,
-            text="Streamer: Desconectado",
+            text="Estado: Desconectado",
             fg="red",
             bg=COLORS['BACKGROUND']
         )
