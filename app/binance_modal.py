@@ -691,14 +691,14 @@ class BinanceSimulationModal(tk.Toplevel):
         """Devuelve configuración por defecto para detección de patrones."""
         return {
             # Parámetros de detección de patrones
-            "doji_threshold": 0.05,
-            "tweezer_tolerance": 0.001,
-            "min_confidence": 0.6,
+            "doji_threshold": 0.15,
+            "tweezer_tolerance": 0.01,
+            "min_confidence": 0.3,
             "partial_factor": 0.5,
-            "hammer_body_ratio": 1.5,
-            "shooting_star_ratio": 2.0,
-            "spinning_top_ratio": 0.3,
-            "marubozu_ratio": 0.8,
+            "hammer_body_ratio": 1.2,
+            "shooting_star_ratio": 1.5,
+            "spinning_top_ratio": 0.4,
+            "marubozu_ratio": 0.7,
             
             # Parámetros de indicadores técnicos
             "atr_period": 14,
@@ -1061,15 +1061,15 @@ class BinanceSimulationModal(tk.Toplevel):
             "marubozu_ratio": 0.8,
             
             # Parámetros de indicadores técnicos
-            "atr_period": 14,
-            "trend_period": 20,
-            "volatility_period": 20,
+            "atr_period": 14,           # ✅ Estándar, OK
+            "trend_period": 20,         # ✅ Estándar, OK  
+            "volatility_period": 20,    # ✅ Estándar, OK
             
             # Parámetros adicionales de patrones
-            "engulfing_min_body_ratio": 1.2,
-            "harami_max_body_ratio": 0.8,
-            "star_gap_threshold": 0.001,
-            "three_methods_trend_strength": 0.7
+            "engulfing_min_body_ratio": 1.05,       # 5% más grande (era 1.2)
+            "harami_max_body_ratio": 0.9,           # 90% del tamaño (era 0.8)
+            "star_gap_threshold": 0.005,             # 0.5% gap (era 0.001)
+            "three_methods_trend_strength": 0.5      # 50% fuerza (era 0.7)
         }
 
     def _center_window(self, w, h):

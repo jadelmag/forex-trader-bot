@@ -47,15 +47,15 @@ class CandlestickPatterns:
         self.trend_period = self.config.get('trend_period', trend_period)
         self.volatility_period = self.config.get('volatility_period', volatility_period)
         
-        # Parámetros específicos de patrones
-        self.doji_threshold = self.config.get('doji_threshold', 0.05)
-        self.tweezer_tolerance = self.config.get('tweezer_tolerance', 0.001)
-        self.min_confidence = self.config.get('min_confidence', 0.6)
+        # Parámetros específicos de patrones - Ajustados para forex 1m
+        self.doji_threshold = self.config.get('doji_threshold', 0.15)  # Era 0.05, ahora más flexible
+        self.tweezer_tolerance = self.config.get('tweezer_tolerance', 0.01)  # Era 0.001, ahora 10x más flexible
+        self.min_confidence = self.config.get('min_confidence', 0.3)  # Era 0.6, ahora más permisivo
         self.partial_factor = self.config.get('partial_factor', 0.5)
-        self.hammer_body_ratio = self.config.get('hammer_body_ratio', 1.5)
-        self.shooting_star_ratio = self.config.get('shooting_star_ratio', 2.0)
-        self.spinning_top_ratio = self.config.get('spinning_top_ratio', 0.3)
-        self.marubozu_ratio = self.config.get('marubozu_ratio', 0.8)
+        self.hammer_body_ratio = self.config.get('hammer_body_ratio', 1.2)  # Era 1.5, ahora menos restrictivo
+        self.shooting_star_ratio = self.config.get('shooting_star_ratio', 1.5)  # Era 2.0, ahora menos restrictivo
+        self.spinning_top_ratio = self.config.get('spinning_top_ratio', 0.4)  # Era 0.3, ahora más flexible
+        self.marubozu_ratio = self.config.get('marubozu_ratio', 0.7)  # Era 0.8, ahora más accesible
         
         self._calculate_indicators(self.atr_period, self.trend_period, self.volatility_period)
 
@@ -113,10 +113,33 @@ class CandlestickPatterns:
         df = self.data.copy()
         if partial_factor is None:
             partial_factor = self.partial_factor
-        partial_close = df['Open'] + (df['High'] - df['Open']) * partial_factor
-        partial_cond = condition_mask.copy()
-        partial_cond = partial_cond & ((direction == 1) & (partial_close > df['Open']) |
-                                       (direction == -1) & (partial_close < df['Open']))
+        
+        # Manejar tanto Series como valores escalares para direction
+        if isinstance(direction, pd.Series):
+            # Para Series, calculamos partial_close de forma vectorizada
+            # Para direcciones positivas (bullish): usar movimiento hacia High
+            # Para direcciones negativas (bearish): usar movimiento hacia Low
+            partial_close_bullish = df['Open'] + (df['High'] - df['Open']) * partial_factor
+            partial_close_bearish = df['Open'] + (df['Low'] - df['Open']) * partial_factor
+            
+            # Seleccionar el partial_close apropiado basado en la dirección
+            partial_close = np.where(direction > 0, partial_close_bullish, partial_close_bearish)
+            
+            # Condiciones para bullish y bearish
+            bullish_cond = condition_mask & (direction > 0) & (partial_close > df['Open'])
+            bearish_cond = condition_mask & (direction < 0) & (partial_close < df['Open'])
+            
+            # Combinar condiciones
+            partial_cond = bullish_cond | bearish_cond
+        else:
+            # Comportamiento original para valores escalares
+            if direction == 1:
+                partial_close = df['Open'] + (df['High'] - df['Open']) * partial_factor
+                partial_cond = condition_mask & (partial_close > df['Open'])
+            else:  # direction == -1
+                partial_close = df['Open'] + (df['Low'] - df['Open']) * partial_factor
+                partial_cond = condition_mask & (partial_close < df['Open'])
+        
         confidence = self._get_pattern_confidence(pattern_type, df.index) * 0.7
         signal = np.where(partial_cond, confidence * direction, 0)
         return signal
@@ -289,13 +312,36 @@ class CandlestickPatterns:
         if min_confidence is None:
             min_confidence = self.min_confidence
         df = self.detect_all_patterns()
-        bullish_patterns = ['hammer', 'bullish_engulfing', 'piercing_line', 'morning_star', 'three_white_soldiers', 'tweezer_bottom']
-        bearish_patterns = ['hanging_man', 'bearish_engulfing', 'dark_cloud_cover', 'evening_star', 'three_black_crows', 'tweezer_top']
-        df['Bullish_Score'] = df[bullish_patterns].apply(lambda row: sum(val for val in row if val >= min_confidence), axis=1)
-        df['Bearish_Score'] = df[bearish_patterns].apply(lambda row: sum(val for val in row if val <= -min_confidence), axis=1)
+        bullish_patterns = ['hammer', 'bullish_engulfing', 'piercing_line', 'morning_star', 'three_white_soldiers', 'tweezer_bottom', 'inverted_hammer']
+        bearish_patterns = ['hanging_man', 'bearish_engulfing', 'dark_cloud_cover', 'evening_star', 'three_black_crows', 'tweezer_top', 'shooting_star']
+        neutral_patterns = ['doji', 'spinning_top']
+        
+        # Contar patrones detectados (cualquier señal > 0 para alcistas, < 0 para bajistas)
+        df['Bullish_Count'] = df[bullish_patterns].apply(lambda row: sum(1 for val in row if val > 0), axis=1)
+        df['Bearish_Count'] = df[bearish_patterns].apply(lambda row: sum(1 for val in row if val < 0), axis=1)
+        
+        # Añadir patrones neutrales según su dirección
+        for pattern in neutral_patterns:
+            if pattern in df.columns:
+                df['Bullish_Count'] += (df[pattern] > 0).astype(int)
+                df['Bearish_Count'] += (df[pattern] < 0).astype(int)
+        
+        # Calcular scores de confianza
+        df['Bullish_Score'] = df[bullish_patterns].apply(lambda row: sum(val for val in row if val > 0), axis=1)
+        df['Bearish_Score'] = df[bearish_patterns].apply(lambda row: sum(abs(val) for val in row if val < 0), axis=1)
+        # Generar señales basadas en conteo de patrones, no en confianza
+        df['Total_Bullish_Count'] = df['Bullish_Count']
+        df['Total_Bearish_Count'] = df['Bearish_Count']
+        
         df['Final_Signal'] = 0
-        df.loc[df['Bullish_Score'] >= min_patterns, 'Final_Signal'] = 1
-        df.loc[df['Bearish_Score'] >= min_patterns, 'Final_Signal'] = -1
+        df.loc[df['Total_Bullish_Count'] >= min_patterns, 'Final_Signal'] = 1
+        df.loc[df['Total_Bearish_Count'] >= min_patterns, 'Final_Signal'] = -1
+        
+        # Resolver conflictos: si hay patrones alcistas y bajistas, usar el que tenga más
+        conflict_mask = (df['Total_Bullish_Count'] >= min_patterns) & (df['Total_Bearish_Count'] >= min_patterns)
+        df.loc[conflict_mask & (df['Total_Bullish_Count'] > df['Total_Bearish_Count']), 'Final_Signal'] = 1
+        df.loc[conflict_mask & (df['Total_Bearish_Count'] > df['Total_Bullish_Count']), 'Final_Signal'] = -1
+        df.loc[conflict_mask & (df['Total_Bullish_Count'] == df['Total_Bearish_Count']), 'Final_Signal'] = 0
         return df
 
     def get_trading_signals(self, min_confidence=None, min_patterns=None):

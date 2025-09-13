@@ -1270,17 +1270,17 @@ class EstrategiasModal(tk.Toplevel):
                 "atr_trailing_multiplier": ts_mult if ts_mult is not None else 1.5,
                 
                 # Parámetros de CandlestickPatterns (detección)
-                "doji_threshold": 0.05,
-                "tweezer_tolerance": 0.001,
-                "min_confidence": 0.6,
-                "partial_factor": 0.5,
-                "hammer_body_ratio": 1.5,
-                "shooting_star_ratio": 2.0,
-                "spinning_top_ratio": 0.3,
-                "marubozu_ratio": 0.8,
-                "atr_period": 14,
-                "trend_period": 20,
-                "volatility_period": 20,
+                "doji_threshold": 0.05,           # ✅ Estándar, OK
+                "tweezer_tolerance": 0.001,       # ✅ Estándar, OK
+                "min_confidence": 0.6,            # ✅ Estándar, OK
+                "partial_factor": 0.5,            # ✅ Estándar, OK
+                "hammer_body_ratio": 1.5,         # ✅ Estándar, OK
+                "shooting_star_ratio": 2.0,       # ✅ Estándar, OK
+                "spinning_top_ratio": 0.3,        # ✅ Estándar, OK
+                "marubozu_ratio": 0.8,            # ✅ Estándar, OK
+                "atr_period": 14,                 # ✅ Estándar, OK
+                "trend_period": 20,               # ✅ Estándar, OK
+                "volatility_period": 20,          # ✅ Estándar, OK
                 "min_patterns": 1
             }
 
@@ -1363,15 +1363,15 @@ class EstrategiasModal(tk.Toplevel):
             "marubozu_ratio": 0.8,
             
             # Parámetros de indicadores técnicos
-            "atr_period": 14,
-            "trend_period": 20,
-            "volatility_period": 20,
+            "atr_period": 14,           # ✅ Estándar, OK
+            "trend_period": 20,         # ✅ Estándar, OK  
+            "volatility_period": 20,    # ✅ Estándar, OK
             
             # Parámetros adicionales de patrones
-            "engulfing_min_body_ratio": 1.2,
-            "harami_max_body_ratio": 0.8,
-            "star_gap_threshold": 0.001,
-            "three_methods_trend_strength": 0.7
+            "engulfing_min_body_ratio": 1.05,       # 5% más grande (era 1.2)
+            "harami_max_body_ratio": 0.9,           # 90% del tamaño (era 0.8)
+            "star_gap_threshold": 0.005,             # 0.5% gap (era 0.001)
+            "three_methods_trend_strength": 0.5      # 50% fuerza (era 0.7)
         }
 
 
