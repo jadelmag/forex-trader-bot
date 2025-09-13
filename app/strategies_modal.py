@@ -548,9 +548,6 @@ class EstrategiasModal(tk.Toplevel):
                     if ctrl["tipo"] == "candle":
                         config = None  # Inicializar config por defecto
                         try:
-                            # Obtener configuración base
-                            base_config = self._get_default_candle_config(nombre)
-                            
                             # Verificar si el checkbox "Aplicar solo detección" está activado
                             apply_detection = getattr(self, 'apply_detection_only', None) and self.apply_detection_only.get()
                             
@@ -559,15 +556,15 @@ class EstrategiasModal(tk.Toplevel):
                                 if hasattr(self, 'global_pattern_config') and self.global_pattern_config:
                                     config = self.global_pattern_config.copy()
                                 else:
-                                    config = {}
+                                    config = self._get_default_pattern_detection_config()
                             else:
-                                # Si checkbox desactivado: comportamiento según modo
+                                # Sin checkbox activo: usar SOLO configuración de estrategia (JSON) sin valores por defecto
                                 if ctrl.get("config_type") and ctrl["config_type"].get() == "Custom":
-                                    # Para Custom, usar solo config individual (sin global)
-                                    config = ctrl.get("custom_config") or base_config
+                                    # Use custom config if available, else load from JSON file
+                                    config = ctrl.get("custom_config") or self._get_default_candle_config(nombre)
                                 else:
-                                    # Para Default, usar solo config base estándar (sin global)
-                                    config = base_config
+                                    # Default mode: cargar configuración JSON sin merge con valores por defecto
+                                    config = self._get_default_candle_config(nombre)
                         except Exception:
                             config = None
                         seleccion[nombre] = {"tipo": "candle", "config": config}

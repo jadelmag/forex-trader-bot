@@ -513,12 +513,13 @@ class BinanceSimulationModal(tk.Toplevel):
                                 # Use global detection configuration
                                 config = getattr(self, 'global_pattern_config', None) or self._get_default_pattern_detection_config()
                             else:
-                                # Original logic: Custom vs Default mode
+                                # Sin checkbox activo: usar SOLO configuración de estrategia (JSON) sin valores por defecto
                                 if ctrl.get("config_type") and ctrl["config_type"].get() == "Custom":
-                                    # Use custom config if available, else preset for that strategy
+                                    # Use custom config if available, else load from JSON file
                                     config = ctrl.get("custom_config") or self._get_default_candle_config(name)
                                 else:
-                                    config = None  # Default => None
+                                    # Default mode: cargar configuración JSON sin merge con valores por defecto
+                                    config = self._get_default_candle_config(name)
                         except Exception:
                             config = None
                         
@@ -706,10 +707,10 @@ class BinanceSimulationModal(tk.Toplevel):
             "volatility_period": 20,
             
             # Parámetros adicionales de patrones
-            "engulfing_min_body_ratio": 1.2,
-            "harami_max_body_ratio": 0.8,
-            "star_gap_threshold": 0.001,
-            "three_methods_trend_strength": 0.7
+            "engulfing_min_body_ratio": 1.05,       # 5% más grande (era 1.2)
+            "harami_max_body_ratio": 0.9,           # 90% del tamaño (era 0.8)
+            "star_gap_threshold": 0.005,             # 0.5% gap (era 0.001)
+            "three_methods_trend_strength": 0.5      # 50% fuerza (era 0.7)
         }
 
     def _validate_two_decimals(self, proposed: str) -> bool:

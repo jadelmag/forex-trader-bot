@@ -446,14 +446,14 @@ class BinanceSimulationConfigModal(tk.Toplevel):
         """Devuelve configuración por defecto para detección de patrones."""
         return {
             # Parámetros de detección de patrones
-            "doji_threshold": 0.05,
-            "tweezer_tolerance": 0.001,
-            "min_confidence": 0.6,
+            "doji_threshold": 0.15,
+            "tweezer_tolerance": 0.01,
+            "min_confidence": 0.3,
             "partial_factor": 0.5,
-            "hammer_body_ratio": 1.5,
-            "shooting_star_ratio": 2.0,
-            "spinning_top_ratio": 0.3,
-            "marubozu_ratio": 0.8,
+            "hammer_body_ratio": 1.2,
+            "shooting_star_ratio": 1.5,
+            "spinning_top_ratio": 0.4,
+            "marubozu_ratio": 0.7,
             
             # Parámetros de indicadores técnicos
             "atr_period": 14,           # ✅ Estándar, OK
@@ -566,14 +566,18 @@ class BinanceSimulationConfigModal(tk.Toplevel):
                 if ctrl["selected"].get() == 1:
                     config = None
                     try:
-                        if getattr(self, 'aplicar_solo_deteccion', None) and self.aplicar_solo_deteccion.get():
-                            # Usar config global si existiese en el futuro; por ahora None mantiene defaults
-                            config = ctrl.get("custom_config") or None
+                        # Check if "Aplicar solo detección" checkbox is active
+                        if hasattr(self, 'aplicar_solo_deteccion') and self.aplicar_solo_deteccion.get():
+                            # Use global detection configuration
+                            config = getattr(self, 'global_pattern_config', None) or self._get_default_pattern_detection_config()
                         else:
+                            # Sin checkbox activo: usar SOLO configuración de estrategia (JSON) sin valores por defecto
                             if ctrl.get("config_type") and ctrl["config_type"].get() == "Custom":
-                                config = ctrl.get("custom_config") or {}
+                                # Use custom config if available, else load from JSON file
+                                config = ctrl.get("custom_config") or self._get_default_candle_config(name)
                             else:
-                                config = None
+                                # Default mode: cargar configuración JSON sin merge con valores por defecto
+                                config = self._get_default_candle_config(name)
                     except Exception:
                         config = None
                     selected_candle.append({"name": name, "config": config})
