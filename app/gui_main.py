@@ -100,6 +100,7 @@ class GUIPrincipal:
 
         # Iniciar RiskManager con el mismo capital ficticio inicial (0 al inicio)
         self.risk_manager = RiskManager(capital_inicial=self.dinero_ficticio, max_operaciones_activas=5)
+        config = RiskConfig(enable_sell_operations=True)
         self.risk_integration = RiskManagerIntegration(self.risk_manager, debug_mode=False)
         
         # Inicializar el scheduler de reportes automáticos
@@ -657,6 +658,7 @@ class GUIPrincipal:
 
         # Configurar Risk Manager
         self.risk_manager = RiskManager(max_operaciones_activas=max_orders, capital_inicial=capital_inicial)
+        config = RiskConfig(enable_sell_operations=True)
         self.risk_integration = RiskManagerIntegration(self.risk_manager, debug_mode=False)
         self.risk_manager.reset()
 
@@ -1749,22 +1751,28 @@ class GUIPrincipal:
             from trading_view import CandleStreamerConfigModal
 
             def on_connect(config):
-                # Actualizar dinero ficticio y capital del risk manager si viene desde el modal
+                # Sincronizar capital desde el modal si viene informado
                 try:
                     if "initial_money" in config:
                         initial_money = float(config["initial_money"])
                         self.dinero_ficticio = initial_money
-                        # Actualizar también el capital del risk manager
                         if hasattr(self, 'risk_manager') and self.risk_manager is not None:
                             self.risk_manager.capital_inicial = initial_money
                             self.risk_manager.capital = initial_money
-                        # Actualizar labels para mostrar el nuevo dinero
+                        # Refrescar UI
+                        try:
+                            self.entry_dinero.delete(0, tk.END)
+                            self.entry_dinero.insert(0, f"{initial_money}")
+                        except Exception:
+                            pass
                         self.actualizar_labels()
-                        self.log(f"Dinero inicial actualizado a: ${initial_money:,.2f}", color="green")
+                        self._queue_gui_update('cash', initial_money)
                 except Exception:
                     pass
+                # Reiniciar con nueva configuración
                 self._start_streamer_with_config(config)
 
+            # Crear y mostrar el modal FUERA de on_connect
             CandleStreamerConfigModal(
                 parent=self.root,
                 symbols=symbols,
@@ -1776,6 +1784,7 @@ class GUIPrincipal:
             import traceback
             self.log(traceback.format_exc(), color="red")
 
+    
     def iniciar_simulacion_binance(self):
         """Inicia la simulación del mercado"""
         print("Iniciando simulación Binance")
@@ -2082,9 +2091,29 @@ class GUIPrincipal:
                     # Procesar señales
                     if signals is not None and not signals.empty and signals.iloc[-1] == 1:  # Señal de compra
                         self._queue_log_update(f"🟢 SEÑAL COMPRA: {strategy_name} = 1 (Estrategia indica subida)", "green")
-                        if self._procesar_senal_compra_risk_manager_async(last_candle, strategy_name, risk, rr_ratio, atr_value):
+                        
+                    elif signals is not None and not signals.empty and signals.iloc[-1] == -1:
+                        self._queue_log_update(f"🔴 SEÑAL VENTA: {strategy_name} = -1 (Estrategia indica bajada)", "red")
+                        res = self.risk_integration.procesar_senal(
+                            senal=-1,
+                            precio_actual=float(last_candle['Close']),
+                            timestamp=last_candle.name if hasattr(last_candle, 'name') else datetime.now(),
+                            atr_value=atr_value,
+                            rr_ratio=rr_ratio,
+                            risk_percent=risk * 100,
+                            estrategia_nombre=strategy_name,
+                            sync_mode=True
+                        )
+                        if hasattr(res, 'id'):
                             forex_strategies_used += 1
                             forex_operations_opened_this_candle += 1
+                            self._queue_log_update(f"💰 VENTA {strategy_name}: Operación {res.id} [SELL] @ {float(last_candle['Close']):.5f}", "green")
+                            try:
+                                self._actualizar_dinero_visible(float(last_candle['Close']))
+                                cash_now = float(getattr(self.risk_manager, 'capital', self.dinero_ficticio))
+                                self._queue_gui_update('cash', cash_now)
+                            except Exception:
+                                pass
                         
                 except Exception as e:
                     self._queue_log_update(f"Error aplicando estrategia {strategy_name}: {str(e)}", "red")
@@ -2220,7 +2249,7 @@ class GUIPrincipal:
                                 if current_signal == -1:
                                     try:
                                         # Cerrar operaciones abiertas por esta estrategia en RiskManager
-                                        cerradas = self.risk_integration.procesar_senal(
+                                        res = self.risk_integration.procesar_senal(
                                             senal=-1,
                                             precio_actual=float(last_candle['Close']),
                                             timestamp=last_candle.name if hasattr(last_candle, 'name') else datetime.now(),
@@ -2236,8 +2265,8 @@ class GUIPrincipal:
                                         self._queue_log_update(f"{emoji} SEÑAL DE VENTA/CIERRE: {strategy_name} = {current_signal} (Patrón indica bajada) | {reason}", signal_color)
                                         
                                         # Registrar cierres y actualizar métricas/labels si aplica
-                                        if isinstance(cerradas, list) and cerradas:
-                                            for op in cerradas:
+                                        if isinstance(res, list) and res:
+                                            for op in res:
                                                 try:
                                                     profit = op.calcular_profit(op.precio_cierre)
                                                     color = 'green' if profit >= 0 else 'red'
@@ -2250,12 +2279,34 @@ class GUIPrincipal:
                                                         self.label_perdidas.config(text=f"Pérdidas: {self.perdidas:,.2f}$")
                                                 except Exception:
                                                     pass
+                                        elif hasattr(res, 'id'):
+                                            # Apertura SELL devuelta por la integración
+                                            candle_strategies_used += 1
+                                            candle_operations_opened_this_candle += 1
+                                            self._queue_log_update(f"💰 VENTA {strategy_name}: Operación {res.id} [SELL] @ {float(last_candle['Close']):.5f}", "green")
+                                            try:
+                                                self._actualizar_dinero_visible(float(last_candle['Close']))
+                                                cash_now = float(getattr(self.risk_manager, 'capital', self.dinero_ficticio))
+                                                self._queue_gui_update('cash', cash_now)
+                                            except Exception:
+                                                pass
                                             # Refrescar equity/cash tras cierres
                                             try:
                                                 self._actualizar_dinero_visible(float(last_candle['Close']))
                                                 cash_now = float(getattr(self.risk_manager, 'capital', self.dinero_ficticio))
                                                 self.label_cash.config(text=f"Dinero: {cash_now:,.2f}$")
                                                 self.root.update_idletasks()
+                                            except Exception:
+                                                pass
+                                        elif hasattr(res, 'id'):
+                                            # Apertura SELL devuelta por la integración
+                                            candle_strategies_used += 1
+                                            candle_operations_opened_this_candle += 1
+                                            self._queue_log_update(f"💰 VENTA {strategy_name}: Operación {res.id} [SELL] @ {float(last_candle['Close']):.5f}", "green")
+                                            try:
+                                                self._actualizar_dinero_visible(float(last_candle['Close']))
+                                                cash_now = float(getattr(self.risk_manager, 'capital', self.dinero_ficticio))
+                                                self._queue_gui_update('cash', cash_now)
                                             except Exception:
                                                 pass
                                     except Exception as e:
@@ -2294,6 +2345,27 @@ class GUIPrincipal:
                                 self._queue_log_update(f"🟢 SEÑAL COMPRA: {pattern_name} = 1 (Patrón indica subida)", "green")
                                 if self._procesar_senal_compra_risk_manager(last_candle, f"pattern_{pattern_name}", 0.01, 2.0):
                                     pattern_operations_opened_this_candle += 1
+                            elif signals is not None and not signals.empty and signals.iloc[-1] == -1:
+                                self._queue_log_update(f"🔴 SEÑAL VENTA: {pattern_name} = -1 (Patrón indica bajada)", "red")
+                                res = self.risk_integration.procesar_senal(
+                                    senal=-1,
+                                    precio_actual=float(last_candle['Close']),
+                                    timestamp=last_candle.name if hasattr(last_candle, 'name') else datetime.now(),
+                                    atr_value=atr_value,
+                                    rr_ratio=2.0,
+                                    risk_percent=1.0,
+                                    estrategia_nombre=f"pattern_{pattern_name}",
+                                    sync_mode=True
+                                )
+                                if hasattr(res, 'id'):
+                                    pattern_operations_opened_this_candle += 1
+                                    self._queue_log_update(f"💰 VENTA {pattern_name}: Operación {res.id} [SELL] @ {float(last_candle['Close']):.5f}", "green")
+                                    try:
+                                        self._actualizar_dinero_visible(float(last_candle['Close']))
+                                        cash_now = float(getattr(self.risk_manager, 'capital', self.dinero_ficticio))
+                                        self._queue_gui_update('cash', cash_now)
+                                    except Exception:
+                                        pass
                     except Exception as e:
                         self._queue_log_update(f"Error aplicando patrón {pattern_name}: {str(e)}", "red")
             except Exception as e:
@@ -2301,27 +2373,6 @@ class GUIPrincipal:
             
             # Verificar si hay órdenes activas que necesiten ser cerradas
             self._verificar_cierre_ordenes_risk_manager(last_candle)
-            
-            # Detectar escenario de mercado
-            current_scenario = None
-            try:
-                if self._market_analyzer is not None and len(df) >= 20:
-                    # Renombrar columnas a minúsculas para el analizador
-                    df_an = df.rename(columns={
-                        'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume'
-                    })
-                    res = self._market_analyzer.analyze_market(df_an)
-                    current_scenario = res.get('primary_scenario')
-                    self._last_market_scenario = current_scenario
-
-                    # Log del escenario cada 10 velas
-                    if (current_scenario is not None and 
-                        self.simulation_candles_elapsed - self._last_scenario_logged_at >= 10):
-                        scenario_label = current_scenario.value if hasattr(current_scenario, 'value') else str(current_scenario)
-                        self._queue_log_update(f"📈 Escenario detectado: {scenario_label}", "cyan")
-                        self._last_scenario_logged_at = self.simulation_candles_elapsed
-            except Exception:
-                current_scenario = None
             
         except Exception as e:
             self._queue_log_update(f"Error en _on_candle_update: {str(e)}", "red")
@@ -2650,6 +2701,23 @@ class GUIPrincipal:
             from trading_view import CandleStreamerConfigModal
 
             def on_connect(config):
+                # Sincronizar capital desde el modal si viene informado
+                try:
+                    if "initial_money" in config:
+                        initial_money = float(config["initial_money"])
+                        self.dinero_ficticio = initial_money
+                        if hasattr(self, 'risk_manager') and self.risk_manager is not None:
+                            self.risk_manager.capital_inicial = initial_money
+                            self.risk_manager.capital = initial_money
+                        try:
+                            self.entry_dinero.delete(0, tk.END)
+                            self.entry_dinero.insert(0, f"{initial_money}")
+                        except Exception:
+                            pass
+                        self.actualizar_labels()
+                        self._queue_gui_update('cash', initial_money)
+                except Exception:
+                    pass
                 # Reiniciar con nueva configuración (internamente limpia el gráfico y detiene si está corriendo)
                 self._start_streamer_with_config(config)
 

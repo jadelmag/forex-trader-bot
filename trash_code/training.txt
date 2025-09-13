@@ -1,84 +1,150 @@
-🔹 1. Entrenamiento offline (histórico)
+Resumen rápido
 
-Construyes un entorno Gymnasium que simule el mercado:
+Sí hay causas claras que impiden abrir operaciones long y short.
+Long (BUY) solo se intentan abrir en algunos casos; Short (SELL) prácticamente nunca se intentan abrir con el flujo actual.
+Hay ambigüedad en cómo se interpreta la señal -1 de las estrategias de velas: a veces se usa como “cerrar largo”, otras debería ser “abrir corto”. El código actual no las distingue.
+Hay validaciones que pueden bloquear operaciones aunque existan señales: capital mínimo, periodo de espera, límites por vela/estrategia y filtrado por escenario de mercado.
+No veo que el dibujo de velas sea la causa; el streamer ya corrige el posicionamiento.
+Hallazgos por fichero clave
 
-Observación: ventana de velas + indicadores técnicos + features (spread, volumen).
+app/gui_main.py (método GUIPrincipal._process_candle_async)
+Forex:
+Solo se procesa BUY: if Signal == 1 entonces se llama a _procesar_senal_compra_risk_manager_async. No existe rama para SELL (Signal == -1). Resultado: nunca se abre una operación corta con estrategias Forex.
+Candle strategies:
+Se usa CandleStrategies y se toma ExecSignal/Signal. Cuando current_signal == -1, se llama a risk_integration.procesar_senal(senal=-1, ...), lo cual el Integration interpreta como “cerrar operaciones de esa estrategia” y no como “abrir un corto”.
+No se hace distinción entre “-1 de entrada” (abrir corto) y “-1 de salida” (cerrar largo). Pero el DataFrame devuelve también Position, que sí permite distinguir evento de entrada vs salida. Esto no se está usando.
+Patrones (patterns):
+Solo abre BUY cuando Signal == 1. No hay apertura SELL para patrones.
+Esperas y límites:
+wait_candles: mientras no llegue a 0, no se abre nada. Además, para estrategias de velas se exige len(df) >= wait_candles (se reutiliza como histórico mínimo).
+Se limita a 1 forex por vela y 2 velas/patrones por vela. Correcto, pero limita aperturas simultáneas.
+Escenario de mercado:
+Se detecta y se loguea dos veces en el mismo método (duplicado de lógica). No afecta a la operativa pero genera ruido y consumo innecesario.
+Capital:
+El RiskManager se crea en init con capital 0. Si el usuario no pulsa “Añadir” dinero, el capital sigue en 0 y RiskManager rechaza aperturas por “Capital insuficiente” (mínimo 100 por defecto en config/app_config.json). Aunque más adelante hay un bloque para inicializarlo en simulación, normalmente ya existe la instancia y no se re-inicializa, así que se queda con 0 salvo que el usuario ponga dinero.
+strategies/risk_manager_integration.py (RiskManagerIntegration._process_single_signal)
+Con senal == -1 el comportamiento actual es “cerrar por estrategia”, no “abrir SELL”.
+Esto hace que incluso si quisiéramos abrir cortos desde CandleStrategies, en la práctica se cierran largos en lugar de abrirse cortos.
+strategies/risk_manager.py
+Valida capital mínimo con _get_capital_limit() leyendo config/app_config.json (por defecto 100). Si capital < límite, se bloquea cualquier apertura (last_error = "Capital insuficiente...").
+Gestión de SL/TP y cierres funciona. También hay límite de slots/operaciones activas.
+strategies/strategies.py (ForexStrategies)
+Muchas generan Signal = -1 para condiciones bajistas, pero el GUI no tiene rama para abrir SELL. Por eso “no se abren shorts” aunque haya señales.
+strategies/candle_strategies.py
+Devuelve Signal y ExecSignal y además Position, con una lógica de “entrada/salida” completa.
+ExecSignal se usa para entradas y salidas. Sin embargo, el GUI trata cualquier -1 como “salida” y no como “entrada short”, causando la ambigüedad operativa.
+strategies/market_strategy_mapper.py
+Filtra por escenario: en UPTREND bloquea SELL y en DOWNTREND bloquea BUY para varias estrategias. Si ves muchos “🚫 ... bloqueada”, el escenario actual está bloqueando la señal. Esto es correcto por diseño, pero puede dar la sensación de “no funciona” si el escenario no permite el tipo de señal.
+patterns/candlestickpatterns.py
+Los patrones ahora están bien parametrizados y devuelven señales coherentes (correcciones previas aplicadas). No es la causa de que no se abran operaciones.
+trading_view/candle_streamer.py
+Ya se corrigió el posicionamiento (no centrado en el timestamp). No hay indicios de que el dibujado esté causando el problema de interpretación de patrones ahora.
+Causas raíz
 
-Acciones: BUY, SELL, HOLD (con o sin tamaños).
+No hay ruta de apertura SELL en el GUI para Forex ni para Patrones. Para CandleStrategies, -1 se usa como “cerrar por estrategia”, no como “abrir corto”.
+Ambigüedad de la señal -1 de CandleStrategies: el GUI no usa la columna Position para diferenciar si -1 es “salida de largo” o “entrada corta”.
+Validaciones que bloquean aperturas:
+Capital insuficiente (capital < capital_limit, por defecto 100).
+Espera de velas (wait_candles) aún no cumplida.
+Filtrado por escenario (MarketStrategyMapper) bloquea señales contrarias al escenario.
+Lógica duplicada de detección de escenario (ruido, no bloqueo).
+Código legacy conviviente (métodos antiguos de apertura/cierre sin RiskManager) que ya no se usan; no bloquea, pero añade complejidad.
+¿Se están generando ambigüedades que bloquean aperturas/cierres idóneos?
 
-Reward: PnL neto, penalizando comisiones y riesgo.
+Sí. Con CandleStrategies, ExecSignal = -1 puede significar “salir de largo” o “entrar en corto”. El GUI lo trata siempre como “cerrar” y nunca como “abrir corto”. Resultado: no se ejecutan cortos y, en algunos casos, se cierran largos de forma inmediata cuando quizás se pretendía rotar a corto.
+¿Hay código duplicado?
 
-Episodio: un rango de datos históricos (ej. 2018–2022 EURUSD).
+Hay duplicidad de la detección de escenario dentro de _process_candle_async y conviven métodos antiguos como _procesar_senal_compra (sin RiskManager) junto a la versión con RiskManager. No rompen nada, pero conviene limpiar para menor confusión.
+¿Se dibujan mal las velas?
 
-Entrenas con Stable-Baselines3 (PPO, A2C, DQN, SAC…) hasta convergencia razonable.
+No. El streamer ya posiciona las velas correctamente en el timestamp (corrección aplicada). No es la causa.
+Acciones recomendadas (concretas y mínimas)
 
-from stable_baselines3 import PPO
+Desambiguar -1 de CandleStrategies y habilitar SELL
+En 
+strategies/risk_manager_integration.py::_process_single_signal()
+:
+Ya te propuse un parche para que senal == -1 abra SELL cuando enable_sell_operations=True y, si están deshabilitadas, se comporte como cierre. Aplica ese cambio.
+En 
+app/gui_main.py::_process_candle_async
+ (bloque de CandleStrategies):
+Usa df_res['Position'] para distinguir evento:
+Si current_signal == -1 y prev_position == 1: es salida de largo. Cierra con 
+self.risk_manager.cerrar_operacion_por_estrategia('candle_{strategy}', price, ts, motivo='EXIT_SIGNAL')
+ en lugar de llamar a 
+risk_integration.procesar_senal(-1, ...)
+.
+Si current_signal == -1 y prev_position == 0: es entrada short. Llama a 
+risk_integration.procesar_senal(senal=-1, ...)
+ para abrir SELL (tras el parche).
+Si current_signal == 1 y prev_position == -1: salida de corto (usar cerrar_operacion_por_estrategia).
+Si current_signal == 1 y prev_position == 0: entrada long (ya está implementado).
+Esto elimina la ambigüedad y permite shorts reales.
+Añade un método GUIPrincipal._procesar_senal_venta_risk_manager(...) simétrico al de compra (mismo cálculo de ATR / RR), para poder usarlo también en Forex y Patrones cuando sea necesario.
+Añadir SELL para Forex y Patrones
+Forex (en 
+app/gui_main.py
+, bucle de forex_strategies):
+Además del caso signals.iloc[-1] == 1 (BUY), maneja == -1 para abrir SELL con el nuevo _procesar_senal_venta_risk_manager_async o llamando a 
+risk_integration.procesar_senal(senal=-1, ...)
+ (tras el parche).
+Patrones (bloque de patterns):
+Igual que Forex: si Signal == -1 y enable_sell_operations=True, abrir SELL; si quieres, conserva -1 como “cierre” si estás usando patrones solo como filtros.
+Asegurar capital al iniciar simulación
+En 
+app/gui_main.py
+, cuando entra en modo simulación, re-sincroniza self.risk_manager.capital y capital_inicial con el valor del entry “Dinero ficticio”, incluso si self.risk_manager ya existe. Si el usuario no pulsa “Añadir”, el capital queda en 0 y todas las aperturas fallan por “Capital insuficiente”.
+Entorno y reglas de ejecución
+market_strategy_mapper.py
+: Entiende que puede bloquearte señales contrarias. Útil en producción, pero para depurar puedes relajar reglas (o loguear más claro) y confirmar que las señales llegan y que el bloqueo viene del escenario.
+Mantén los límites por vela/estrategia, pero recuerda que max_forex_operations_per_candle=1 y wait_candles debe ser 0 antes de operar.
+Limpieza y pequeños ajustes
+Elimina o comenta la segunda detección de escenario al final de 
+_process_candle_async
+ (duplicada).
+Considera retirar métodos legacy no usados (
+_procesar_senal_compra
+ sin RiskManager) para evitar confusión.
+Checklist de verificación tras los cambios
 
-env = ForexEnv(df_historical)  # tu entorno Gym con velas históricas
-model = PPO("MlpPolicy", env, verbose=1)
-model.learn(total_timesteps=1_000_000)
-model.save("ppo_forex")
+Configura enable_sell_operations=True (por defecto ya lo está en 
+RiskConfig
+).
+Asegúrate de tener “Dinero ficticio” >= capital_limit (por defecto 100 en config/app_config.json) antes de empezar.
+Observa logs:
+“🟢 SEÑAL COMPRA” seguida de “💰 COMPRA ...” cuando Signal/ExecSignal == 1.
+“🔴 SEÑAL VENTA” seguida de “💰 VENTA ...” cuando se produzca -1 de entrada short.
+“CIERRE ...” cuando cierres por SL/TP o por señal de salida (usando cerrar_operacion_por_estrategia para salidas).
+Verifica que en tendencias alcistas el mapper no está bloqueando SELL, y en bajistas no bloquea BUY, salvo que esa sea la intención.
+Respuesta puntual a tus preguntas
 
+¿Por qué no se abren long y short?
+Long: a veces bloqueados por capital insuficiente, wait_candles>0 o por filtrado de escenario; no obstante hay rutas que sí los abren.
+Short: porque el GUI no implementa apertura SELL (Forex/Patrones) y para CandleStrategies el -1 se interpreta solo como “cerrar”, no como “abrir corto”.
+¿Hay errores que bloqueen?
+Capital insuficiente (< capital_limit).
+No hay ruta de apertura SELL.
+Ambigüedad de -1 sin usar Position para distinguir entrada/salida.
+Bloqueos por escenario de mercado.
+¿Las estrategias no están funcionando?
+Sí generan señales. El problema es cómo se usan: falta de ruta SELL y ambigüedad en -1.
+¿Ambigüedades que bloquean apertura/cierre idóneo?
+Sí. -1 de CandleStrategies debe diferenciarse con Position entre “exit long” y “entry short”.
+¿Código duplicado?
+Sí, duplicada la detección de escenario al final de 
+_process_candle_async
+. También coexisten métodos legacy no usados.
+¿Velas mal dibujadas?
+No: el fix de posicionamiento está aplicado y no parece relacionado con la no apertura de operaciones.
+Siguiente paso
 
-Validas en datos out-of-sample (ej. 2023).
-
-Evita sobreajuste.
-
-Ajusta recompensas y features.
-
-🔹 2. Uso en tiempo real
-
-Ya con el modelo entrenado, lo conectas al flujo real de velas.
-Básicamente cambias el entorno: en lugar de simular con datos históricos, tu observación proviene del buffer en tiempo real (como el que construimos antes).
-
-Ejemplo:
-
-import pandas as pd
-from stable_baselines3 import PPO
-
-# Cargar modelo entrenado
-model = PPO.load("ppo_forex")
-
-def live_step(pair):
-    # obtienes velas actualizadas en tiempo real
-    df = get_candles_df(pair)  # tu buffer actualizado
-    obs = prepare_obs(df)      # convierte velas -> vector de features
-
-    # el agente decide
-    action, _ = model.predict(obs, deterministic=True)
-
-    # traduce acción en orden real
-    if action == 0:
-        return "HOLD"
-    elif action == 1:
-        return "BUY"
-    elif action == 2:
-        return "SELL"
-
-
-Ese live_step lo llamas cada vez que cierra una vela nueva o cada N ticks.
-
-🔹 3. Diferencias clave entre entrenamiento y live
-
-Entrenamiento: el entorno simula ejecución inmediata con histórico (no hay latencia, spread fijo, etc.).
-
-Live: necesitas incluir latencia, slippage, spreads reales y rechazos de órdenes.
-
-Solución:
-
-Añade ruido y fricciones en el entrenamiento para que el modelo sea robusto.
-
-Empieza en paper trading para validar antes de ir a real.
-
-🔹 4. Flujo recomendado
-
-Entrenas → validas con histórico.
-
-Pruebas en paper trading con datos reales en vivo.
-
-Ajustas recompensas/features si el comportamiento no es estable.
-
-Escalas a dinero real con tamaño pequeño.
-
-👉 En resumen: sí puedes entrenar por separado un modelo RL y luego conectarlo a datos en tiempo real.
-El truco es que el model.predict(obs) recibe como obs tus velas vivas, y tus acciones se traducen en órdenes al broker.
+Ya te propuse el parche en 
+strategies/risk_manager_integration.py
+ para permitir que senal == -1 abra SELL cuando enable_sell_operations=True. Aplícalo.
+Si quieres, te propongo en un siguiente mensaje los cambios concretos en 
+app/gui_main.py
+ para:
+Añadir _procesar_senal_venta_risk_manager.
+Usar Position para diferenciar entrada/salida en CandleStrategies.
+Añadir la rama SELL en Forex y Patrones.
+Re-sincronizar capital al iniciar simulación.

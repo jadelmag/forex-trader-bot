@@ -347,9 +347,23 @@ class RiskManagerIntegration:
             if senal == 1:
                 tipo = 'BUY'
             elif senal == -1:
-                # Cerrar operaciones existentes por señal de salida
-                return self.risk_manager.cerrar_operacion_por_estrategia(
+                # Señal -1: intentar primero cerrar operaciones; si no hay, abrir SELL si está habilitado
+                # 1) Intentar cierre por estrategia
+                cerradas = self.risk_manager.cerrar_operacion_por_estrategia(
                     estrategia_nombre, precio_actual, timestamp, "EXIT_SIGNAL"
+                )
+                if cerradas:
+                    return cerradas
+                # 2) Si no cerró nada y las ventas están habilitadas, abrir SELL
+                if getattr(self.config, 'enable_sell_operations', False):
+                    tipo = 'SELL'
+                else:
+                    # Ventas deshabilitadas: solo cierre por señal
+                    return []
+            elif senal == 2:
+                # Compatibilidad: 2 = Cierre explícito por señal (si alguna UI lo usa)
+                return self.risk_manager.cerrar_operacion_por_estrategia(
+                    estrategia_nombre, precio_actual, timestamp, "EXIT_SIGNAL_EXPLICIT"
                 )
             else:
                 return None
@@ -543,14 +557,24 @@ class RiskManagerIntegration:
                                 'operacion': resultado_senal, 
                                 'precio': row['Close']
                             })
-                        elif signal_value == -1 and isinstance(resultado_senal, list):
-                            for op in resultado_senal:
+                        elif signal_value == -1:
+                            # Puede ser lista de cierres o una operación SELL abierta
+                            if isinstance(resultado_senal, list):
+                                for op in resultado_senal:
+                                    resultados.append({
+                                        'timestamp': idx, 
+                                        'tipo': 'CIERRE_ESTRATEGIA', 
+                                        'operacion': op, 
+                                        'precio': row['Close'], 
+                                        'resultado': op.resultado
+                                    })
+                            elif hasattr(resultado_senal, 'id'):
+                                # Apertura SELL
                                 resultados.append({
                                     'timestamp': idx, 
-                                    'tipo': 'CIERRE_ESTRATEGIA', 
-                                    'operacion': op, 
-                                    'precio': row['Close'], 
-                                    'resultado': op.resultado
+                                    'tipo': 'APERTURA', 
+                                    'operacion': resultado_senal, 
+                                    'precio': row['Close']
                                 })
 
             return resultados

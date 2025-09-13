@@ -5,3 +5,5 @@ TODO
 3. Conectar con metatrader [TODO]
 
 
+1. en config_modal.py es donde se añade el dinero ficticio (capital) que por defecto son 1000, quiero que uses ese.
+2. Quiero que hagas lo que me propones, que arregles todos los errores que has encontrado y elimines codigo que no se utiliza o esta duplicado.
