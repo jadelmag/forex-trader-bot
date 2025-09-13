@@ -230,7 +230,7 @@ class BinanceSimulationModal(tk.Toplevel):
                 btn_candle_frame,
                 text="Cargar configuraciones",
                 command=self._load_all_candle_configs_async,
-                width=20
+                width=25
             )
             btn_candle_cargar.pack(side="left", padx=5)
             
@@ -243,7 +243,8 @@ class BinanceSimulationModal(tk.Toplevel):
             chk_deteccion = ttk.Checkbutton(
                 detection_frame,
                 text="Aplicar solo detección",
-                variable=self.aplicar_solo_deteccion
+                variable=self.aplicar_solo_deteccion,
+                command=self._on_aplicar_solo_deteccion_change
             )
             chk_deteccion.pack(side="left", padx=5)
             
@@ -649,8 +650,70 @@ class BinanceSimulationModal(tk.Toplevel):
         except Exception:
             pass
 
+    def _on_aplicar_solo_deteccion_change(self):
+        """Maneja el cambio del checkbox 'Aplicar solo detección'."""
+        try:
+            if self.aplicar_solo_deteccion.get():
+                # Cambiar todos los dropdowns de candle strategies a 'Default'
+                for name, ctrl in self.controls.items():
+                    if ctrl.get("tipo") == "candle":
+                        if ctrl.get("config_type"):
+                            ctrl["config_type"].set("Default")
+                        if ctrl.get("config_button"):
+                            ctrl["config_button"].config(state="disabled")
+        except Exception as e:
+            print(f"Error en _on_aplicar_solo_deteccion_change: {e}")
+
+    def _open_pattern_detection_config(self):
+        """Abre modal de configuración global para detección de patrones."""
+        try:
+            # Posicionar a la derecha del modal principal
+            self.update_idletasks()
+            x = self.winfo_rootx() + self.winfo_width() + 10
+            y = self.winfo_rooty()
+
+            # Obtener configuración actual global o usar defaults
+            current_config = getattr(self, 'global_pattern_config', None) or self._get_default_pattern_detection_config()
+
+            def on_save(config_dict):
+                try:
+                    # Guardar configuración global
+                    self.global_pattern_config = config_dict
+                    print(f"Configuración de detección guardada: {len(config_dict)} parámetros")
+                except Exception as e:
+                    print(f"Error guardando configuración: {e}")
+
+            PatternDetectionModal(self, current_config, on_save, x, y)
+        except Exception as e:
+            print(f"Error opening pattern detection modal: {e}")
+
+    def _get_default_pattern_detection_config(self) -> dict:
+        """Devuelve configuración por defecto para detección de patrones."""
+        return {
+            # Parámetros de detección de patrones
+            "doji_threshold": 0.05,
+            "tweezer_tolerance": 0.001,
+            "min_confidence": 0.6,
+            "partial_factor": 0.5,
+            "hammer_body_ratio": 1.5,
+            "shooting_star_ratio": 2.0,
+            "spinning_top_ratio": 0.3,
+            "marubozu_ratio": 0.8,
+            
+            # Parámetros de indicadores técnicos
+            "atr_period": 14,
+            "trend_period": 20,
+            "volatility_period": 20,
+            
+            # Parámetros adicionales de patrones
+            "engulfing_min_body_ratio": 1.2,
+            "harami_max_body_ratio": 0.8,
+            "star_gap_threshold": 0.001,
+            "three_methods_trend_strength": 0.7
+        }
+
     def _validate_two_decimals(self, proposed: str) -> bool:
-        """Permitir vacío, dígitos enteros o decimales con hasta 2 lugares."""
+        """Valida float con hasta 2 decimales. Permite vacío."""
         try:
             if proposed == "":
                 return True
