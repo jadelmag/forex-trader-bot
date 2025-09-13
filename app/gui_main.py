@@ -59,6 +59,7 @@ from backtesting.backtester import ForexBacktester
 from rl.rl_agent import RLTradingAgent
 from strategies.risk_manager import RiskManager, Operacion
 from strategies.risk_manager_integration import RiskManagerIntegration, RiskConfig  
+from app.market_scene_detector import ForexMarketAnalyzer, MarketScenario
 
 class GUIPrincipal:
     def __init__(self, root):
@@ -135,6 +136,11 @@ class GUIPrincipal:
         # Flags de control
         self._processing_candle = False
         self._shutdown_requested = False
+
+        # Analizador de escenario de mercado (cacheado)
+        self._market_analyzer = None
+        self._last_market_scenario = None
+        self._last_scenario_logged_at = 0
 
         # Frames principales
         self.frame_controls = tk.Frame(self.root, bg="#F0F0F0")
@@ -838,7 +844,7 @@ class GUIPrincipal:
                                         pass
                                 resultados.append({'timestamp': idx, 'operacion': op, 'resultado': op.resultado, 'profit': profit})
                                 color = 'green' if op.resultado == 'GANANCIA' else 'red'
-                                self.log(f"CIERRE POR ESTRATEGIA: {op} -> {op.resultado} | Profit: ${profit:+.2f} | Estrategia: {signal_info['estrategia']}", color=color)
+                                self.log(f"CIERRE POR ESTRATEGIA: {op} -> {op.resultado} | Profit: ${profit:+.2f}", color=color)
 
                         # Actualizar dinero visible tras cierre por estrategia
                         try:
@@ -968,7 +974,7 @@ class GUIPrincipal:
                     else:
                         self.risk_manager.operaciones_perdidas += 1
                     color = 'green' if profit >= 0 else 'red'
-                    self.log(f"CIERRE FINAL: {op} | Profit: ${profit:+.2f}", color=color)
+                    self.log(f"CIERRE FINAL: {op} -> {op.resultado} | Profit: ${profit:+.2f}", color=color)
                     self.risk_manager.operaciones_cerradas.append(op)
                     self.risk_manager.operaciones_activas.remove(op)
 
@@ -1076,7 +1082,11 @@ class GUIPrincipal:
             print(f"Error al mostrar mensaje en Telegram: {e}")
     
     # ---------------- Backtesting (modal de selección) ----------------
+
     def abrir_modal_backtesting(self):
+        """
+        Abre el modal de selección de patrones y estrategias para el backtesting.
+        """
         if self.df_actual is None:
             messagebox.showwarning("Atención", "Cargue primero un CSV o datos procesados")
             return
@@ -1660,6 +1670,14 @@ class GUIPrincipal:
             streamer_thread = threading.Thread(target=start_streamer, daemon=True)
             streamer_thread.start()
             
+            # Inicializar el analizador de mercado si no existe
+            try:
+                if self._market_analyzer is None:
+                    self._market_analyzer = ForexMarketAnalyzer()
+            except Exception:
+                # No bloquear si hay problemas cargando dependencias
+                self._market_analyzer = None
+            
             self.log("CandleStreamer conectado correctamente", color="green")
             self.log(f"Símbolo: {self.candle_streamer.symbol} | Intervalo: {self.candle_streamer.interval} | Máx. velas: {self.candle_streamer.max_plot}", color="white")
             self.menu_streamer.entryconfig("Conectar", state="disabled")
@@ -1673,86 +1691,6 @@ class GUIPrincipal:
             
         except Exception as e:
             self.log(f"Error al iniciar CandleStreamer: {str(e)}", color="red")
-            import traceback
-            self.log(traceback.format_exc(), color="red")
-
-    def toggle_debug_mode(self, enabled: bool):
-        """Activa o desactiva el modo debug del CandleStreamer y actualiza el menú."""
-        try:
-            cs = getattr(self, 'candle_streamer', None)
-            if cs is None:
-                self.log("No hay CandleStreamer activo para cambiar el modo debug", color="orange")
-                return
-
-            # Intentar usar la API pública
-            try:
-                cs.set_debug_mode(bool(enabled))
-            except Exception:
-                # Fallback: establecer atributo directamente si fuera necesario
-                try:
-                    cs.debug_mode = bool(enabled)
-                except Exception:
-                    pass
-
-            self.log(f"Modo debug {'activado' if enabled else 'desactivado'}", color="blue")
-
-            # Actualizar estados del menú
-            try:
-                self.menu_streamer.entryconfig("Activar Debug", state=("disabled" if enabled else "normal"))
-                self.menu_streamer.entryconfig("Desactivar Debug", state=("normal" if enabled else "disabled"))
-            except Exception:
-                pass
-        except Exception as e:
-            self.log(f"Error al cambiar el modo debug: {e}", color="red")
-
-    def iniciar_streamer(self):
-        """Muestra el modal de configuración y luego inicia el CandleStreamer"""
-        print("DEBUG: iniciar_streamer method called")  # Debug log
-        try:
-            if self.candle_streamer is not None:
-                self.log("El streamer ya está en ejecución", color="orange")
-                return
-
-            # Obtener símbolos disponibles sin inicializar el streamer completo
-            print("DEBUG: Fetching symbols...")  # Debug log
-            from trading_view.candle_streamer import CandleStreamer
-            symbols = CandleStreamer._load_or_fetch_symbols()
-            print(f"DEBUG: Fetched {len(symbols) if symbols else 0} symbols")  # Debug log
-
-            if not symbols:
-                self.log("No se pudieron cargar los símbolos disponibles", color="red")
-                return
-
-            # Mostrar el modal de configuración
-            print("DEBUG: About to show config modal")  # Debug log
-            from trading_view import CandleStreamerConfigModal
-
-            def on_connect(config):
-                print(f"DEBUG: Config received: {config}")  # Debug log
-                # Actualizar dinero ficticio y capital del risk manager si viene desde el modal
-                try:
-                    if "initial_money" in config:
-                        initial_money = float(config["initial_money"])
-                        self.dinero_ficticio = initial_money
-                        # Actualizar también el capital del risk manager
-                        if hasattr(self, 'risk_manager') and self.risk_manager is not None:
-                            self.risk_manager.capital_inicial = initial_money
-                            self.risk_manager.capital = initial_money
-                        # Actualizar labels para mostrar el nuevo dinero
-                        self.actualizar_labels()
-                        self.log(f"Dinero inicial actualizado a: ${initial_money:,.2f}", color="green")
-                except Exception:
-                    pass
-                self._start_streamer_with_config(config)
-
-            CandleStreamerConfigModal(
-                parent=self.root,
-                symbols=symbols,
-                on_connect=on_connect
-            )
-
-        except Exception as e:
-            self.log(f"Error al iniciar el streamer: {str(e)}", color="red")
             import traceback
             self.log(traceback.format_exc(), color="red")
 
@@ -1793,7 +1731,58 @@ class GUIPrincipal:
         """Método de prueba para iniciar el streamer"""
         print("DEBUG: Test button clicked")  # Debug log
         self.iniciar_streamer()
-        
+    
+    def test_iniciar_streamer(self):
+        """Método de prueba para iniciar el streamer"""
+        print("DEBUG: Test button clicked")  # Debug log
+        self.iniciar_streamer()
+
+    def iniciar_streamer(self):
+        """Muestra el modal de configuración y luego inicia el CandleStreamer"""
+        try:
+            if self.candle_streamer is not None:
+                self.log("El streamer ya está en ejecución", color="orange")
+                return
+
+            # Obtener símbolos disponibles sin inicializar el streamer completo
+            from trading_view.candle_streamer import CandleStreamer
+            symbols = CandleStreamer._load_or_fetch_symbols()
+
+            if not symbols:
+                self.log("No se pudieron cargar los símbolos disponibles", color="red")
+                return
+
+            # Mostrar el modal de configuración
+            from trading_view import CandleStreamerConfigModal
+
+            def on_connect(config):
+                # Actualizar dinero ficticio y capital del risk manager si viene desde el modal
+                try:
+                    if "initial_money" in config:
+                        initial_money = float(config["initial_money"])
+                        self.dinero_ficticio = initial_money
+                        # Actualizar también el capital del risk manager
+                        if hasattr(self, 'risk_manager') and self.risk_manager is not None:
+                            self.risk_manager.capital_inicial = initial_money
+                            self.risk_manager.capital = initial_money
+                        # Actualizar labels para mostrar el nuevo dinero
+                        self.actualizar_labels()
+                        self.log(f"Dinero inicial actualizado a: ${initial_money:,.2f}", color="green")
+                except Exception:
+                    pass
+                self._start_streamer_with_config(config)
+
+            CandleStreamerConfigModal(
+                parent=self.root,
+                symbols=symbols,
+                on_connect=on_connect
+            )
+
+        except Exception as e:
+            self.log(f"Error al iniciar el streamer: {str(e)}", color="red")
+            import traceback
+            self.log(traceback.format_exc(), color="red")
+
     def iniciar_simulacion_binance(self):
         """Inicia la simulación del mercado"""
         print("Iniciando simulación Binance")
@@ -1958,6 +1947,7 @@ class GUIPrincipal:
             
         # Procesar en hilo separado para no bloquear GUI
         self._thread_pool.submit(self._process_candle_async, df.copy())
+
     def _process_candle_async(self, df):
         """Procesa la vela en hilo separado - NO BLOQUEA LA GUI"""
         try:
@@ -1969,6 +1959,27 @@ class GUIPrincipal:
             else:
                 self.simulation_candles_elapsed += 1
             
+            # ===== Detectar escenario de mercado =====
+            current_scenario = None
+            try:
+                if self._market_analyzer is not None and len(df) >= 20:
+                    # Renombrar columnas a minúsculas para el analizador
+                    df_an = df.rename(columns={
+                        'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume'
+                    })
+                    res = self._market_analyzer.analyze_market(df_an)
+                    current_scenario = res.get('primary_scenario')
+                    self._last_market_scenario = current_scenario
+
+                    # Log del escenario cada 10 velas
+                    if (current_scenario is not None and 
+                        self.simulation_candles_elapsed - self._last_scenario_logged_at >= 10):
+                        scenario_label = current_scenario.value if hasattr(current_scenario, 'value') else str(current_scenario)
+                        self._queue_log_update(f"📈 Escenario detectado: {scenario_label}", "cyan")
+                        self._last_scenario_logged_at = self.simulation_candles_elapsed
+            except Exception:
+                current_scenario = None
+
             # Obtener la última vela
             last_candle = df.iloc[-1]
             # Guardar último close para cálculo de PnL no realizado
@@ -1994,7 +2005,15 @@ class GUIPrincipal:
                     self._queue_log_update("Simulación en progreso!!", "blue")
                     self._sim_started_logged = True
                     self._queue_gui_update('status', "Simulación en progreso!!", "blue")
-                
+            
+            # Mostrar escenario en la etiqueta de estado
+            try:
+                if current_scenario is not None:
+                    scenario_label = current_scenario.value if hasattr(current_scenario, 'value') else str(current_scenario)
+                    self._queue_gui_update('status', f"Simulación en progreso!! | Escenario: {scenario_label}", "blue")
+            except Exception:
+                pass
+
             # Asegurar RiskManager inicializado para simulación en streaming
             if not hasattr(self, 'risk_manager') or self.risk_manager is None:
                 try:
@@ -2211,6 +2230,27 @@ class GUIPrincipal:
             
             # Verificar si hay órdenes activas que necesiten ser cerradas
             self._verificar_cierre_ordenes_risk_manager(last_candle)
+            
+            # Detectar escenario de mercado
+            current_scenario = None
+            try:
+                if self._market_analyzer is not None and len(df) >= 20:
+                    # Renombrar columnas a minúsculas para el analizador
+                    df_an = df.rename(columns={
+                        'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume'
+                    })
+                    res = self._market_analyzer.analyze_market(df_an)
+                    current_scenario = res.get('primary_scenario')
+                    self._last_market_scenario = current_scenario
+
+                    # Log del escenario cada 10 velas
+                    if (current_scenario is not None and 
+                        self.simulation_candles_elapsed - self._last_scenario_logged_at >= 10):
+                        scenario_label = current_scenario.value if hasattr(current_scenario, 'value') else str(current_scenario)
+                        self._queue_log_update(f"📈 Escenario detectado: {scenario_label}", "cyan")
+                        self._last_scenario_logged_at = self.simulation_candles_elapsed
+            except Exception:
+                current_scenario = None
             
         except Exception as e:
             self._queue_log_update(f"Error en _on_candle_update: {str(e)}", "red")
@@ -3001,7 +3041,7 @@ class GUIPrincipal:
             try:
                 capital_inicial = float(self.entry_dinero.get())
                 if capital_inicial <= 0:
-                    raise ValueError
+                    raise ValueError("El capital debe ser mayor a 0")
             except Exception:
                 messagebox.showerror("Entrenamiento IA", "Ingrese un capital válido en el campo 'Dinero ficticio'")
                 return

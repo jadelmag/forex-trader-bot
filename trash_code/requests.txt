@@ -9,3 +9,18 @@ get_trading_signals
 2. Añadir IA a datos en tiempo real.
 3. Conectar con metatrader [TODO]
 
+
+podrias analizar los ficheros:
+- candlestickpatterns.py
+- candle_strategies.py
+- risk_manager.py
+- risk_manager_integration.py
+- gui_main.py ( no se si aqui es necesario)
+
+porque me gustaría que 
+
+
+me gustaria que cuando obtiene el numero de velas para candle streamer (creo que es en gui_main.py en la funcion _start_streamer_with_config) y cada 5 segundos va mostrando la siguiente 
+analizase el escenario en el que se encuentra con el scene_detector.
+
+
