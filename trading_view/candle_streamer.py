@@ -469,7 +469,8 @@ class CandleStreamer:
                 except Exception:
                     pass
             finally:
-                self._log("Simulación completada", 'green')
+                # Notificar que el dibujado visual ha terminado completamente
+                self._log(" Simulación visual completada - Todas las velas dibujadas", 'green')
             return
         
         # Programar siguiente paso
