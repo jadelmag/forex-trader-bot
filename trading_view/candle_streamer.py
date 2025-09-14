@@ -1587,7 +1587,7 @@ class CandleStreamer:
                         connectionstyle="arc3,rad=0.3"
                     ),
                     fontsize=10,
-                    zorder=1000,
+                    zorder=10000,  # Aumentar z-order para asegurar que esté encima
                     ha='left',
                     va='bottom',
                     linespacing=1.4
@@ -1776,21 +1776,7 @@ class CandleStreamer:
                         self._force_canvas_draw()
                     return
             
-            # SEGUNDA VERIFICACIÓN: Solo permitir hover en velas realmente visibles (con alpha=1.0)
-            # En modo revelado progresivo, solo las primeras visible_candles tienen alpha=1.0
-            if self.progressive_reveal and not self.load_all_candles:
-                # En modo progresivo, verificar si la vela está dentro del rango visible
-                if loc >= self.visible_candles:
-                    # Ocultar tooltip si estaba visible
-                    if self._hover_annot is not None and self._hover_annot.get_visible():
-                        if self.debug_hover:
-                            self._log(f"Hiding tooltip - candle {loc} is beyond visible range (>= {self.visible_candles})", 'gray')
-                        self._hover_annot.set_visible(False)
-                        if self._hover_marker is not None and self._hover_marker.get_visible():
-                            self._hover_marker.set_visible(False)
-                        self._force_canvas_draw()
-                    return
-
+            # SEGUNDA VERIFICACIÓN: Permitir hover en todas las velas visibles en el gráfico
             ts = self._last_df.index[loc]
             row = self._last_df.iloc[loc]
             
