@@ -148,9 +148,10 @@ class CandleStreamer:
             self.canvas.draw()
             self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
         else:
-            # Comportamiento original si no hay frame padre
+            # Comportamiento cuando no hay frame padre: evitar fallar con DF vacío
+            df_to_plot = self.df if self.df is not None and not self.df.empty else self._get_dummy_df_for_plot()
             self.fig, self.axlist = mpf.plot(
-                self.df,
+                df_to_plot,
                 type='candle',
                 style='charles',
                 volume=True,
@@ -182,6 +183,144 @@ class CandleStreamer:
         self._rect_start = None  # (x0, y0) en coords de datos
         self._rect_patch = None
         self._init_hover()
+        
+        # Overlays de texto en la gráfica (tipo de mercado y slots)
+        self._overlay_market_text = None
+        self._overlay_slots_text = None
+
+        # Encabezado superior (fuera del área de velas)
+        self._header_ax = None
+        self._header_market_text = None
+        self._header_slots_text = None
+        self._header_layout_done = False
+        self._ensure_header_ax()
+
+    def set_overlay_texts(self, market_text: str, slots_text: str):
+        """Dibuja/actualiza etiquetas centradas dentro del gráfico de precios.
+        - market_text: "Tipo de mercado: ..."
+        - slots_text:  "Slots: total/max | Candle: x/y | Forex: a/b"
+        """
+        try:
+            ax = getattr(self, 'ax_price', None)
+            if ax is None:
+                return
+            # Texto de tipo de mercado (centro)
+            if self._overlay_market_text is None:
+                self._overlay_market_text = ax.text(
+                    0.5, 0.52, market_text,
+                    transform=ax.transAxes, ha='center', va='center', fontsize=11,
+                    color='white', bbox=dict(facecolor='black', alpha=0.35, boxstyle='round,pad=0.3')
+                )
+            else:
+                self._overlay_market_text.set_text(market_text)
+            # Texto de slots (ligeramente debajo)
+            if self._overlay_slots_text is None:
+                self._overlay_slots_text = ax.text(
+                    0.5, 0.44, slots_text,
+                    transform=ax.transAxes, ha='center', va='center', fontsize=10,
+                    color='white', bbox=dict(facecolor='black', alpha=0.35, boxstyle='round,pad=0.3')
+                )
+            else:
+                self._overlay_slots_text.set_text(slots_text)
+
+            # Solicitar redibujo ligero
+            if hasattr(self, 'canvas') and self.canvas is not None:
+                try:
+                    self.canvas.draw_idle()
+                except Exception:
+                    self.canvas.draw()
+            elif hasattr(self, 'fig') and self.fig is not None:
+                try:
+                    self.fig.canvas.draw_idle()
+                except Exception:
+                    self.fig.canvas.draw()
+        except Exception:
+            # No romper el flujo si falla el overlay
+            pass
+
+    def _ensure_header_ax(self):
+        """Crea (si no existe) un eje de encabezado en la parte superior de la figura
+        y ajusta el margen superior para no invadir el área de velas."""
+        try:
+            if not hasattr(self, 'fig') or self.fig is None:
+                return
+            # Ajustar margen superior una única vez para dejar espacio al encabezado
+            if not getattr(self, '_header_layout_done', False):
+                try:
+                    self.fig.subplots_adjust(top=0.90)
+                except Exception:
+                    pass
+                self._header_layout_done = True
+            # Crear eje de encabezado si no existe
+            if self._header_ax is None:
+                # [left, bottom, width, height] en coords de figura
+                self._header_ax = self.fig.add_axes([0.05, 0.92, 0.90, 0.07])
+                try:
+                    self._header_ax.set_facecolor('#f8f9fa')
+                except Exception:
+                    pass
+                self._header_ax.set_axis_off()
+        except Exception:
+            pass
+
+    def set_header_labels(self, market_text: str, slots_text: str):
+        """Actualiza/crea las etiquetas de encabezado superior (fuera del área de velas)."""
+        try:
+            self._ensure_header_ax()
+            if self._header_ax is None:
+                return
+            # Texto de tipo de mercado (arriba, centrado)
+            if self._header_market_text is None:
+                self._header_market_text = self._header_ax.text(
+                    0.5, 0.70, market_text,
+                    transform=self._header_ax.transAxes, ha='center', va='center', fontsize=11,
+                    color='black'
+                )
+            else:
+                self._header_market_text.set_text(market_text)
+            # Texto de slots (debajo, centrado)
+            if self._header_slots_text is None:
+                self._header_slots_text = self._header_ax.text(
+                    0.5, 0.30, slots_text,
+                    transform=self._header_ax.transAxes, ha='center', va='center', fontsize=10,
+                    color='black'
+                )
+            else:
+                self._header_slots_text.set_text(slots_text)
+
+            # Redibujar suavemente
+            if hasattr(self, 'canvas') and self.canvas is not None:
+                try:
+                    self.canvas.draw_idle()
+                except Exception:
+                    self.canvas.draw()
+            elif hasattr(self, 'fig') and self.fig is not None:
+                try:
+                    self.fig.canvas.draw_idle()
+                except Exception:
+                    self.fig.canvas.draw()
+        except Exception:
+            pass
+
+    def _get_dummy_df_for_plot(self):
+        """Devuelve un DataFrame mínimo para inicializar el gráfico cuando aún no hay datos.
+        Evita errores de mplfinance con DataFrame vacío.
+        """
+        try:
+            now = pd.Timestamp.now().floor('s')
+        except Exception:
+            now = pd.Timestamp.now()
+        idx = pd.date_range(end=now, periods=2, freq='S')
+        base = 1.0
+        df = pd.DataFrame({
+            'Open':   [base, base],
+            'High':   [base, base],
+            'Low':    [base, base],
+            'Close':  [base, base],
+            'Volume': [0.0, 0.0]
+        }, index=idx)
+        df.index.name = 'Date'
+        return df
 
     def set_debug_mode(self, debug: bool):
         """Activa o desactiva el modo debug"""
@@ -570,89 +709,11 @@ class CandleStreamer:
             if self.debug_mode:
                 self._log(f"Error en callback de actualización: {e}", 'red')
 
-    def setup_pattern_detection(self, risk_manager=None, candle_strategies=None):
-        """Configura automáticamente la detección de patrones y estrategias"""
-        try:
-            if self.debug_mode:
-                self._log("🔧 Configurando detección de patrones...", 'cyan')
-            
-            # Importar las clases necesarias
-            from patterns.candlestickpatterns import CandlestickPatterns
-            from strategies.candle_strategies import CandleStrategies
-            
-            # Crear detector de patrones si no se proporciona
-            if candle_strategies is None and hasattr(self, 'df') and not self.df.empty:
-                candle_strategies = CandleStrategies(self.df)
-                if self.debug_mode:
-                    self._log("📊 CandleStrategies inicializado", 'green')
-            
-            # Registrar callback para detección de patrones
-            if candle_strategies:
-                def pattern_detector_callback(df):
-                    try:
-                        if df.empty or len(df) < 5:
-                            return
-                        
-                        # Actualizar datos en CandleStrategies
-                        candle_strategies.data = df
-                        
-                        # Detectar patrón marubozu_trend
-                        result = candle_strategies.marubozu_trend()
-                        if not result.empty and 'Signal' in result.columns:
-                            last_signal = result['Signal'].iloc[-1]
-                            if last_signal != 0:
-                                timestamp = df.index[-1]
-                                price = df['Close'].iloc[-1]
-                                
-                                # Explicar el significado de la señal
-                                if last_signal == 1:
-                                    self._log(f"🟢 SEÑAL COMPRA: marubozu_trend = {last_signal} (Patrón indica subida)", 'green')
-                                elif last_signal == -1:
-                                    self._log(f"🔴 SEÑAL VENTA: marubozu_trend = {last_signal} (Patrón indica bajada - cerrar posiciones)", 'red')
-                                else:
-                                    self._log(f"⚪ SEÑAL NEUTRA: marubozu_trend = {last_signal}", 'yellow')
-                                
-                                # Abrir operación si hay risk_manager
-                                if risk_manager and last_signal > 0:  # Señal de compra
-                                    stop_loss = price * 0.99  # 1% stop loss
-                                    take_profit = price * 1.02  # 2% take profit
-                                    
-                                    operacion = risk_manager.abrir_operacion(
-                                        tipo='BUY',
-                                        precio=price,
-                                        timestamp=timestamp,
-                                        stop_loss=stop_loss,
-                                        take_profit=take_profit,
-                                        estrategia='candle_marubozu_trend'
-                                    )
-                                    
-                                    if operacion:
-                                        self._log(f"💰 COMPRA marubozu_trend: Operación {operacion.id} [BUY] @ {price:.5f}", 'green')
-                                        self._log(f"📊 Capital restante: ${risk_manager.capital:,.2f}", 'blue')
-                                        self._log(f"🎯 Stop Loss: {stop_loss:.5f} | Take Profit: {take_profit:.5f}", 'blue')
-                                    else:
-                                        error_msg = risk_manager.last_error or "Error desconocido"
-                                        self._log(f"❌ OPEN BUY FALLÓ (candle_marubozu_trend) -> {error_msg}", 'red')
-                                        
-                    except Exception as e:
-                        if self.debug_mode:
-                            self._log(f"Error en detector de patrones: {e}", 'red')
-                
-                self.on_candle_update(pattern_detector_callback)
-            
-            # Activar modo debug automáticamente
-            self.set_debug_mode(True)
-            
-            if self.debug_mode:
-                self._log("✅ Detección de patrones configurada correctamente", 'green')
-                
-        except Exception as e:
-            self._log(f"❌ Error configurando detección de patrones: {e}", 'red')
-
     @classmethod
     def _load_or_fetch_symbols(cls):
         symbols_folder = 'symbols'
         os.makedirs(symbols_folder, exist_ok=True)
+
         symbols_file = os.path.join(symbols_folder, 'symbols.csv')
 
         # Intentar cargar desde CSV

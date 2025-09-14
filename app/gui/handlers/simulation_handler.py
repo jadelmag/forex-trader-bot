@@ -1,6 +1,17 @@
 # app/handlers/simulation_handler.py
 import tkinter as tk
 from tkinter import messagebox
+import threading
+import time
+import pandas as pd
+import os
+import json
+from trading_view.candle_streamer import CandleStreamer
+from strategies.risk_manager import RiskManager
+from strategies.risk_manager_integration import RiskManagerIntegration, RiskConfig
+from strategies.candle_strategies import CandleStrategies
+from strategies.market_strategy_mapper import MarketStrategyMapper
+from strategies.strategies import ForexStrategies
 
 class SimulationHandler:
     def __init__(self, main_app):
@@ -74,45 +85,92 @@ class SimulationHandler:
     def _start_streamer_with_config(self, config):
         """Inicia el streamer con configuración específica"""
         try:
-            from trading_view.candle_streamer import CandleStreamer
-            
-            # Obtener el frame del gráfico desde main_app
+            # Limpiar el frame del gráfico actual
             grafico_frame = None
-            if hasattr(self.main_app, 'grafico_manager') and hasattr(self.main_app.grafico_manager, 'frame_grafico'):
-                grafico_frame = self.main_app.grafico_manager.frame_grafico
+            if hasattr(self.main_app, 'frame_grafico'):
+                grafico_frame = self.main_app.frame_grafico
+                for widget in grafico_frame.winfo_children():
+                    widget.destroy()
             
-            # Crear el streamer con la configuración del modal
+            # Crear un frame para el gráfico del streamer
+            import tkinter as tk
+            chart_frame = tk.Frame(grafico_frame, bg='#FFFFFF')
+            chart_frame.pack(fill='both', expand=True, padx=1, pady=1)
+            
+            if self.candle_streamer is not None:
+                self.candle_streamer.stop()
+                self.candle_streamer = None
+            
+            # Crear el streamer con el frame del gráfico y la función de log
+            from trading_view.candle_streamer import CandleStreamer
             self.candle_streamer = CandleStreamer(
-                interval=config.get('interval', '1m'),
-                max_plot=config.get('max_plot', 500),
-                parent_frame=grafico_frame,
+                interval=config["interval"],
+                max_plot=config["max_plot"],
+                parent_frame=chart_frame,  # Pasar el frame para el gráfico
                 log_callback=self.log,
-                visible_candles=config.get('visible_candles', 20)
+                visible_candles=config.get("visible_candles", 5)
             )
             
-            # Configurar símbolo después de la inicialización
-            if 'symbol' in config:
-                self.candle_streamer.symbol = config['symbol']
-                # Actualizar el archivo CSV con el nuevo símbolo
+            # Configurar el símbolo si se proporciona
+            if "symbol" in config and config["symbol"]:
+                self.candle_streamer.symbol = config["symbol"]
                 import os
-                self.candle_streamer.csv_file = os.path.join(
-                    self.candle_streamer.csv_folder, 
-                    f"{config['symbol']}_data.csv"
-                )
+                self.candle_streamer.csv_file = os.path.join(self.candle_streamer.csv_folder, f'{self.candle_streamer.symbol}_data.csv')
             
-            # Iniciar el stream
-            self.candle_streamer.start()
-            self.log(f"Streamer iniciado con configuración: {config}", color='green')
+            # Configurar auto-desconexión si está habilitada
+            if config.get("auto_disconnect_after_candles", False):
+                target_candles = config.get("target_candles", 500)
+                self.candle_streamer.configure_auto_disconnect(True, target_candles)
+            
+            # Iniciar el streamer en un hilo separado
+            def start_streamer():
+                try:
+                    self.candle_streamer.start()
+                except Exception as e:
+                    self.log(f"Error en CandleStreamer: {str(e)}", color="red")
+            
+            # Iniciar el streamer en un hilo para no bloquear la interfaz
+            import threading
+            streamer_thread = threading.Thread(target=start_streamer, daemon=True)
+            streamer_thread.start()
+            
+            # Inicializar el analizador de mercado si no existe
+            try:
+                if not hasattr(self, '_market_analyzer') or self._market_analyzer is None:
+                    from ia.smart_order_analyzer import ForexMarketAnalyzer
+                    self._market_analyzer = ForexMarketAnalyzer()
+            except Exception:
+                # No bloquear si hay problemas cargando dependencias
+                self._market_analyzer = None
+            
+            self.log("CandleStreamer conectado correctamente", color="green")
+            self.log(f"Símbolo: {self.candle_streamer.symbol} | Intervalo: {self.candle_streamer.interval} | Máx. velas: {self.candle_streamer.max_plot}", color="white")
+            
+            # Actualizar estados del menú si existe
+            if hasattr(self.main_app, 'menu_bar') and hasattr(self.main_app.menu_bar, 'menu_streamer'):
+                try:
+                    menu_streamer = self.main_app.menu_bar.menu_streamer
+                    menu_streamer.entryconfig("Conectar", state="disabled")
+                    menu_streamer.entryconfig("Desconectar", state="normal")
+                    menu_streamer.entryconfig("Cambiar símbolo/intervalo", state="normal")
+                    menu_streamer.entryconfig("Iniciar simulación Binance", state="normal")
+                    if hasattr(self, 'debug_mode') and self.debug_mode:
+                        menu_streamer.entryconfig("Activar Debug", state="disabled")
+                        menu_streamer.entryconfig("Desactivar Debug", state="normal")
+                    else:
+                        menu_streamer.entryconfig("Activar Debug", state="normal")
+                        menu_streamer.entryconfig("Desactivar Debug", state="disabled")
+                except Exception:
+                    pass  # Ignorar si no existen las entradas del menú
+                
+            # Actualizar estado visual del streamer
+            if hasattr(self.main_app, 'status_bar'):
+                self.main_app.status_bar.actualizar_estado_streamer(conectado=True)
             
         except Exception as e:
-            self.log(f"Error iniciando streamer con configuración: {str(e)}", color='red')
-
-    def log(self, message, color='white'):
-        """Método para logging - redirige al main_app si existe"""
-        if hasattr(self.main_app, 'log'):
-            self.main_app.log(message, color=color)
-        else:
-            print(f"{color.upper()}: {message}")
+            self.log(f"Error al iniciar CandleStreamer: {str(e)}", color="red")
+            import traceback
+            self.log(traceback.format_exc(), color="red")
             
     def detener_streamer(self):
         """Detiene el CandleStreamer"""
@@ -242,12 +300,38 @@ class SimulationHandler:
                 self.candle_count_for_market_analysis = 0  # contador para análisis de mercado cada 5 velas
                 self.current_market_scenario = None  # escenario actual del mercado
                 
+                # Inicializar Risk Manager e Integration (T03)
+                try:
+                    # Obtener capital inicial desde StrategyHandler si existe; si no, fallback
+                    initial_capital = None
+                    if hasattr(self.main_app, 'strategy_handler') and hasattr(self.main_app.strategy_handler, 'dinero_ficticio'):
+                        initial_capital = float(self.main_app.strategy_handler.dinero_ficticio)
+                    else:
+                        initial_capital = float(config.get('capital', 1000.0))
+
+                    max_orders = int(config.get('max_orders', 5))
+                    self.risk_manager = RiskManager(capital_inicial=initial_capital,
+                                                    max_operaciones_activas=max_orders,
+                                                    debug_mode=getattr(self, 'debug_mode', False))
+                    # Config por defecto (ventas habilitadas)
+                    rm_cfg = RiskConfig()
+                    rm_cfg.enable_sell_operations = True
+                    self.risk_integration = RiskManagerIntegration(self.risk_manager, config=rm_cfg,
+                                                                   debug_mode=getattr(self, 'debug_mode', False))
+                    # Reset por seguridad antes de empezar
+                    self.risk_manager.reset()
+                except Exception as e:
+                    self.log(f"⚠️ Error inicializando Risk Manager: {e}", color='orange')
+                
                 # Configurar el sistema de reports con los parámetros de la simulación
                 try:
                     from app.reports import set_simulation_config
                     
-                    # Obtener capital inicial
-                    capital_inicial = float(config.get('capital', 1000.0))
+                    # Obtener capital inicial real
+                    try:
+                        capital_inicial = float(self.risk_manager.capital_inicial) if hasattr(self, 'risk_manager') and self.risk_manager else float(config.get('capital', 1000.0))
+                    except Exception:
+                        capital_inicial = float(config.get('capital', 1000.0))
                     
                     # Obtener estrategias seleccionadas
                     estrategias_seleccionadas = []
@@ -466,8 +550,63 @@ class SimulationHandler:
             
     def test_iniciar_streamer(self):
         """Método de prueba para iniciar el streamer"""
-        print("DEBUG: Test button clicked")  # Debug log
-        self.iniciar_streamer()
+        try:
+            self.log("🔎 Probando conexión con CandleStreamer...", 'cyan')
+
+            # Si ya hay un streamer activo, verificar su estado
+            if getattr(self, 'candle_streamer', None) is not None:
+                cs = self.candle_streamer
+                connected = bool(getattr(cs, 'connection_established', False))
+                if connected:
+                    self.log(f"✅ Conexión activa: símbolo {cs.symbol} | intervalo {cs.interval}", 'green')
+                else:
+                    self.log("⚠️ Streamer activo pero sin conexión establecida aún", 'orange')
+                return
+
+            # Cargar símbolos y elegir uno válido
+            symbols = CandleStreamer._load_or_fetch_symbols()
+            if not symbols:
+                self.log("❌ No hay símbolos disponibles para probar la conexión", 'red')
+                return
+            symbol = next((s for s in symbols if s and s != '----------'), symbols[0])
+
+            # Crear streamer temporal sin interferir con el actual
+            test_streamer = CandleStreamer(interval='1m', max_plot=100, parent_frame=None, log_callback=self.log, visible_candles=5)
+            test_streamer.symbol = symbol
+
+            # Iniciar en hilo de fondo
+            t = threading.Thread(target=test_streamer.start, daemon=True)
+            t.start()
+
+            # Esperar hasta 8s a que marque conexión establecida
+            timeout = 8.0
+            start_time = time.time()
+            connected = False
+            while time.time() - start_time < timeout:
+                if getattr(test_streamer, 'connection_established', False):
+                    connected = True
+                    break
+                time.sleep(0.25)
+
+            # Detener streamer de prueba
+            try:
+                test_streamer.stop()
+            except Exception:
+                pass
+
+            # Resultado
+            if connected:
+                self.log(f"✅ Conexión OK con Binance WebSocket para {symbol} (intervalo 1m)", 'green')
+            else:
+                self.log("❌ No se pudo establecer conexión en el tiempo esperado", 'red')
+
+        except Exception as e:
+            self.log(f"❌ Error probando conexión del streamer: {e}", 'red')
+            try:
+                import traceback
+                self.log(traceback.format_exc(), 'red')
+            except Exception:
+                pass
         
     def cleanup(self):
         """Limpia recursos de simulación"""
@@ -540,8 +679,19 @@ class SimulationHandler:
             self.log(f"Error en simulación de estrategias de velas: {str(e)}", color='red')
             
     def _get_capital_limit(self):
-        """Obtiene el límite mínimo de capital para operar"""
-        return 1000.0  # Límite mínimo de $1000
+        """Obtiene el límite mínimo de capital desde config/app_config.json (coherente con RiskManager)."""
+        try:
+            # Ubicación del config a nivel de proyecto
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+            config_dir = os.path.join(project_root, 'config')
+            config_file = os.path.join(config_dir, 'app_config.json')
+            if os.path.exists(config_file):
+                with open(config_file, 'r', encoding='utf-8') as f:
+                    cfg = json.load(f)
+                return float(cfg.get('capital_limit', 100.0))
+            return 100.0
+        except Exception:
+            return 100.0
         
     def _mostrar_estadisticas_finales(self, balance_inicial, balance_final, beneficios_totales, perdidas_totales):
         """Muestra las estadísticas finales de la simulación"""
@@ -560,96 +710,6 @@ class SimulationHandler:
         self.log(f"Pérdidas totales: ${perdidas_totales:,.2f}", color='red')
         self.log("="*60, color='white')
         
-    def _start_streamer_with_config(self, config):
-        """Inicia el CandleStreamer con la configuración proporcionada"""
-        try:
-            # Limpiar el frame del gráfico actual
-            grafico_frame = None
-            if hasattr(self.main_app, 'frame_grafico'):
-                grafico_frame = self.main_app.frame_grafico
-                for widget in grafico_frame.winfo_children():
-                    widget.destroy()
-            
-            # Crear un frame para el gráfico del streamer
-            import tkinter as tk
-            chart_frame = tk.Frame(grafico_frame, bg='#FFFFFF')
-            chart_frame.pack(fill='both', expand=True, padx=1, pady=1)
-            
-            if self.candle_streamer is not None:
-                self.candle_streamer.stop()
-                self.candle_streamer = None
-            
-            # Crear el streamer con el frame del gráfico y la función de log
-            from trading_view.candle_streamer import CandleStreamer
-            self.candle_streamer = CandleStreamer(
-                interval=config["interval"],
-                max_plot=config["max_plot"],
-                parent_frame=chart_frame,  # Pasar el frame para el gráfico
-                log_callback=self.log,
-                visible_candles=config.get("visible_candles", 5)
-            )
-            
-            # Configurar el símbolo si se proporciona
-            if "symbol" in config and config["symbol"]:
-                self.candle_streamer.symbol = config["symbol"]
-                import os
-                self.candle_streamer.csv_file = os.path.join(self.candle_streamer.csv_folder, f'{self.candle_streamer.symbol}_data.csv')
-            
-            # Configurar auto-desconexión si está habilitada
-            if config.get("auto_disconnect_after_candles", False):
-                target_candles = config.get("target_candles", 500)
-                self.candle_streamer.configure_auto_disconnect(True, target_candles)
-            
-            # Iniciar el streamer en un hilo separado
-            def start_streamer():
-                try:
-                    self.candle_streamer.start()
-                except Exception as e:
-                    self.log(f"Error en CandleStreamer: {str(e)}", color="red")
-            
-            # Iniciar el streamer en un hilo para no bloquear la interfaz
-            import threading
-            streamer_thread = threading.Thread(target=start_streamer, daemon=True)
-            streamer_thread.start()
-            
-            # Inicializar el analizador de mercado si no existe
-            try:
-                if not hasattr(self, '_market_analyzer') or self._market_analyzer is None:
-                    from ia.smart_order_analyzer import ForexMarketAnalyzer
-                    self._market_analyzer = ForexMarketAnalyzer()
-            except Exception:
-                # No bloquear si hay problemas cargando dependencias
-                self._market_analyzer = None
-            
-            self.log("CandleStreamer conectado correctamente", color="green")
-            self.log(f"Símbolo: {self.candle_streamer.symbol} | Intervalo: {self.candle_streamer.interval} | Máx. velas: {self.candle_streamer.max_plot}", color="white")
-            
-            # Actualizar estados del menú si existe
-            if hasattr(self.main_app, 'menu_bar') and hasattr(self.main_app.menu_bar, 'menu_streamer'):
-                try:
-                    menu_streamer = self.main_app.menu_bar.menu_streamer
-                    menu_streamer.entryconfig("Conectar", state="disabled")
-                    menu_streamer.entryconfig("Desconectar", state="normal")
-                    menu_streamer.entryconfig("Cambiar símbolo/intervalo", state="normal")
-                    menu_streamer.entryconfig("Iniciar simulación Binance", state="normal")
-                    if hasattr(self, 'debug_mode') and self.debug_mode:
-                        menu_streamer.entryconfig("Activar Debug", state="disabled")
-                        menu_streamer.entryconfig("Desactivar Debug", state="normal")
-                    else:
-                        menu_streamer.entryconfig("Activar Debug", state="normal")
-                        menu_streamer.entryconfig("Desactivar Debug", state="disabled")
-                except Exception:
-                    pass  # Ignorar si no existen las entradas del menú
-                
-            # Actualizar estado visual del streamer
-            if hasattr(self.main_app, 'status_bar'):
-                self.main_app.status_bar.actualizar_estado_streamer(conectado=True)
-            
-        except Exception as e:
-            self.log(f"Error al iniciar CandleStreamer: {str(e)}", color="red")
-            import traceback
-            self.log(traceback.format_exc(), color="red")
-            
     def _on_candle_update(self, df):
         """Maneja la actualización de velas durante la simulación"""
         if not hasattr(self, 'simulation_active') or not self.simulation_active:
@@ -744,7 +804,285 @@ class SimulationHandler:
             
             # Procesar señales de compra/venta
             self._procesar_senal_compra(last_candle)
+
+            # T04: Evaluar Candle Strategies seleccionadas y enviar a RiskManagerIntegration
+            try:
+                # Validaciones previas
+                if hasattr(self, 'simulation_config') and self.simulation_config:
+                    selected_candles = self.simulation_config.get('candle_strategies', []) or []
+                else:
+                    selected_candles = []
+
+                if selected_candles and hasattr(self, 'risk_integration') and self.risk_integration:
+                    # Preparar límites por tipo y simultáneos
+                    max_orders_total = int(self.simulation_config.get('max_orders', 5))
+                    max_candle_ops = int(self.simulation_config.get('max_candle_operations', max_orders_total))
+
+                    def count_active_by_prefix(prefix: str) -> int:
+                        try:
+                            return sum(1 for op in getattr(self.risk_manager, 'operaciones_activas', [])
+                                       if getattr(op, 'estado', 'ACTIVA') == 'ACTIVA' and
+                                       isinstance(getattr(op, 'estrategia', None), str) and
+                                       getattr(op, 'estrategia').startswith(prefix))
+                        except Exception:
+                            return 0
+
+                    # Contadores actuales
+                    active_total = int(self.risk_manager.get_operaciones_activas_count()) if hasattr(self, 'risk_manager') and self.risk_manager else 0
+                    active_candle = count_active_by_prefix('candle_')
+
+                    opens_candle_this_tick = 0
+
+                    # Preparar MarketStrategyMapper
+                    mapper = MarketStrategyMapper()
+                    scenario = getattr(self, 'current_market_scenario', None)
+
+                    # Para cada estrategia seleccionada
+                    for item in selected_candles:
+                        try:
+                            strategy_name = item.get('name') if isinstance(item, dict) else None
+                            candle_cfg = item.get('config') if isinstance(item, dict) else None
+                            if not strategy_name:
+                                continue
+
+                            # Respetar límites simultáneos por tipo y totales
+                            if active_total >= max_orders_total:
+                                if getattr(self, 'debug_mode', False):
+                                    self.log(f"🚫 Límite total de órdenes alcanzado ({active_total}/{max_orders_total})", 'orange')
+                                break
+                            if active_candle + opens_candle_this_tick >= max_candle_ops:
+                                if getattr(self, 'debug_mode', False):
+                                    self.log(f"🚫 Límite de órdenes Candle alcanzado en esta vela ({active_candle + opens_candle_this_tick}/{max_candle_ops})", 'orange')
+                                continue
+
+                            # Instanciar estrategia con config de patrones (detección)
+                            cs = CandleStrategies(df, config=candle_cfg)
+                            method = getattr(cs, strategy_name, None)
+                            if not callable(method):
+                                continue
+
+                            result_df = method(config=candle_cfg) if 'config' in method.__code__.co_varnames else method()
+                            if result_df is None or len(result_df) == 0:
+                                continue
+
+                            row = result_df.iloc[-1]
+                            # Determinar señal a ejecutar
+                            signal_value = 0
+                            if 'ExecSignal' in result_df.columns:
+                                signal_value = int(row.get('ExecSignal') or 0)
+                            elif 'Signal' in result_df.columns:
+                                signal_value = int(row.get('Signal') or 0)
+
+                            if signal_value == 0:
+                                continue
+
+                            # Filtrado por escenario
+                            try:
+                                allowed, reason = mapper.should_execute_strategy(strategy_name, scenario, signal_value)
+                            except Exception:
+                                allowed, reason = True, 'No mapper'
+                            if not allowed:
+                                if getattr(self, 'debug_mode', False):
+                                    self.log(f"🚫 {strategy_name} bloqueada por escenario: {getattr(scenario, 'value', scenario)} ({reason})", 'orange')
+                                continue
+
+                            # Niveles SL/TP desde estrategia (si disponibles)
+                            sl_override = float(row['StopLoss']) if 'StopLoss' in result_df.columns and pd.notna(row.get('StopLoss')) else None
+                            tp_override = float(row['TakeProfit']) if 'TakeProfit' in result_df.columns and pd.notna(row.get('TakeProfit')) else None
+                            atr_value = float(row['ATR']) if 'ATR' in result_df.columns and pd.notna(row.get('ATR')) else max(float(row['High']) - float(row['Low']), 1e-6)
+
+                            # Preparar parámetros para integración
+                            precio_actual = float(row.get('Close') or last_candle.get('Close', 0))
+                            ts = result_df.index[-1]
+                            estrategia_nombre = f"candle_{strategy_name}"
+
+                            # Apertura/cierre vía integración (sync_mode=True)
+                            op_result = self.risk_integration.procesar_senal(
+                                senal=signal_value,
+                                precio_actual=precio_actual,
+                                timestamp=ts,
+                                atr_value=atr_value,
+                                rr_ratio=None,
+                                risk_percent=None,  # usar default de configuración
+                                estrategia_nombre=estrategia_nombre,
+                                stop_loss_override=sl_override,
+                                take_profit_override=tp_override,
+                                candle_config=candle_cfg,
+                                sync_mode=True,
+                            )
+
+                            # Actualizar contadores si se abrió una operación
+                            if op_result is not None and hasattr(op_result, 'id'):
+                                opens_candle_this_tick += 1
+                                active_total += 1
+                                active_candle += 1
+                                if getattr(self, 'debug_mode', False):
+                                    self.log(f"✅ Apertura {estrategia_nombre} ({'BUY' if signal_value==1 else 'SELL'}) @ {precio_actual:.5f}", 'green')
+                        except Exception as e:
+                            if getattr(self, 'debug_mode', False):
+                                self.log(f"Error evaluando {item}: {e}", 'red')
+                            continue
+            except Exception as e:
+                if getattr(self, 'debug_mode', False):
+                    self.log(f"Error T04 Candle Strategies: {e}", 'orange')
+
+            # Verificar cierres de órdenes automáticos (SL/TP) del RiskManager
+            try:
+                if hasattr(self, 'risk_manager') and self.risk_manager:
+                    self.risk_manager.verificar_cierre_operaciones(float(last_candle.get('Close', 0)), df.index[-1])
+            except Exception:
+                pass
+
             self._verificar_cierre_ordenes(last_candle)
+
+            # T05: Evaluar Forex Strategies seleccionadas y enviar a RiskManagerIntegration
+            try:
+                if hasattr(self, 'simulation_config') and self.simulation_config:
+                    selected_forex = self.simulation_config.get('forex_strategies', []) or []
+                else:
+                    selected_forex = []
+
+                if selected_forex and hasattr(self, 'risk_integration') and self.risk_integration:
+                    max_orders_total = int(self.simulation_config.get('max_orders', 5))
+                    max_forex_ops = int(self.simulation_config.get('max_forex_operations', max_orders_total))
+
+                    def count_active_by_prefix(prefix: str) -> int:
+                        try:
+                            return sum(1 for op in getattr(self.risk_manager, 'operaciones_activas', [])
+                                       if getattr(op, 'estado', 'ACTIVA') == 'ACTIVA' and
+                                       isinstance(getattr(op, 'estrategia', None), str) and
+                                       getattr(op, 'estrategia').startswith(prefix))
+                        except Exception:
+                            return 0
+
+                    active_total = int(self.risk_manager.get_operaciones_activas_count()) if hasattr(self, 'risk_manager') and self.risk_manager else 0
+                    active_forex = count_active_by_prefix('forex_')
+                    opens_forex_this_tick = 0
+
+                    # Instancia única de ForexStrategies para el DF actual
+                    fs = ForexStrategies(df)
+
+                    for fx in selected_forex:
+                        try:
+                            name = fx.get('name') if isinstance(fx, dict) else None
+                            if not name:
+                                continue
+
+                            # Limites de operaciones
+                            if active_total >= max_orders_total:
+                                if getattr(self, 'debug_mode', False):
+                                    self.log(f"🚫 Límite total de órdenes alcanzado ({active_total}/{max_orders_total})", 'orange')
+                                break
+                            if active_forex + opens_forex_this_tick >= max_forex_ops:
+                                if getattr(self, 'debug_mode', False):
+                                    self.log(f"🚫 Límite de órdenes Forex alcanzado en esta vela ({active_forex + opens_forex_this_tick}/{max_forex_ops})", 'orange')
+                                continue
+
+                            method = getattr(fs, name, None)
+                            if not callable(method):
+                                continue
+
+                            # Ejecutar estrategia (usa ExecSignal/StopLoss/TakeProfit/ATR propios)
+                            result_df = method()
+                            if result_df is None or len(result_df) == 0:
+                                continue
+                            row = result_df.iloc[-1]
+
+                            # Señal de ejecución
+                            signal_value = 0
+                            if 'ExecSignal' in result_df.columns:
+                                try:
+                                    signal_value = int(row.get('ExecSignal') or 0)
+                                except Exception:
+                                    signal_value = 0
+                            elif 'Signal' in result_df.columns:
+                                try:
+                                    signal_value = int(row.get('Signal') or 0)
+                                except Exception:
+                                    signal_value = 0
+
+                            if signal_value == 0:
+                                continue
+
+                            # Niveles desde estrategia
+                            sl_override = float(row['StopLoss']) if 'StopLoss' in result_df.columns and pd.notna(row.get('StopLoss')) else None
+                            tp_override = float(row['TakeProfit']) if 'TakeProfit' in result_df.columns and pd.notna(row.get('TakeProfit')) else None
+                            atr_value = float(row['ATR']) if 'ATR' in result_df.columns and pd.notna(row.get('ATR')) else max(float(row['High']) - float(row['Low']), 1e-6)
+
+                            precio_actual = float(row.get('Close') or last_candle.get('Close', 0))
+                            ts = result_df.index[-1]
+                            estrategia_nombre = f"forex_{name}"
+
+                            # risk de modal está en fracción (0.01). Integration espera porcentaje (1.0 -> 1%).
+                            risk_fraction = float(fx.get('risk', 0.01)) if isinstance(fx, dict) else 0.01
+                            rr_ratio = float(fx.get('rr_ratio', 2.0)) if isinstance(fx, dict) else 2.0
+                            risk_percent = risk_fraction * 100.0
+
+                            op_result = self.risk_integration.procesar_senal(
+                                senal=signal_value,
+                                precio_actual=precio_actual,
+                                timestamp=ts,
+                                atr_value=atr_value,
+                                rr_ratio=rr_ratio,
+                                risk_percent=risk_percent,
+                                estrategia_nombre=estrategia_nombre,
+                                stop_loss_override=sl_override,
+                                take_profit_override=tp_override,
+                                candle_config=None,
+                                sync_mode=True,
+                            )
+
+                            if op_result is not None and hasattr(op_result, 'id'):
+                                opens_forex_this_tick += 1
+                                active_total += 1
+                                active_forex += 1
+                                if getattr(self, 'debug_mode', False):
+                                    self.log(f"✅ Apertura {estrategia_nombre} ({'BUY' if signal_value==1 else 'SELL'}) @ {precio_actual:.5f} | riesgo {risk_percent:.2f}% RR {rr_ratio}", 'green')
+                        except Exception as e:
+                            if getattr(self, 'debug_mode', False):
+                                self.log(f"Error evaluando forex {fx}: {e}", 'red')
+                            continue
+            except Exception as e:
+                if getattr(self, 'debug_mode', False):
+                    self.log(f"Error T05 Forex Strategies: {e}", 'orange')
+            
+            # Actualizar contadores de slots (para labels del encabezado de la gráfica)
+            try:
+                if hasattr(self, 'risk_manager') and self.risk_manager:
+                    # Límites
+                    max_orders_total = int(self.simulation_config.get('max_orders', 5)) if hasattr(self, 'simulation_config') else 5
+                    max_candle_ops = int(self.simulation_config.get('max_candle_operations', max_orders_total)) if hasattr(self, 'simulation_config') else max_orders_total
+                    max_forex_ops = int(self.simulation_config.get('max_forex_operations', max_orders_total)) if hasattr(self, 'simulation_config') else max_orders_total
+
+                    # Contadores actuales
+                    total_actual = int(self.risk_manager.get_operaciones_activas_count())
+                    def _count_by_prefix(prefix: str) -> int:
+                        try:
+                            return sum(1 for op in getattr(self.risk_manager, 'operaciones_activas', [])
+                                       if getattr(op, 'estado', 'ACTIVA') == 'ACTIVA' and
+                                       isinstance(getattr(op, 'estrategia', None), str) and
+                                       getattr(op, 'estrategia').startswith(prefix))
+                        except Exception:
+                            return 0
+                    candle_actual = _count_by_prefix('candle_')
+                    forex_actual = _count_by_prefix('forex_')
+                    # Actualizar etiquetas en encabezado superior de la gráfica
+                    try:
+                        scenario = getattr(self, 'current_market_scenario', None)
+                        scenario_text = scenario.value if scenario else "Indeterminado"
+                        market_text = f"Tipo de mercado: {scenario_text}"
+                        slots_text = (
+                            f"Slots: {total_actual}/{max_orders_total} | "
+                            f"Candle: {candle_actual}/{max_candle_ops} | "
+                            f"Forex: {forex_actual}/{max_forex_ops}"
+                        )
+                        if hasattr(self, 'candle_streamer') and self.candle_streamer:
+                            # Mostrar labels fuera del área de velas, en la parte superior
+                            self.candle_streamer.set_header_labels(market_text, slots_text)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
             
         except Exception as e:
             self.log(f"Error en procesamiento asíncrono de vela: {str(e)}", color='red')
@@ -790,10 +1128,8 @@ class SimulationHandler:
                 self.current_market_scenario = scenario
                 scenario_text = scenario.value if scenario else "Indeterminado"
                 
-                # Actualizar la etiqueta en la GUI
-                if hasattr(self.main_app, 'status_bar'):
-                    self.main_app.status_bar.actualizar_tipo_mercado(scenario_text)
-                
+                # Ya no se actualiza la etiqueta de tipo de mercado en la status bar (se muestra en el header del gráfico)
+
                 # Log del cambio de escenario
                 self.log(f"📊 Tipo de mercado detectado: {scenario_text}", color="white")
                 
@@ -812,7 +1148,11 @@ class SimulationHandler:
         """Procesa señales de compra"""
         try:
             # Lógica de procesamiento de señales de compra
-            precio_actual = float(candle_data.get('close', 0))
+            try:
+                precio_actual = float(candle_data['Close'])
+            except Exception:
+                # Fallback defensivo si fuese un dict con clave en minúscula
+                precio_actual = float(candle_data.get('close', 0)) if hasattr(candle_data, 'get') else 0.0
             if precio_actual > 0:
                 # Actualizar dinero visible
                 if hasattr(self.main_app, 'strategy_handler'):
@@ -840,34 +1180,9 @@ class SimulationHandler:
         except Exception as e:
             self.log(f"Error actualizando estado de simulación: {str(e)}", color='red')
             
-    def modificar_config_simulacion_binance(self):
-        """Modifica la configuración de simulación de Binance"""
-        try:
-            from app.config_modal import ConfigModal
-            ConfigModal(self.main_app.root, title="Configuración Simulación Binance")
-        except Exception as e:
-            self.log(f"Error abriendo configuración de Binance: {str(e)}", color='red')
-            
-    def detener_simulacion_binance(self):
-        """Detiene la simulación de Binance"""
-        try:
-            if hasattr(self, '_simulation_running'):
-                self._simulation_running = False
-            self.log("Simulación de Binance detenida", color='orange')
-        except Exception as e:
-            self.log(f"Error deteniendo simulación de Binance: {str(e)}", color='red')
-            
-    def generar_informe(self):
-        """Genera un informe de la simulación"""
-        try:
-            # Lógica para generar informe
-            self.log("Generando informe de simulación...", color='cyan')
-            # Aquí iría la lógica real de generación de informes
-            self.log("Informe generado exitosamente", color='green')
-        except Exception as e:
-            self.log(f"Error generando informe: {str(e)}", color='red')
-            
-    def log(self, message, color="white"):
-        """Envía mensaje al log panel"""
-        if hasattr(self.main_app, 'log_panel'):
-            self.main_app.log_panel.log(message, color)
+    def log(self, message, color='white'):
+        """Método para logging - redirige al main_app si existe"""
+        if hasattr(self.main_app, 'log'):
+            self.main_app.log(message, color=color)
+        else:
+            print(f"{color.upper()}: {message}")

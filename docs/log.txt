@@ -1,68 +1,34 @@
+🔎 Probando conexión con CandleStreamer...
+✅ Conexión OK con Binance WebSocket para EURUSDT (intervalo 1m)
 CandleStreamer conectado correctamente
 Símbolo: EURUSDT | Intervalo: 1m | Máx. velas: 500
 Iniciando precarga histórica...
 Revelado progresivo activado - velas aparecerán cada 5 segundos
 ✓ Conexión WebSocket establecida
-📊 Sistema de reports configurado: Capital 1000.0€, 30 estrategias
+📊 Sistema de reports configurado: Capital 1000.0€, 48 estrategias
 Simulación iniciada. Esperando 5 velas antes de operar...
-📈 Escenario detectado: Mercado lateral/rango
 Esperando 4 velas más antes de operar...
 Esperando 3 velas más antes de operar...
 Esperando 2 velas más antes de operar...
 Esperando 1 velas más antes de operar...
-Simulación en progreso!!
 ✅ Descarga completada: se alcanzaron 501 velas
-Esperando más velas para estrategias de velas (actual: 1, configurado: 5)
+Simulación en progreso!!
 Simulación en progreso - Velas procesadas: 10
-Esperando más velas para estrategias de velas (actual: 2, configurado: 5)
-Esperando más velas para estrategias de velas (actual: 3, configurado: 5)
-Esperando más velas para estrategias de velas (actual: 4, configurado: 5)
 Simulación en progreso - Velas procesadas: 20
+📊 Tipo de mercado detectado: Mercado lateral/rango
 Simulación en progreso - Velas procesadas: 30
-📈 Escenario detectado: Baja volatilidad/contracción
 Simulación en progreso - Velas procesadas: 40
-🟢 SEÑAL DE VENTA/CIERRE: doji_reversal_strategy = -1 (Patrón indica bajada) | Baja volatilidad - señales sutiles de venta
-💰 VENTA doji_reversal_strategy: Operación 1 [SELL] @ 1.17410
-CIERRE candle_doji_reversal_strategy: Operacion 1 [SELL] CERRADA @ 1.17410 | Profit: $-0.10
 Simulación en progreso - Velas procesadas: 50
-📈 Escenario detectado: Mercado lateral/rango
 Simulación en progreso - Velas procesadas: 60
 Simulación en progreso - Velas procesadas: 70
-📈 Escenario detectado: Baja volatilidad/contracción
 Simulación en progreso - Velas procesadas: 80
-📈 Escenario detectado: Mercado lateral/rango
 Simulación en progreso - Velas procesadas: 90
 Simulación en progreso - Velas procesadas: 100
 Simulación en progreso - Velas procesadas: 110
 Simulación en progreso - Velas procesadas: 120
+📊 Tipo de mercado detectado: Baja volatilidad/contracción
 Simulación en progreso - Velas procesadas: 130
+📊 Tipo de mercado detectado: Mercado lateral/rango
 Simulación en progreso - Velas procesadas: 140
 Simulación en progreso - Velas procesadas: 150
-Simulación en progreso - Velas procesadas: 160
-Simulación en progreso - Velas procesadas: 170
-Simulación en progreso - Velas procesadas: 180
-Simulación en progreso - Velas procesadas: 190
-Simulación en progreso - Velas procesadas: 200
-Simulación en progreso - Velas procesadas: 210
-Simulación en progreso - Velas procesadas: 220
-Simulación en progreso - Velas procesadas: 230
-Simulación en progreso - Velas procesadas: 240
-Simulación en progreso - Velas procesadas: 250
-Simulación en progreso - Velas procesadas: 260
-Simulación en progreso - Velas procesadas: 270
-Simulación en progreso - Velas procesadas: 280
-Simulación en progreso - Velas procesadas: 290
-🚫 doji_reversal_strategy (VENTA) bloqueada: Operación de venta no recomendada para este escenario
-Simulación en progreso - Velas procesadas: 300
-Simulación en progreso - Velas procesadas: 310
-Simulación en progreso - Velas procesadas: 320
-Simulación en progreso - Velas procesadas: 330
-Simulación en progreso - Velas procesadas: 340
-🚫 doji_reversal_strategy (COMPRA) bloqueada: Operación de compra no recomendada para este escenario
-Simulación en progreso - Velas procesadas: 350
-Simulación en progreso - Velas procesadas: 360
-📈 Escenario detectado: Baja volatilidad/contracción
-Simulación en progreso - Velas procesadas: 370
-Simulación en progreso - Velas procesadas: 380
-📈 Escenario detectado: Mercado lateral/rango
-Simulación completada
+

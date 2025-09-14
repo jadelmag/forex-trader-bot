@@ -57,15 +57,6 @@ class StatusBar:
             bg=COLORS['BACKGROUND']
         )
         self.label_sim_status.pack(side="left", padx=12)
-
-        # Etiqueta de tipo de mercado
-        self.label_market_type = tk.Label(
-            self.parent_frame, 
-            text="Mercado: Indeterminado", 
-            fg="black", 
-            bg=COLORS['BACKGROUND']
-        )
-        self.label_market_type.pack(side="left", padx=12)
         
     def actualizar_labels(self, dinero_ficticio=None, beneficios=None, perdidas=None):
         """Actualiza las etiquetas de estado financiero"""
@@ -98,7 +89,3 @@ class StatusBar:
             self.label_sim_status.config(text="Estado: Conectado", fg="green")
         else:
             self.label_sim_status.config(text="Estado: Desconectado", fg="red")
-            
-    def actualizar_tipo_mercado(self, tipo_mercado="Indeterminado"):
-        """Actualiza el tipo de mercado detectado"""
-        self.label_market_type.config(text=f"Tipo de mercado: {tipo_mercado}", fg="black")

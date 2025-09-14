@@ -1,0 +1,145 @@
+Perfecto. Te dejo una lista organizada y priorizada de TODOs, con referencias exactas a archivos/métodos y dependencias entre puntos. Así eliges el orden.
+
+Plan propuesto (agrupado por prioridad)
+
+Alta prioridad
+
+Unificar duplicados en 
+app/gui/handlers/simulation_handler.py
+Qué: dejar una sola versión de /_start_streamer_with_config/, /detener_simulacion_binance/ y /generar_informe/ (mantener las versiones completas).
+Por qué: hay definiciones duplicadas que se pisan y generan comportamientos inconsistentes.
+Depende de: nada. Recomendado hacerlo primero.
+Afecta: 
+app/gui/handlers/simulation_handler.py
+Arreglar bug de case para dinero visible
+Qué: en /_procesar_senal_compra/ usar last_candle['Close'] (no 'close') para actualizar el dinero visible en tiempo real.
+Por qué: ahora no actualiza porque la clave no existe.
+Depende de: nada. Es rápido.
+Afecta: 
+app/gui/handlers/simulation_handler.py
+Inicializar RiskManager en la simulación y sincronizar capital
+Qué: crear self.risk_manager y self.risk_integration en 
+on_simulation_config(config)
+ y sincronizar capital con el dinero ficticio actual. Configurar max_operaciones_activas con max_orders.
+Por qué: sin esto, no se abren operaciones en vivo.
+Depende de: unificación de duplicados (idealmente).
+Afecta: 
+app/gui/handlers/simulation_handler.py
+, 
+strategies/risk_manager.py
+, 
+strategies/risk_manager_integration.py
+Integrar Candle Strategies en vivo con RiskManagerIntegration
+Qué:
+En /_process_candle_async(df)/, tras wait_candles, evaluar las estrategias de self.simulation_config['candle_strategies'] con su config.
+Usar ExecSignal y Position de la última vela para distinguir entrada/salida.
+Filtrar por escenario con 
+MarketStrategyMapper
+.
+Enviar la señal a 
+self.risk_integration.procesar_senal(...)
+, respetando límites por tipo.
+Por qué: ahora no se evalúan ni abren/cierra nada por Candle.
+Depende de: inicialización RM/Integration.
+Afecta: 
+app/gui/handlers/simulation_handler.py
+, 
+strategies/candle_strategies.py
+, 
+strategies/market_strategy_mapper.py
+Integrar Forex Strategies en vivo con RiskManagerIntegration
+Qué:
+En /_process_candle_async(df)/, evaluar las forex seleccionadas y enviar ExecSignal a 
+RiskManagerIntegration
+.
+Ajuste de risk_percent: si el modal guarda riesgo como fracción (p.ej. 0.01), pasar risk*100 a la integración (que espera porcentaje).
+Por qué: ahora no se evalúan ni abren/cierra nada por Forex.
+Depende de: inicialización RM/Integration.
+Afecta: 
+app/gui/handlers/simulation_handler.py
+, strategies/__init__.py (ForexStrategies), 
+strategies/risk_manager_integration.py
+Aplicar límites de slots por tipo (forex/candle)
+Qué: respetar max_forex_operations y max_candle_operations por vela y max_orders simultáneas al decidir aperturas.
+Por qué: el modal ya los define, pero no se aplican en tiempo real.
+Depende de: integración Candle/Forex.
+Afecta: 
+app/gui/handlers/simulation_handler.py
+Eliminar duplicación de defaults de detección en 
+app/binance_modal.py
+Qué: dejar una sola versión de 
+_get_default_pattern_detection_config()
+ alineada con 
+patterns/candlestickpatterns.py
+ (ej. doji_threshold=0.15, min_confidence=0.3, etc.).
+Por qué: ahora hay dos versiones con valores distintos; crea incoherencias.
+Depende de: nada.
+Afecta: 
+app/binance_modal.py
+, 
+patterns/candlestickpatterns.py
+Prioridad media
+
+Unificar límite mínimo de capital
+Qué: eliminar o adaptar /_get_capital_limit/ en 
+simulation_handler.py
+ y usar el de 
+RiskManager
+ (lee config/app_config.json) para consistencia.
+Por qué: hoy hay 1000 en un sitio y 100 en otro.
+Afecta: 
+app/gui/handlers/simulation_handler.py
+, 
+strategies/risk_manager.py
+, config/app_config.json
+Armonizar semántica de risk_percent
+Qué: decidir formato único (porcentaje vs. fracción) entre modal y RiskManagerIntegration. Mi propuesta: mantener modal como fracción y multiplicar por 100 al llamar a la integración.
+Por qué: evitar “doble división” silenciosa.
+Afecta: 
+app/gui/handlers/simulation_handler.py
+, 
+app/binance_modal.py
+, 
+strategies/risk_manager_integration.py
+Usar capital real en reports
+Qué: en 
+on_simulation_config
+, pasar a reports.set_simulation_config(...) el capital inicial real (dinero ficticio o risk_manager.capital_inicial) en lugar de config['capital'] (no existe).
+Por qué: los reportes arrancan con 1000 por fallback y pueden ser engañosos.
+Afecta: 
+app/gui/handlers/simulation_handler.py
+, app/reports.py
+Baja prioridad / Mejora de observabilidad
+
+Logging detallado por estrategia y bloqueos
+Qué: en /_process_candle_async/, loguear señales por estrategia, bloqueos por escenario, límites aplicados y operaciones abiertas/cerradas.
+Por qué: diagnósticos más claros durante simulación.
+Afecta: 
+app/gui/handlers/simulation_handler.py
+Opcionales
+
+Exponer intervalos “5s” en el modal de conexión del streamer
+Qué: permitir interval='5s' desde CandleStreamerConfigModal.
+Afecta: trading_view/config_modal.py, 
+app/gui/handlers/simulation_handler.py
+Deprecación del flujo alternativo de trading en 
+trading_view/candle_streamer.py
+Qué: retirar o dejar comentado 
+setup_pattern_detection()
+ para evitar confusión con la integración oficial.
+Afecta: 
+trading_view/candle_streamer.py
+Notas y dependencias entre puntos
+
+Recomendado ejecutar primero: unificación de duplicados (evita que editemos la función “equivocada”), bug del Close y creación de 
+RiskManager
+/
+RiskManagerIntegration
+.
+Integraciones de Candle y Forex dependen de tener el RiskManager inicializado.
+Límites por tipo (forex/candle) dependen de tener integraciones funcionando.
+Armonización de risk_percent debe decidirse antes de probar Forex en vivo.
+Defaults de detección en 
+binance_modal.py
+ se puede corregir en paralelo.
+Dime con qué punto quieres que empecemos y lo voy implementando paso a paso. Si prefieres, te propongo un orden recomendado y voy marcando los TODOs a medida que los completemos.

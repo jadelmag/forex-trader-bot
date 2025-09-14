@@ -22,7 +22,7 @@ class CSVToPKLModal(tk.Toplevel):
         super().__init__(parent)
         self.parent = parent
         self.title("Procesar CSV a PKL")
-        self.geometry("560x320")
+        self.geometry("560x350")
         self.resizable(False, False)
         self.grab_set()  # Modal
 

@@ -16,4 +16,5 @@ Analiza pasando por esos fichero si encuentras:
 - si hay codigo duplicado o ambiguo
 - si detecta bien las estrategias forex y las candle stratgies teniendo en cuenta que se trabaja en tiempo real ( a intervalos de 5 segundos )
 - si aplica bien las configuraciones de todas las estrategias independiendemente de q sean forex o candle
+- si no detecta el dinero ficticio y no lo va actualizando
 - cualquier cosa que haga que veas que 
