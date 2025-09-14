@@ -1,21 +1,19 @@
-🔎 Probando conexión con CandleStreamer...
-✅ Conexión OK con Binance WebSocket para EURUSDT (intervalo 1m)
 CandleStreamer conectado correctamente
 Símbolo: EURUSDT | Intervalo: 1m | Máx. velas: 500
 Iniciando precarga histórica...
 Revelado progresivo activado - velas aparecerán cada 5 segundos
 ✓ Conexión WebSocket establecida
+✅ Descarga completada: se alcanzaron 501 velas
 📊 Sistema de reports configurado: Capital 1000.0€, 48 estrategias
 Simulación iniciada. Esperando 5 velas antes de operar...
 Esperando 4 velas más antes de operar...
 Esperando 3 velas más antes de operar...
 Esperando 2 velas más antes de operar...
 Esperando 1 velas más antes de operar...
-✅ Descarga completada: se alcanzaron 501 velas
 Simulación en progreso!!
 Simulación en progreso - Velas procesadas: 10
-Simulación en progreso - Velas procesadas: 20
 📊 Tipo de mercado detectado: Mercado lateral/rango
+Simulación en progreso - Velas procesadas: 20
 Simulación en progreso - Velas procesadas: 30
 Simulación en progreso - Velas procesadas: 40
 Simulación en progreso - Velas procesadas: 50
@@ -26,9 +24,48 @@ Simulación en progreso - Velas procesadas: 90
 Simulación en progreso - Velas procesadas: 100
 Simulación en progreso - Velas procesadas: 110
 Simulación en progreso - Velas procesadas: 120
-📊 Tipo de mercado detectado: Baja volatilidad/contracción
 Simulación en progreso - Velas procesadas: 130
-📊 Tipo de mercado detectado: Mercado lateral/rango
 Simulación en progreso - Velas procesadas: 140
 Simulación en progreso - Velas procesadas: 150
+📊 Tipo de mercado detectado: Baja volatilidad/contracción
+Simulación en progreso - Velas procesadas: 160
+Simulación en progreso - Velas procesadas: 170
+📊 Tipo de mercado detectado: Mercado lateral/rango
+Simulación en progreso - Velas procesadas: 180
+Simulación en progreso - Velas procesadas: 190
+Simulación en progreso - Velas procesadas: 200
+Simulación en progreso - Velas procesadas: 210
+Simulación en progreso - Velas procesadas: 220
+Simulación en progreso - Velas procesadas: 230
+Simulación en progreso - Velas procesadas: 240
+Simulación en progreso - Velas procesadas: 250
+📊 Tipo de mercado detectado: Baja volatilidad/contracción
+Simulación en progreso - Velas procesadas: 260
+📊 Tipo de mercado detectado: Mercado lateral/rango
+Simulación en progreso - Velas procesadas: 270
+Simulación en progreso - Velas procesadas: 280
+Simulación en progreso - Velas procesadas: 290
+Simulación en progreso - Velas procesadas: 300
+Simulación en progreso - Velas procesadas: 310
+Simulación en progreso - Velas procesadas: 320
+📊 Tipo de mercado detectado: Baja volatilidad/contracción
+Simulación en progreso - Velas procesadas: 330
+📊 Tipo de mercado detectado: Mercado lateral/rango
+Simulación en progreso - Velas procesadas: 340
+Simulación en progreso - Velas procesadas: 350
+Simulación en progreso - Velas procesadas: 360
+Simulación en progreso - Velas procesadas: 370
+Simulación en progreso - Velas procesadas: 380
+Simulación en progreso - Velas procesadas: 390
+Simulación en progreso - Velas procesadas: 400
+Simulación en progreso - Velas procesadas: 410
+Simulación en progreso - Velas procesadas: 420
+Simulación en progreso - Velas procesadas: 430
+Simulación en progreso - Velas procesadas: 440
+Simulación en progreso - Velas procesadas: 450
+📊 Tipo de mercado detectado: Baja volatilidad/contracción
+Simulación en progreso - Velas procesadas: 460
+📊 Tipo de mercado detectado: Mercado lateral/rango
+Simulación en progreso - Velas procesadas: 470
+Simulación completada
 

@@ -18,3 +18,12 @@ Analiza pasando por esos fichero si encuentras:
 - si aplica bien las configuraciones de todas las estrategias independiendemente de q sean forex o candle
 - si no detecta el dinero ficticio y no lo va actualizando
 - cualquier cosa que haga que veas que 
+
+estas teniendo en cuenta que cuando abro binance modal puedo seleccionar las estrategias forex y las candles strategies y el numero maximo de operaciones short y long para cada estrategia, 
+y que en cada estrategia se puede seleccionar el riesgo y el RR ratio para las estrategias forex y 
+y que en las candle estrategies puedo seleccionar la configuracion entre:
+- aplicar solo deteccion con su configuracion
+- que la configuracion sea default
+- que la configuracion sea custom 
+
+y que esas configuraciones se aplican en tiempo real y son exluyentes entre si??

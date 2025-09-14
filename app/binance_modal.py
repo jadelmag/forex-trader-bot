@@ -11,6 +11,7 @@ import threading
 from strategies.strategy_utils import resolve_strategy_name
 from strategies.candle_strategies import CandleStrategies
 from patterns.candlestickpatterns import CandlestickPatterns
+from patterns.pattern_utils import get_default_pattern_detection_config
 
 class BinanceSimulationModal(tk.Toplevel):
     def __init__(self, parent, estrategias_fx, estrategias_candle, callback, patrones_list=None):
@@ -690,28 +691,7 @@ class BinanceSimulationModal(tk.Toplevel):
 
     def _get_default_pattern_detection_config(self) -> dict:
         """Devuelve configuración por defecto para detección de patrones."""
-        return {
-            # Parámetros de detección de patrones
-            "doji_threshold": 0.15,
-            "tweezer_tolerance": 0.01,
-            "min_confidence": 0.3,
-            "partial_factor": 0.5,
-            "hammer_body_ratio": 1.2,
-            "shooting_star_ratio": 1.5,
-            "spinning_top_ratio": 0.4,
-            "marubozu_ratio": 0.7,
-            
-            # Parámetros de indicadores técnicos
-            "atr_period": 14,
-            "trend_period": 20,
-            "volatility_period": 20,
-            
-            # Parámetros adicionales de patrones
-            "engulfing_min_body_ratio": 1.05,       # 5% más grande (era 1.2)
-            "harami_max_body_ratio": 0.9,           # 90% del tamaño (era 0.8)
-            "star_gap_threshold": 0.005,             # 0.5% gap (era 0.001)
-            "three_methods_trend_strength": 0.5      # 50% fuerza (era 0.7)
-        }
+        return get_default_pattern_detection_config()
 
     def _validate_two_decimals(self, proposed: str) -> bool:
         """Valida float con hasta 2 decimales. Permite vacío."""
