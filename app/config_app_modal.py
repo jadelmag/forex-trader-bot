@@ -15,7 +15,7 @@ class ConfigAppModal(tk.Toplevel):
         super().__init__(parent)
         self.parent = parent
         self.title("Configuración Forex Trader Bot")
-        self.geometry("460x800")
+        self.geometry("460x460")
         self.resizable(False, False)
         self.grab_set()  # Modal
         
@@ -52,13 +52,52 @@ class ConfigAppModal(tk.Toplevel):
         
     def _crear_interfaz(self):
         """Crear la interfaz del modal"""
-        # Título principal
-        title_label = tk.Label(self, text="Configuración Forex Trader Bot", 
+        # ===== Scrollable container (Canvas + Scrollbar) =====
+        container = tk.Frame(self)
+        container.pack(fill="both", expand=True)
+        canvas = tk.Canvas(container, highlightthickness=0)
+        vscroll = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=vscroll.set)
+        vscroll.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        # Frame desplazable dentro del Canvas
+        scrollable = tk.Frame(canvas)
+        window_id = canvas.create_window((0, 0), window=scrollable, anchor="nw")
+
+        # Ajustar región desplazable al contenido
+        def _on_frame_configure(event):
+            try:
+                canvas.configure(scrollregion=canvas.bbox("all"))
+            except Exception:
+                pass
+        scrollable.bind("<Configure>", _on_frame_configure)
+
+        # Mantener el ancho del frame igual al del Canvas
+        def _on_canvas_resize(event):
+            try:
+                canvas.itemconfig(window_id, width=event.width)
+            except Exception:
+                pass
+        canvas.bind("<Configure>", _on_canvas_resize)
+
+        # Soporte de rueda del ratón
+        def _on_mousewheel(event):
+            try:
+                delta = int(-1 * (event.delta / 120))
+            except Exception:
+                delta = -1 if getattr(event, 'num', 0) == 5 else 1
+            canvas.yview_scroll(delta, "units")
+        scrollable.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", _on_mousewheel))
+        scrollable.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
+
+        # ===== Contenido dentro del área desplazable =====
+        title_label = tk.Label(scrollable, text="Configuración Forex Trader Bot", 
                               font=("Segoe UI", 14, "bold"))
         title_label.pack(pady=20)
         
-        # Frame principal para los campos
-        main_frame = tk.Frame(self)
+        # Frame principal para los campos (dentro del área desplazable)
+        main_frame = tk.Frame(scrollable)
         main_frame.pack(padx=30, pady=10, fill="both", expand=True)
         
         # Campo Límite de dinero para operaciones
@@ -157,7 +196,7 @@ class ConfigAppModal(tk.Toplevel):
         row_idx += 1
         tk.Entry(main_frame, textvariable=self.audit_dir_var, width=20).grid(row=row_idx, column=0, sticky="w")
 
-        # Botones Cancelar y Aceptar
+        # ===== Botones fijos al final (fuera del área desplazable) =====
         frame_btn = tk.Frame(self)
         frame_btn.pack(pady=10)
         btn_cancelar = ttk.Button(frame_btn, text="Cancelar", command=self._cancelar)
