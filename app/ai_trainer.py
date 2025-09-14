@@ -592,30 +592,11 @@ class AITrainer:
                 'Máximo de operaciones simultáneas respetado por RiskManager',
                 'Sin estrategias Forex duplicadas (clave única por estrategia)',
                 'Máximo una apertura por vela (pipeline RL/analizador)'
-            ],
+            ]
+        }
 
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-
-    def _process_batch(self, batch_data, batch_start_idx):
-        """Procesa un batch de datos en paralelo"""
-        results = {
-            'operations_opened': [],
-            'operations_closed': [],
-            'gains': 0,
-            'losses': 0,
-            'money_gained': 0.0,
-            'money_lost': 0.0
-        }
-        
-        for idx, row in batch_data:
-            if self._stop:
-                break
-                
-            # Procesar fila
-            # ... lógica de procesamiento aquí ...
-            
-        return results
     
     def _run(self):
         try:
