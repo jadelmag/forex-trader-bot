@@ -822,6 +822,27 @@ class SimulationHandler:
                         except Exception:
                             pass
             
+            # CRÍTICO: Verificar cierre de operaciones existentes ANTES de procesar nuevas señales
+            if hasattr(self, 'risk_manager') and self.risk_manager:
+                precio_actual = float(last_candle.get('Close', 0))
+                timestamp = pd.Timestamp.now()
+                
+                # Verificar cierres por SL/TP/Profit/Breakeven
+                operaciones_cerradas = self.risk_manager.verificar_cierre_operaciones(precio_actual, timestamp)
+                
+                # Verificar trailing stops si están habilitados
+                if hasattr(self, 'atr_value'):
+                    trailing_cerradas = self.risk_manager.verificar_trailing_stops(precio_actual, timestamp, self.atr_value)
+                    operaciones_cerradas.extend(trailing_cerradas or [])
+                
+                # Log de operaciones cerradas
+                for op in operaciones_cerradas:
+                    motivo = getattr(op, 'motivo_cierre', 'UNKNOWN')
+                    profit = getattr(op, 'profit', 0)
+                    profit_text = f"+{profit:.5f}" if profit >= 0 else f"{profit:.5f}"
+                    color = 'green' if profit > 0 else 'red'
+                    self.log(f"🔴 Cierre {op.estrategia} ({op.tipo}) @ {precio_actual:.5f} | {motivo} | P&L: {profit_text}", color)
+
             # Procesar señales de compra/venta
             self._procesar_senal_compra(last_candle)
 
