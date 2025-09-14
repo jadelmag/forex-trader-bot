@@ -172,7 +172,7 @@ class CandleStreamer:
         self._last_df = pd.DataFrame()
         self._last_x = None  # posiciones x (mdates float) del último DF
         self._hover_annot = None
-        self.debug_hover = True  # Activar debug para diagnosticar
+        self.debug_hover = False  # Debug desactivado - tooltip funcionando
         self._hover_cid = None
         self._hover_marker = None  # marcador visual en la vela
         # Zoom con scroll
