@@ -285,46 +285,10 @@ class RiskManager:
         
         if lote_size <= 0:
             if self.debug_mode:
-                continue
+                logger.debug(f"Tamaño de lote inválido (<= 0). riesgo_por_pip={riesgo_por_pip:.8f}, riesgo_dinero={riesgo_dinero:.2f}")
+            return None, "Tamaño de lote inválido (<= 0)"
 
-            precio_cierre = None
-            if operacion.tipo == 'BUY':
-                if precio_actual >= operacion.take_profit:
-                    precio_cierre = operacion.take_profit
-                elif precio_actual <= operacion.stop_loss:
-                    precio_cierre = operacion.stop_loss
-            else:
-                if precio_actual <= operacion.take_profit:
-                    precio_cierre = operacion.take_profit
-                elif precio_actual >= operacion.stop_loss:
-                    precio_cierre = operacion.stop_loss
-
-            if precio_cierre is not None:
-                profit = operacion.cerrar(precio_cierre, timestamp)
-                if operacion.tipo == 'BUY':
-                    self.capital += operacion.riesgo_reservado + profit
-                elif operacion.tipo == 'SELL':
-                    self.capital += operacion.riesgo_reservado + profit
-                else:
-                    self.capital += profit
-                self.beneficio_total += profit
-
-                if profit >= 0:
-                    self.operaciones_ganadas += 1
-                    self.ganancia_ganadoras_total += profit
-                else:
-                    self.operaciones_perdidas += 1
-                    self.perdida_perdedoras_total += profit
-
-                if operacion.estrategia:
-                    self.estrategias_buy_activa_notificadas.discard(operacion.estrategia)
-
-                operaciones_cerradas.append(operacion)
-                self.operaciones_cerradas.append(operacion)
-
-        self.operaciones_activas = [op for op in self.operaciones_activas if op.estado == 'ACTIVA']
-        self._invalidar_cache()
-        return operaciones_cerradas
+        return float(lote_size), None
 
     def _cerrar_operacion_comun(self, operacion, precio_cierre, timestamp, motivo="AUTO_CLOSE"):
         """Método centralizado para cerrar operaciones - elimina duplicación"""

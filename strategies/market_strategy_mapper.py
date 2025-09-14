@@ -251,11 +251,11 @@ class MarketStrategyMapper:
                 'tweezer_top_strategy': StrategyPriority.MEDIUM,
                 'tweezer_bottom_strategy': StrategyPriority.MEDIUM,
             }
+        }  # <--- Added this closing brace
 
     # ===================== FOREX MAPPINGS =====================
     def _initialize_forex_mappings(self) -> Dict[MarketScenario, Dict[str, StrategyPriority]]:
         """Inicializa prioridades para estrategias Forex por escenario.
-
         SOLO incluir nombres que existen en strategies/strategies.py
         """
         return {
@@ -489,7 +489,7 @@ class MarketStrategyMapper:
             reason = "Señal neutral - permitir evaluación"
 
         return allowed, reason
-        
+
     
     def get_prioritized_strategies(self, scenario: MarketScenario, 
                                  available_strategies: List[str] = None) -> Dict[str, StrategyPriority]:
