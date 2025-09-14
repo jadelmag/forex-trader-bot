@@ -1,5 +1,8 @@
 {
     "capital_limit": 100.0,
+    "email": "kientienemibarraespaciadora@gmail.com",
+    "password": "12345678",
+    "report_hours": 0,
     "max_account_risk_percent": 5.0,
     "market_analysis_every_candles": 5,
     "market_analysis_every_seconds": 0,
@@ -7,8 +10,10 @@
     "exit_cooldown_seconds": 0,
     "audit_log_enabled": true,
     "audit_log_dir": "logs",
-    "email": "kientienemibarraespaciadora@gmail.com",
-    "password": "12345678",
-    "report_hours": 0,
-    "last_updated": "2025-09-13 19:30:13.041688"
+    "default_trailing_enabled": false,
+    "default_trailing_mode": "",
+    "default_trailing_multiplier": 1.5,
+    "unlock_forex_scenario": false,
+    "unlock_candle_scenario": false,
+    "last_updated": "2025-09-14 20:29:23.647432"
 }

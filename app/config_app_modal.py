@@ -47,6 +47,9 @@ class ConfigAppModal(tk.Toplevel):
         self.default_trailing_enabled_var = tk.IntVar(value=0)
         self.default_trailing_mode_var = tk.StringVar(value="")
         self.default_trailing_mult_var = tk.StringVar(value="1.5")
+        # Checkboxes para desbloquear escenarios
+        self.unlock_forex_scenario_var = tk.IntVar(value=0)
+        self.unlock_candle_scenario_var = tk.IntVar(value=0)
         
         # Cargar configuración existente
         self._cargar_configuracion()
@@ -211,6 +214,25 @@ class ConfigAppModal(tk.Toplevel):
         row_idx += 1
         tk.Entry(main_frame, textvariable=self.default_trailing_mult_var, width=10).grid(row=row_idx, column=0, sticky="w", pady=(0,6))
 
+        # Sección: Desbloqueo de escenarios
+        row_idx += 1
+        sep2 = ttk.Separator(main_frame, orient="horizontal")
+        sep2.grid(row=row_idx, column=0, sticky="ew", pady=(8, 8))
+        row_idx += 1
+        tk.Label(main_frame, text="Desbloqueo de escenarios:", font=("Segoe UI", 10, "bold")).grid(row=row_idx, column=0, sticky="w", pady=(0,6))
+        
+        # Checkbox desbloquear escenario forex
+        row_idx += 1
+        tk.Checkbutton(main_frame, text="Desbloquear escenario forex", 
+                      variable=self.unlock_forex_scenario_var,
+                      font=("Segoe UI", 10)).grid(row=row_idx, column=0, sticky="w", pady=(0,4))
+        
+        # Checkbox desbloquear escenario candle
+        row_idx += 1
+        tk.Checkbutton(main_frame, text="Desbloquear escenario candle", 
+                      variable=self.unlock_candle_scenario_var,
+                      font=("Segoe UI", 10)).grid(row=row_idx, column=0, sticky="w", pady=(0,6))
+
         # Auditoría
         row_idx += 1
         audit_frame = tk.Frame(main_frame)
@@ -328,6 +350,9 @@ class ConfigAppModal(tk.Toplevel):
                     self.default_trailing_mult_var.set(str(float(config.get('default_trailing_multiplier', 1.5))))
                 except Exception:
                     self.default_trailing_mult_var.set("1.5")
+                # Checkboxes de desbloqueo de escenarios
+                self.unlock_forex_scenario_var.set(1 if config.get('unlock_forex_scenario', False) else 0)
+                self.unlock_candle_scenario_var.set(1 if config.get('unlock_candle_scenario', False) else 0)
                 
         except Exception as e:
             print(f"Error al cargar configuración: {e}")
@@ -346,6 +371,8 @@ class ConfigAppModal(tk.Toplevel):
             self.default_trailing_enabled_var.set(0)
             self.default_trailing_mode_var.set('')
             self.default_trailing_mult_var.set('1.5')
+            self.unlock_forex_scenario_var.set(0)
+            self.unlock_candle_scenario_var.set(0)
     
     def _actualizar_risk_manager(self, capital_limit):
         """Actualizar el archivo risk_manager.py con el nuevo límite de capital"""
@@ -455,6 +482,8 @@ class ConfigAppModal(tk.Toplevel):
                 'default_trailing_enabled': True if self.default_trailing_enabled_var.get() == 1 else False,
                 'default_trailing_mode': (self.default_trailing_mode_var.get() or '').strip(),
                 'default_trailing_multiplier': float(self.default_trailing_mult_var.get() or 1.5),
+                'unlock_forex_scenario': True if self.unlock_forex_scenario_var.get() == 1 else False,
+                'unlock_candle_scenario': True if self.unlock_candle_scenario_var.get() == 1 else False,
                 'last_updated': str(datetime.now())
             }
             
@@ -519,7 +548,9 @@ class ConfigAppModal(tk.Toplevel):
                     'capital_limit': 100,
                     'email': '',
                     'password': '',
-                    'report_hours': 0
+                    'report_hours': 0,
+                    'unlock_forex_scenario': False,
+                    'unlock_candle_scenario': False
                 }
         except Exception as e:
             print(f"Error al leer configuración: {e}")
@@ -527,5 +558,7 @@ class ConfigAppModal(tk.Toplevel):
                 'capital_limit': 100,
                 'email': '',
                 'password': '',
-                'report_hours': 0
+                'report_hours': 0,
+                'unlock_forex_scenario': False,
+                'unlock_candle_scenario': False
             }

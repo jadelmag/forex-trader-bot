@@ -923,23 +923,45 @@ class SimulationHandler:
                             if signal_value == 0:
                                 continue
 
-                            # Filtrado por escenario
+                            # Filtrado por escenario - verificar si está desbloqueado
+                            unlock_candle_scenario = False
                             try:
-                                allowed, reason = mapper.should_execute_strategy(strategy_name, scenario, signal_value)
+                                from app.config_app_modal import ConfigAppModal
+                                config = ConfigAppModal.get_config() or {}
+                                unlock_candle_scenario = config.get('unlock_candle_scenario', False)
                             except Exception:
-                                allowed, reason = True, 'No mapper'
-                            if not allowed:
+                                pass
+                            
+                            if unlock_candle_scenario:
+                                # Escenario desbloqueado - permitir todas las operaciones candle
                                 if getattr(self, 'debug_mode', False):
-                                    self.log(f"🚫 {strategy_name} bloqueada por escenario: {getattr(scenario, 'value', scenario)} ({reason})", 'orange')
+                                    self.log(f"🔓 {strategy_name} desbloqueada por configuración (escenario candle)", 'green')
                                 try:
                                     self._audit_log({
-                                        'type': 'candle', 'event': 'blocked_by_scenario',
+                                        'type': 'candle', 'event': 'unblocked',
                                         'strategy': strategy_name, 'signal': int(signal_value),
-                                        'scenario': getattr(scenario, 'value', None), 'reason': reason
+                                        'scenario': getattr(scenario, 'value', None), 'reason': 'unlock_candle_scenario enabled'
                                     })
                                 except Exception:
                                     pass
-                                continue
+                            else:
+                                # Aplicar filtrado normal por escenario
+                                try:
+                                    allowed, reason = mapper.should_execute_strategy(strategy_name, scenario, signal_value)
+                                except Exception:
+                                    allowed, reason = True, 'No mapper'
+                                if not allowed:
+                                    if getattr(self, 'debug_mode', False):
+                                        self.log(f"🚫 {strategy_name} bloqueada por escenario: {getattr(scenario, 'value', scenario)} ({reason})", 'orange')
+                                    try:
+                                        self._audit_log({
+                                            'type': 'candle', 'event': 'blocked_by_scenario',
+                                            'strategy': strategy_name, 'signal': int(signal_value),
+                                            'scenario': getattr(scenario, 'value', None), 'reason': reason
+                                        })
+                                    except Exception:
+                                        pass
+                                    continue
 
                             # Evitar duplicados por estrategia/dirección (gestión interna sin nuevos campos UI)
                             try:
@@ -1177,23 +1199,45 @@ class SimulationHandler:
                             if signal_value == 0:
                                 continue
 
-                            # Filtrado por escenario (priorización/permiso) para Forex
+                            # Filtrado por escenario - verificar si está desbloqueado
+                            unlock_forex_scenario = False
                             try:
-                                allowed_fx, reason_fx = fx_mapper.should_execute_forex_strategy(name, scenario, signal_value)
+                                from app.config_app_modal import ConfigAppModal
+                                config = ConfigAppModal.get_config() or {}
+                                unlock_forex_scenario = config.get('unlock_forex_scenario', False)
                             except Exception:
-                                allowed_fx, reason_fx = True, 'No mapper'
-                            if not allowed_fx:
+                                pass
+                            
+                            if unlock_forex_scenario:
+                                # Escenario desbloqueado - permitir todas las operaciones forex
                                 if getattr(self, 'debug_mode', False):
-                                    self.log(f"🚫 {name} bloqueada por escenario: {getattr(scenario, 'value', scenario)} ({reason_fx})", 'orange')
+                                    self.log(f"🔓 {name} desbloqueada por configuración (escenario forex)", 'green')
                                 try:
                                     self._audit_log({
-                                        'type': 'forex', 'event': 'blocked_by_scenario',
+                                        'type': 'forex', 'event': 'unblocked',
                                         'strategy': name, 'signal': int(signal_value),
-                                        'scenario': getattr(scenario, 'value', None), 'reason': reason_fx
+                                        'scenario': getattr(scenario, 'value', None), 'reason': 'unlock_forex_scenario enabled'
                                     })
                                 except Exception:
                                     pass
-                                continue
+                            else:
+                                # Aplicar filtrado normal por escenario (priorización/permiso) para Forex
+                                try:
+                                    allowed_fx, reason_fx = fx_mapper.should_execute_forex_strategy(name, scenario, signal_value)
+                                except Exception:
+                                    allowed_fx, reason_fx = True, 'No mapper'
+                                if not allowed_fx:
+                                    if getattr(self, 'debug_mode', False):
+                                        self.log(f"🚫 {name} bloqueada por escenario: {getattr(scenario, 'value', scenario)} ({reason_fx})", 'orange')
+                                    try:
+                                        self._audit_log({
+                                            'type': 'forex', 'event': 'blocked_by_scenario',
+                                            'strategy': name, 'signal': int(signal_value),
+                                            'scenario': getattr(scenario, 'value', None), 'reason': reason_fx
+                                        })
+                                    except Exception:
+                                        pass
+                                    continue
 
                             # Evitar duplicados por estrategia/dirección (gestión interna)
                             try:

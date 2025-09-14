@@ -1,0 +1,182 @@
+CandleStreamer conectado correctamente
+Símbolo: EURUSDT | Intervalo: 1m | Máx. velas: 500
+📊 Iniciando simulación CSV con 5 velas iniciales
+📥 PASO 1: Descargando datos de Binance...
+🌐 Descargando 500 velas de EURUSDT (1m)...
+📊 PASO 2: Cargando 5 velas iniciales...
+✅ Cargadas 5 velas iniciales
+📈 Rango: 2025-09-14 09:25:00 a 2025-09-14 09:29:00
+⏰ PASO 3: Iniciando procesamiento secuencial (5s por vela)...
+🚀 Simulación iniciada desde vela 6
+📊 Sistema de reports configurado: Capital 1000.0€, 48 estrategias
+Simulación iniciada. Esperando 5 velas antes de operar...
+Esperando 4 velas más antes de operar...
+Esperando 3 velas más antes de operar...
+Esperando 2 velas más antes de operar...
+Esperando 1 velas más antes de operar...
+Simulación en progreso!!
+Simulación en progreso - Velas procesadas: 10
+📊 Tipo de mercado detectado: Mercado lateral/rango
+Simulación en progreso - Velas procesadas: 20
+Simulación en progreso - Velas procesadas: 30
+Modo debug activado
+DEBUG Vela #31: 🔴 BAJISTA | O:1.17670 H:1.17670 L:1.17640 C:1.17650 | Cuerpo:0.00020 Sombra↑:0.00000 Sombra↓:0.00010
+✅ Apertura candle_filter_with_trend (SELL) @ 1.17650
+✅ Apertura candle_stop_loss_take_profit (SELL) @ 1.17650
+Error evaluando forex {'name': 'support_resistance_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'adx_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+
+Error evaluando forex {'name': 'support_resistance_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'news_trading_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'adx_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'scalping_1m_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'supply_demand_zones', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'bollinger_bands_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'range_trading_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'support_resistance_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'breakout', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'adx_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'scalping_1m_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'supply_demand_zones', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'support_resistance_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'adx_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'scalping_1m_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'support_resistance_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'adx_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'scalping_1m_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'supply_demand_zones', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'support_resistance_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'scalping_1m_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'supply_demand_zones', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+DEBUG Vela #37: ⚪ DOJI | O:1.17630 H:1.17640 L:1.17630 C:1.17630 | Cuerpo:0.00000 Sombra↑:0.00010 Sombra↓:0.00000
+⏭️ BUY duplicado omitido para candle_stop_loss_take_profit
+Error evaluando forex {'name': 'bollinger_bands_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'range_trading_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'support_resistance_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'price_action_patterns', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'macd_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'scalping_1m_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'supply_demand_zones', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+DEBUG Vela #38: ⚪ DOJI | O:1.17630 H:1.17640 L:1.17630 C:1.17630 | Cuerpo:0.00000 Sombra↑:0.00010 Sombra↓:0.00000
+Error evaluando forex {'name': 'support_resistance_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'scalping_1m_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+DEBUG Vela #39: ⚪ DOJI | O:1.17630 H:1.17640 L:1.17630 C:1.17630 | Cuerpo:0.00000 Sombra↑:0.00010 Sombra↓:0.00000
+Error evaluando forex {'name': 'support_resistance_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'scalping_1m_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+DEBUG Vela #40: 🔴 BAJISTA | O:1.17630 H:1.17630 L:1.17620 C:1.17620 | Cuerpo:0.00010 Sombra↑:0.00000 Sombra↓:0.00000
+Simulación en progreso - Velas procesadas: 40
+✅ Apertura candle_doji_reversal_strategy (SELL) @ 1.17620
+✅ Apertura candle_doji_indecision (SELL) @ 1.17620
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+Error evaluando forex {'name': 'support_resistance_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'scalping_1m_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+DEBUG Vela #41: 🔴 BAJISTA | O:1.17620 H:1.17630 L:1.17610 C:1.17610 | Cuerpo:0.00010 Sombra↑:0.00010 Sombra↓:0.00000
+Error evaluando forex {'name': 'support_resistance_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'breakout', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'scalping_1m_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'supply_demand_zones', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+DEBUG Vela #42: 🔴 BAJISTA | O:1.17620 H:1.17620 L:1.17600 C:1.17600 | Cuerpo:0.00020 Sombra↑:0.00000 Sombra↓:0.00000
+✅ Apertura candle_filter_with_trend (SELL) @ 1.17600
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+Error evaluando forex {'name': 'bollinger_bands_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'range_trading_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'support_resistance_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'breakout', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'scalping_1m_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'supply_demand_zones', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+DEBUG Vela #43: 🟢 ALCISTA | O:1.17600 H:1.17610 L:1.17590 C:1.17610 | Cuerpo:0.00010 Sombra↑:0.00000 Sombra↓:0.00010
+⏭️ BUY duplicado omitido para candle_stop_loss_take_profit
+Error evaluando forex {'name': 'bollinger_bands_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'range_trading_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'support_resistance_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'breakout', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'mean_reversion_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'scalping_1m_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'supply_demand_zones', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+DEBUG Vela #44: 🟢 ALCISTA | O:1.17590 H:1.17600 L:1.17590 C:1.17600 | Cuerpo:0.00010 Sombra↑:0.00000 Sombra↓:0.00000
+Error evaluando forex {'name': 'support_resistance_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'rsi_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'scalping_1m_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'supply_demand_zones', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+📊 Tipo de mercado detectado: Baja volatilidad/contracción
+DEBUG Mercado: Baja volatilidad - Priorizar patrones de indecisión
+DEBUG Vela #45: ⚪ DOJI | O:1.17600 H:1.17610 L:1.17590 C:1.17600 | Cuerpo:0.00000 Sombra↑:0.00010 Sombra↓:0.00010
+⏭️ BUY duplicado omitido para candle_doji_reversal_strategy
+✅ Apertura candle_doji_indecision (BUY) @ 1.17600
+🚫 Límite de órdenes Candle alcanzado en esta vela (11/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (11/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (11/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (11/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (11/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (11/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (11/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (11/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (11/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (11/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (11/10)
+Error evaluando forex {'name': 'rsi_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'support_resistance_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'ichimoku_cloud_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'mean_reversion_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'scalping_1m_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'supply_demand_zones', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+DEBUG Vela #46: 🔴 BAJISTA | O:1.17610 H:1.17610 L:1.17600 C:1.17600 | Cuerpo:0.00010 Sombra↑:0.00000 Sombra↓:0.00000
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+🚫 Límite de órdenes Candle alcanzado en esta vela (10/10)
+Error evaluando forex {'name': 'rsi_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'support_resistance_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'ichimoku_cloud_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'adx_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'scalping_1m_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+
+--- SIMULACIÓN FINALIZADA ---
+Velas procesadas: 46
+Órdenes abiertas al finalizar: 0
+📊 Sistema de reports limpiado
+Simulación detenida correctamente
