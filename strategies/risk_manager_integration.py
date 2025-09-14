@@ -414,13 +414,41 @@ class RiskManagerIntegration:
             )
 
             if operacion:
-                # Aplicar trailing stop si está configurado
-                trailing_enabled = candle_config.get('trailing_stop_enabled', False)
+                # Aplicar trailing stop si está configurado (aceptar distintas claves de config)
+                trailing_enabled = False
+                trailing_mult = None
+                try:
+                    # Claves compatibles
+                    trailing_enabled = bool(
+                        candle_config.get('trailing_stop_enabled', False) or
+                        candle_config.get('use_trailing_stop', False)
+                    )
+                    trailing_mult = (
+                        candle_config.get('trailing_stop_atr_multiplier') or
+                        candle_config.get('atr_trailing_multiplier') or
+                        self.config.atr_trailing_multiplier
+                    )
+                    # Modo de trailing (si se definió)
+                    mode = str(candle_config.get('trailing_mode', '') or '').lower()
+                    if mode in ('aggressive', 'conservative', 'hybrid'):
+                        if mode == 'aggressive':
+                            trailing_mult = 1.0
+                        elif mode == 'conservative':
+                            trailing_mult = 2.0
+                        else:  # hybrid
+                            trailing_mult = 1.5
+                except Exception:
+                    pass
+
                 if trailing_enabled:
                     operacion.trailing_stop_enabled = True
-                    operacion.trailing_stop_distance = atr_value * candle_config.get('trailing_stop_atr_multiplier', 2.0)
+                    # Guardar multiplier para verificaciones dinámicas en _check_trailing_stops
+                    try:
+                        operacion.trailing_multiplier = float(trailing_mult)
+                    except Exception:
+                        operacion.trailing_multiplier = float(self.config.atr_trailing_multiplier)
                     if self.debug_mode:
-                        logger.info(f"Trailing stop configurado para operación {operacion.id_operacion}")
+                        logger.info(f"Trailing stop configurado para operación {operacion.id_operacion} (mult={operacion.trailing_multiplier})")
 
                 self.metrics.signals_processed += 1
                 # logger.info(f"✅ OPERACIÓN ABIERTA: {estrategia_nombre} - ID: {operacion.id} - Precio: {precio_actual}, SL: {stop_loss:.5f}, TP: {take_profit:.5f}")

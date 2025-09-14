@@ -15,7 +15,7 @@ class ConfigAppModal(tk.Toplevel):
         super().__init__(parent)
         self.parent = parent
         self.title("Configuración Forex Trader Bot")
-        self.geometry("400x450")
+        self.geometry("460x620")
         self.resizable(False, False)
         self.grab_set()  # Modal
         
@@ -35,6 +35,14 @@ class ConfigAppModal(tk.Toplevel):
         self.password_var = tk.StringVar()
         self.hours_var = tk.StringVar(value="0")
         self.password_visible = False
+        # Nuevas variables (app_config.json)
+        self.max_account_risk_var = tk.StringVar(value="5.0")
+        self.analysis_candles_var = tk.StringVar(value="5")
+        self.analysis_seconds_var = tk.StringVar(value="0")
+        self.strategy_cd_var = tk.StringVar(value="0")
+        self.exit_cd_var = tk.StringVar(value="0")
+        self.audit_enabled_var = tk.IntVar(value=1)
+        self.audit_dir_var = tk.StringVar(value="logs")
         
         # Cargar configuración existente
         self._cargar_configuracion()
@@ -108,6 +116,47 @@ class ConfigAppModal(tk.Toplevel):
         # Configurar expansión de columnas
         main_frame.columnconfigure(0, weight=1)
         
+        # Sección: Motor de simulación y auditoría
+        sep1 = ttk.Separator(main_frame, orient="horizontal")
+        sep1.grid(row=8, column=0, sticky="ew", pady=(8, 8))
+        tk.Label(main_frame, text="Motor de simulación y auditoría:", font=("Segoe UI", 10, "bold")).grid(row=9, column=0, sticky="w", pady=(0,6))
+
+        # Frecuencia de análisis (velas / segundos)
+        row_idx = 10
+        tk.Label(main_frame, text="Análisis de mercado cada N velas (0=ignorar):", font=("Segoe UI", 10)).grid(row=row_idx, column=0, sticky="w")
+        row_idx += 1
+        tk.Entry(main_frame, textvariable=self.analysis_candles_var, width=10).grid(row=row_idx, column=0, sticky="w", pady=(0,6))
+        row_idx += 1
+        tk.Label(main_frame, text="Análisis de mercado cada N segundos (0=desactivado):", font=("Segoe UI", 10)).grid(row=row_idx, column=0, sticky="w")
+        row_idx += 1
+        tk.Entry(main_frame, textvariable=self.analysis_seconds_var, width=10).grid(row=row_idx, column=0, sticky="w", pady=(0,6))
+
+        # Cooldowns
+        row_idx += 1
+        tk.Label(main_frame, text="Cooldown de estrategia (segundos, 0=off):", font=("Segoe UI", 10)).grid(row=row_idx, column=0, sticky="w")
+        row_idx += 1
+        tk.Entry(main_frame, textvariable=self.strategy_cd_var, width=10).grid(row=row_idx, column=0, sticky="w", pady=(0,6))
+        row_idx += 1
+        tk.Label(main_frame, text="Cooldown de cierre (-1) (segundos, 0=off):", font=("Segoe UI", 10)).grid(row=row_idx, column=0, sticky="w")
+        row_idx += 1
+        tk.Entry(main_frame, textvariable=self.exit_cd_var, width=10).grid(row=row_idx, column=0, sticky="w", pady=(0,6))
+
+        # Riesgo global de cuenta
+        row_idx += 1
+        tk.Label(main_frame, text="Riesgo máximo de cuenta (%):", font=("Segoe UI", 10)).grid(row=row_idx, column=0, sticky="w")
+        row_idx += 1
+        tk.Entry(main_frame, textvariable=self.max_account_risk_var, width=10).grid(row=row_idx, column=0, sticky="w", pady=(0,6))
+
+        # Auditoría
+        row_idx += 1
+        audit_frame = tk.Frame(main_frame)
+        audit_frame.grid(row=row_idx, column=0, sticky="w", pady=(6, 6))
+        tk.Checkbutton(audit_frame, text="Habilitar audit log (JSONL)", variable=self.audit_enabled_var).pack(side="left")
+        row_idx += 1
+        tk.Label(main_frame, text="Carpeta audit log:", font=("Segoe UI", 10)).grid(row=row_idx, column=0, sticky="w")
+        row_idx += 1
+        tk.Entry(main_frame, textvariable=self.audit_dir_var, width=20).grid(row=row_idx, column=0, sticky="w")
+
         # Botones Cancelar y Aceptar
         frame_btn = tk.Frame(self)
         frame_btn.pack(pady=10)
@@ -119,6 +168,8 @@ class ConfigAppModal(tk.Toplevel):
         # Validación para el campo de horas y capital
         self.hours_entry.bind('<KeyRelease>', self._validar_horas)
         self.capital_limit_entry.bind('<KeyRelease>', self._validar_capital_limit)
+        # Validaciones básicas numéricas
+        self._bind_numeric_validations()
         
     def _toggle_password_visibility(self):
         """Alternar visibilidad de la contraseña"""
@@ -193,11 +244,19 @@ class ConfigAppModal(tk.Toplevel):
             if self.config_file.exists():
                 with open(self.config_file, 'r', encoding='utf-8') as f:
                     config = json.load(f)
-                    
+                
                 self.capital_limit_var.set(str(config.get('capital_limit', 100)))
                 self.email_var.set(config.get('email', ''))
                 self.password_var.set(config.get('password', ''))
                 self.hours_var.set(str(config.get('report_hours', 0)))
+                # Nuevos campos
+                self.max_account_risk_var.set(str(config.get('max_account_risk_percent', 5.0)))
+                self.analysis_candles_var.set(str(config.get('market_analysis_every_candles', 5)))
+                self.analysis_seconds_var.set(str(config.get('market_analysis_every_seconds', 0)))
+                self.strategy_cd_var.set(str(config.get('strategy_cooldown_seconds', 0)))
+                self.exit_cd_var.set(str(config.get('exit_cooldown_seconds', 0)))
+                self.audit_enabled_var.set(1 if config.get('audit_log_enabled', True) else 0)
+                self.audit_dir_var.set(config.get('audit_log_dir', 'logs'))
                 
         except Exception as e:
             print(f"Error al cargar configuración: {e}")
@@ -206,6 +265,13 @@ class ConfigAppModal(tk.Toplevel):
             self.email_var.set('')
             self.password_var.set('')
             self.hours_var.set('0')
+            self.max_account_risk_var.set('5.0')
+            self.analysis_candles_var.set('5')
+            self.analysis_seconds_var.set('0')
+            self.strategy_cd_var.set('0')
+            self.exit_cd_var.set('0')
+            self.audit_enabled_var.set(1)
+            self.audit_dir_var.set('logs')
     
     def _actualizar_risk_manager(self, capital_limit):
         """Actualizar el archivo risk_manager.py con el nuevo límite de capital"""
@@ -304,6 +370,14 @@ class ConfigAppModal(tk.Toplevel):
                 'email': email,
                 'password': password,
                 'report_hours': hours,
+                # Nuevos campos
+                'max_account_risk_percent': float(self.max_account_risk_var.get() or 0.0),
+                'market_analysis_every_candles': int(self.analysis_candles_var.get() or 5),
+                'market_analysis_every_seconds': int(self.analysis_seconds_var.get() or 0),
+                'strategy_cooldown_seconds': int(self.strategy_cd_var.get() or 0),
+                'exit_cooldown_seconds': int(self.exit_cd_var.get() or 0),
+                'audit_log_enabled': True if self.audit_enabled_var.get() == 1 else False,
+                'audit_log_dir': self.audit_dir_var.get().strip() or 'logs',
                 'last_updated': str(datetime.now())
             }
             
@@ -316,6 +390,37 @@ class ConfigAppModal(tk.Toplevel):
             
         except Exception as e:
             messagebox.showerror("Error", f"Error al guardar la configuración: {str(e)}")
+
+    def _bind_numeric_validations(self):
+        """Validaciones básicas para campos numéricos nuevos (no bloqueantes)."""
+        def numeric_only(var: tk.StringVar, allow_float=False):
+            val = var.get()
+            if val == "":
+                return
+            if allow_float:
+                # Permitir un punto decimal
+                ok = True
+                dots = 0
+                for c in val:
+                    if c.isdigit():
+                        continue
+                    if c == '.' and dots == 0:
+                        dots += 1
+                        continue
+                    ok = False
+                    break
+                if not ok:
+                    var.set(''.join(ch for ch in val if ch.isdigit() or ch == '.') )
+            else:
+                if not val.isdigit():
+                    var.set(''.join(ch for ch in val if ch.isdigit()))
+
+        # Enlazar validaciones (suaves) en KeyRelease
+        self.max_account_risk_var.trace_add('write', lambda *args: numeric_only(self.max_account_risk_var, allow_float=True))
+        self.analysis_candles_var.trace_add('write', lambda *args: numeric_only(self.analysis_candles_var, allow_float=False))
+        self.analysis_seconds_var.trace_add('write', lambda *args: numeric_only(self.analysis_seconds_var, allow_float=False))
+        self.strategy_cd_var.trace_add('write', lambda *args: numeric_only(self.strategy_cd_var, allow_float=False))
+        self.exit_cd_var.trace_add('write', lambda *args: numeric_only(self.exit_cd_var, allow_float=False))
     
     def _cancelar(self):
         """Cancelar y cerrar el modal"""

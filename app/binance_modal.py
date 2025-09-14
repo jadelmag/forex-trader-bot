@@ -1156,6 +1156,16 @@ class CandleConfigModal(tk.Toplevel):
         add_num("ATR TP multiplier (atr_tp_multiplier)", "atr_tp_multiplier", "Ej.: 3.0")
         add_num("ATR trailing multiplier (atr_trailing_multiplier)", "atr_trailing_multiplier", "Ej.: 1.5")
 
+        # Trailing mode (combobox)
+        mode_frame = tk.Frame(inner_container)
+        mode_frame.pack(fill="x", pady=4)
+        ttk.Label(mode_frame, text="Modo de trailing (trailing_mode)").pack(anchor="w")
+        self.trailing_mode_var = tk.StringVar(value=str(base_config.get('trailing_mode', '') or ''))
+        mode_values = ["", "aggressive", "conservative", "hybrid"]
+        mode_combo = ttk.Combobox(mode_frame, textvariable=self.trailing_mode_var, values=mode_values, state="readonly", width=18)
+        mode_combo.pack(anchor="w")
+        ttk.Label(mode_frame, text="Vacío=sin modo | aggressive=1.0 | conservative=2.0 | hybrid=1.5", foreground="#666", font=("Arial", 8)).pack(anchor="w")
+
         # Fila final: Guardar configuración
         save_row = tk.Frame(inner_container)
         save_row.pack(fill="x", pady=(10, 0))
@@ -1210,6 +1220,17 @@ class CandleConfigModal(tk.Toplevel):
             for key, var in self.num_fields.items():
                 txt = var.get().strip()
                 cfg[key] = float(txt) if txt not in ("", ".") else 0.0
+            # Combobox trailing mode
+            try:
+                mode_val = (self.trailing_mode_var.get() or '').strip()
+                if mode_val in ("aggressive", "conservative", "hybrid"):
+                    cfg['trailing_mode'] = mode_val
+                else:
+                    # Vacío significa sin modo explícito
+                    if 'trailing_mode' in cfg:
+                        del cfg['trailing_mode']
+            except Exception:
+                pass
             if callable(self.on_save):
                 self.on_save(cfg)
             # Guardar en disco si corresponde
@@ -1262,10 +1283,13 @@ class CandleConfigModal(tk.Toplevel):
             for key, var in self.num_fields.items():
                 if key in cfg and cfg.get(key) is not None:
                     var.set(str(cfg.get(key)))
+            # Trailing mode
+            try:
+                self.trailing_mode_var.set(str(cfg.get('trailing_mode', '') or ''))
+            except Exception:
+                pass
         except Exception as e:
             print(f"Error applying config to fields: {e}")
-
-    
 
 
 class PatternDetectionModal(tk.Toplevel):

@@ -16,4 +16,8 @@ TODO:
 Quiero que se muestre Simulacion completada cuando se hayan terminado de dibujar TODAS las velas, 
 porque parece que pare a mitad de la simulacion. De echo, para de dibujar velas durante un tiempo (mayor a 5 segundos, como un minuto) y luego sigue dibujando velas.
 
-4. risk_manager_integration.py esta correcto con las nuevos cambios que se han añadido???
+4. risk_manager_integration.py 
+- esta correcto con las nuevos cambios que se han añadido???
+- Hay codigo duplicado 
+- Hay codigo innecesario
+- Interpreta bien las señales 

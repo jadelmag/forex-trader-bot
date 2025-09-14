@@ -395,21 +395,12 @@ class CandleStreamer:
     
     def _start_csv_simulation(self):
         """Inicia simulación progresiva con los datos CSV descargados"""
-        try:
-            if self.df is None or self.df.empty:
-                self._log("No hay datos para simular", 'red')
-                return
+        
+        # Iniciar simulación progresiva
+        self._schedule_next_simulation_step()
             
-            # Cambiar a modo simulación
-            self.running = False  # WebSocket desconectado
-            self.simulation_mode = True
-            self.simulation_index = 0
-            
-            # Iniciar simulación progresiva
-            self._schedule_next_simulation_step()
-            
-        except Exception as e:
-            self._log(f"Error iniciando simulación CSV: {e}", 'red')
+    except Exception as e:
+        self._log(f"Error iniciando simulación CSV: {e}", 'red')
     
     def _schedule_next_simulation_step(self):
         """Programa el siguiente paso de la simulación"""
@@ -421,29 +412,32 @@ class CandleStreamer:
         
         # Verificar si hay más datos para simular
         if self.simulation_index >= len(self.df):
-            self._log("Simulación completada", 'green')
-            return
-        
-        # Programar siguiente paso
-        if hasattr(self, 'parent_frame') and self.parent_frame:
-            # Guardar el ID para poder cancelar al detener
+            # Finalizar de forma ordenada y anunciar al terminar
             try:
-                self._simulation_after_id = self.parent_frame.after(1000, self._execute_simulation_step)  # 1 segundo por vela
-            except Exception:
-                self._simulation_after_id = None
-        else:
-            # Usar Timer daemon y conservar referencia para cancelarlo en stop()
-            try:
-                if self._simulation_timer is not None:
-                    try:
-                        self._simulation_timer.cancel()
-                    except Exception:
-                        pass
-                self._simulation_timer = threading.Timer(1.0, self._execute_simulation_step)
-                self._simulation_timer.daemon = True
-                self._simulation_timer.start()
-            except Exception:
-                self._simulation_timer = None
+                self.simulation_mode = False
+                # Cancelar after() si existe
+                try:
+                    if hasattr(self, 'parent_frame') and self.parent_frame and getattr(self, '_simulation_after_id', None):
+                        try:
+                            self.parent_frame.after_cancel(self._simulation_after_id)
+                        except Exception:
+                            pass
+                    self._simulation_after_id = self.parent_frame.after(1000, self._execute_simulation_step)  # 1 segundo por vela
+                except Exception:
+                    self._simulation_after_id = None
+            else:
+                # Usar Timer daemon y conservar referencia para cancelarlo en stop()
+                try:
+                    if self._simulation_timer is not None:
+                        try:
+                            self._simulation_timer.cancel()
+                        except Exception:
+                            pass
+                    self._simulation_timer = threading.Timer(1.0, self._execute_simulation_step)
+                    self._simulation_timer.daemon = True
+                    self._simulation_timer.start()
+                except Exception:
+                    self._simulation_timer = None
     
     def _execute_simulation_step(self):
         """Ejecuta un paso de la simulación (procesa una vela)"""
