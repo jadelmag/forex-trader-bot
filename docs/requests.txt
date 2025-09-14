@@ -5,25 +5,15 @@ TODO
 3. Conectar con metatrader [TODO]
 
 
-1. en config_modal.py es donde se añade el dinero ficticio (capital) que por defecto son 1000, quiero que uses ese.
-2. Quiero que hagas lo que me propones, que arregles todos los errores que has encontrado y elimines codigo que no se utiliza o esta duplicado.
 
-quiero que sigas la traza desde binace modal donde seleccionados las estrategias forex y las candles strategias y el numero maximo de operaciones short y long para cada estrategia, pasando por candle streamer donde se van dibujando las velas, por risk_manager y risk_manager_integration donde se abren operaciones short y long dependiendo del fichero strategies para las forex y candle strategies y candlestickpatterns para las candle estrategies. creo recordar que dependiendo del mercado da prioridad a unas estrategias u a otras
+TODO:
 
-Analiza pasando por esos fichero si encuentras:
-- si esta correcto y todo encaja para que abra operaciones short y long para las candle strategies y las estrategias forex 
-- si hay algun tipo de error 
-- si hay codigo duplicado o ambiguo
-- si detecta bien las estrategias forex y las candle stratgies teniendo en cuenta que se trabaja en tiempo real ( a intervalos de 5 segundos )
-- si aplica bien las configuraciones de todas las estrategias independiendemente de q sean forex o candle
-- si no detecta el dinero ficticio y no lo va actualizando
-- cualquier cosa que haga que veas que 
+1. Modificar config_app_modal.py para que muestre las nuevas variables de configuracion que se han creado en app_config.json.
 
-estas teniendo en cuenta que cuando abro binance modal puedo seleccionar las estrategias forex y las candles strategies y el numero maximo de operaciones short y long para cada estrategia, 
-y que en cada estrategia se puede seleccionar el riesgo y el RR ratio para las estrategias forex y 
-y que en las candle estrategies puedo seleccionar la configuracion entre:
-- aplicar solo deteccion con su configuracion
-- que la configuracion sea default
-- que la configuracion sea custom 
+2. Modos de trailing (‘aggressive’, ‘conservative’, ‘hybrid’) leídos desde candle_config y con defaults globales en config. hay algun sitio donde se pueda seleccionar el modo de tralling?
 
-y que esas configuraciones se aplican en tiempo real y son exluyentes entre si??
+3. por que muestra simulacion completada en el log y en la grafica se sigue dibujando las velas??
+Quiero que se muestre Simulacion completada cuando se hayan terminado de dibujar TODAS las velas, 
+porque parece que pare a mitad de la simulacion. De echo, para de dibujar velas durante un tiempo (mayor a 5 segundos, como un minuto) y luego sigue dibujando velas.
+
+4. risk_manager_integration.py esta correcto con las nuevos cambios que se han añadido???

@@ -20,6 +20,8 @@ class MarketStrategyMapper:
     def __init__(self):
         """Inicializa el mapeador con las configuraciones de estrategias por escenario."""
         self.strategy_mappings = self._initialize_strategy_mappings()
+        # Nuevo: mapeo para estrategias Forex
+        self.forex_mappings = self._initialize_forex_mappings()
     
     def _initialize_strategy_mappings(self) -> Dict[MarketScenario, Dict[str, StrategyPriority]]:
         """
@@ -249,7 +251,245 @@ class MarketStrategyMapper:
                 'tweezer_top_strategy': StrategyPriority.MEDIUM,
                 'tweezer_bottom_strategy': StrategyPriority.MEDIUM,
             }
+
+    # ===================== FOREX MAPPINGS =====================
+    def _initialize_forex_mappings(self) -> Dict[MarketScenario, Dict[str, StrategyPriority]]:
+        """Inicializa prioridades para estrategias Forex por escenario.
+
+        SOLO incluir nombres que existen en strategies/strategies.py
+        """
+        return {
+            # Tendencia alcista: priorizar continuación
+            MarketScenario.UPTREND: {
+                'trend_following': StrategyPriority.HIGH,
+                'moving_average_crossover': StrategyPriority.HIGH,
+                'ichimoku_cloud_strategy': StrategyPriority.HIGH,
+                'breakout': StrategyPriority.HIGH,
+
+                'rsi_strategy': StrategyPriority.MEDIUM,
+                'macd_strategy': StrategyPriority.MEDIUM,
+                'support_resistance_strategy': StrategyPriority.MEDIUM,
+
+                'bollinger_bands_strategy': StrategyPriority.LOW,
+                'price_action_patterns': StrategyPriority.LOW,
+
+                'range_trading_strategy': StrategyPriority.DISABLED,
+            },
+
+            # Tendencia bajista: priorizar continuación bajista
+            MarketScenario.DOWNTREND: {
+                'trend_following': StrategyPriority.HIGH,
+                'moving_average_crossover': StrategyPriority.HIGH,
+                'ichimoku_cloud_strategy': StrategyPriority.HIGH,
+                'breakout': StrategyPriority.HIGH,
+
+                'rsi_strategy': StrategyPriority.MEDIUM,
+                'macd_strategy': StrategyPriority.MEDIUM,
+                'support_resistance_strategy': StrategyPriority.MEDIUM,
+
+                'bollinger_bands_strategy': StrategyPriority.LOW,
+                'price_action_patterns': StrategyPriority.LOW,
+
+                'range_trading_strategy': StrategyPriority.DISABLED,
+            },
+
+            # Mercado lateral: priorizar reversión en rango
+            MarketScenario.RANGING: {
+                'range_trading_strategy': StrategyPriority.HIGH,
+                'bollinger_bands_strategy': StrategyPriority.HIGH,
+                'support_resistance_strategy': StrategyPriority.HIGH,
+
+                'price_action_patterns': StrategyPriority.MEDIUM,
+                'rsi_strategy': StrategyPriority.MEDIUM,
+                'stochastic_strategy': StrategyPriority.MEDIUM,
+
+                'macd_strategy': StrategyPriority.LOW,
+
+                'trend_following': StrategyPriority.DISABLED,
+                'moving_average_crossover': StrategyPriority.DISABLED,
+                'breakout': StrategyPriority.DISABLED,
+                'ichimoku_cloud_strategy': StrategyPriority.DISABLED,
+            },
+
+            # Acumulación: preferir compras de reversión en fondo
+            MarketScenario.ACCUMULATION: {
+                'rsi_strategy': StrategyPriority.HIGH,
+                'price_action_patterns': StrategyPriority.HIGH,
+                'support_resistance_strategy': StrategyPriority.HIGH,
+
+                'moving_average_crossover': StrategyPriority.MEDIUM,
+                'trendline_strategy': StrategyPriority.LOW,
+
+                'breakout': StrategyPriority.DISABLED,
+                'trend_following': StrategyPriority.DISABLED,
+            },
+
+            # Distribución: preferir ventas de reversión en techo
+            MarketScenario.DISTRIBUTION: {
+                'rsi_strategy': StrategyPriority.HIGH,
+                'price_action_patterns': StrategyPriority.HIGH,
+                'support_resistance_strategy': StrategyPriority.HIGH,
+
+                'moving_average_crossover': StrategyPriority.MEDIUM,
+                'trendline_strategy': StrategyPriority.LOW,
+
+                'breakout': StrategyPriority.DISABLED,
+                'trend_following': StrategyPriority.DISABLED,
+            },
+
+            # Ruptura: priorizar impulso
+            MarketScenario.BREAKOUT: {
+                'breakout': StrategyPriority.HIGH,
+                'ichimoku_cloud_strategy': StrategyPriority.HIGH,
+                'trend_following': StrategyPriority.HIGH,
+                'macd_strategy': StrategyPriority.HIGH,
+                'news_trading_strategy': StrategyPriority.MEDIUM,
+
+                'moving_average_crossover': StrategyPriority.MEDIUM,
+                'bollinger_bands_strategy': StrategyPriority.LOW,
+
+                'range_trading_strategy': StrategyPriority.DISABLED,
+                'support_resistance_strategy': StrategyPriority.DISABLED,
+            },
+
+            # Baja volatilidad: priorizar compresión/rango
+            MarketScenario.LOW_VOLATILITY: {
+                'bollinger_bands_strategy': StrategyPriority.HIGH,
+                'range_trading_strategy': StrategyPriority.HIGH,
+
+                'rsi_strategy': StrategyPriority.MEDIUM,
+                'stochastic_strategy': StrategyPriority.MEDIUM,
+
+                'trend_following': StrategyPriority.DISABLED,
+                'breakout': StrategyPriority.DISABLED,
+            },
+
+            # Falsa ruptura: priorizar reversión
+            MarketScenario.FAKE_BREAKOUT: {
+                'price_action_patterns': StrategyPriority.HIGH,
+                'support_resistance_strategy': StrategyPriority.HIGH,
+                'rsi_strategy': StrategyPriority.MEDIUM,
+                'range_trading_strategy': StrategyPriority.MEDIUM,
+
+                'breakout': StrategyPriority.DISABLED,
+                'trend_following': StrategyPriority.DISABLED,
+            },
+
+            # Escenario no claro: todo medio
+            MarketScenario.UNCLEAR: {
+                'trend_following': StrategyPriority.MEDIUM,
+                'moving_average_crossover': StrategyPriority.MEDIUM,
+                'ichimoku_cloud_strategy': StrategyPriority.MEDIUM,
+                'breakout': StrategyPriority.MEDIUM,
+                'rsi_strategy': StrategyPriority.MEDIUM,
+                'macd_strategy': StrategyPriority.MEDIUM,
+                'support_resistance_strategy': StrategyPriority.MEDIUM,
+                'bollinger_bands_strategy': StrategyPriority.MEDIUM,
+                'price_action_patterns': StrategyPriority.MEDIUM,
+                'range_trading_strategy': StrategyPriority.MEDIUM,
+                'stochastic_strategy': StrategyPriority.MEDIUM,
+                'trendline_strategy': StrategyPriority.MEDIUM,
+                'news_trading_strategy': StrategyPriority.MEDIUM,
+            },
         }
+
+    def get_prioritized_forex_strategies(self, scenario: MarketScenario,
+                                         available_strategies: List[str] = None) -> Dict[str, StrategyPriority]:
+        """Obtiene prioridades para estrategias Forex por escenario (filtradas opcionalmente)."""
+        if scenario not in self.forex_mappings:
+            scenario = MarketScenario.UNCLEAR
+        mapping = self.forex_mappings[scenario]
+        if available_strategies:
+            return {k: v for k, v in mapping.items() if k in available_strategies}
+        return mapping.copy()
+
+    def should_execute_forex_strategy(self, strategy_name: str, scenario: MarketScenario,
+                                      signal_type: int) -> Tuple[bool, str]:
+        """Reglas de ejecución para estrategias Forex por escenario y tipo de señal (BUY/SELL)."""
+        if scenario not in self.forex_mappings:
+            scenario = MarketScenario.UNCLEAR
+
+        # Reglas por escenario enfocadas a BUY/SELL permitidos
+        rules = {
+            MarketScenario.UPTREND: {
+                'preferred_signal': 1,
+                'allowed_buy': ['trend_following', 'moving_average_crossover', 'ichimoku_cloud_strategy', 'breakout'],
+                'allowed_sell': [],
+                'reason_buy': "Tendencia alcista - priorizar compras",
+                'reason_sell_blocked': "Tendencia alcista - ventas bloqueadas",
+            },
+            MarketScenario.DOWNTREND: {
+                'preferred_signal': -1,
+                'allowed_buy': [],
+                'allowed_sell': ['trend_following', 'moving_average_crossover', 'ichimoku_cloud_strategy', 'breakout'],
+                'reason_sell': "Tendencia bajista - priorizar ventas",
+                'reason_buy_blocked': "Tendencia bajista - compras bloqueadas",
+            },
+            MarketScenario.RANGING: {
+                'preferred_signal': 0,
+                'allowed_buy': ['range_trading_strategy', 'bollinger_bands_strategy', 'support_resistance_strategy', 'rsi_strategy', 'stochastic_strategy', 'price_action_patterns'],
+                'allowed_sell': ['range_trading_strategy', 'bollinger_bands_strategy', 'support_resistance_strategy', 'rsi_strategy', 'stochastic_strategy', 'price_action_patterns'],
+                'reason_buy': "Rango - compras en soporte",
+                'reason_sell': "Rango - ventas en resistencia",
+            },
+            MarketScenario.ACCUMULATION: {
+                'preferred_signal': 1,
+                'allowed_buy': ['rsi_strategy', 'price_action_patterns', 'support_resistance_strategy', 'moving_average_crossover'],
+                'allowed_sell': [],
+                'reason_buy': "Acumulación - priorizar compras",
+                'reason_sell_blocked': "Acumulación - evitar ventas",
+            },
+            MarketScenario.DISTRIBUTION: {
+                'preferred_signal': -1,
+                'allowed_buy': [],
+                'allowed_sell': ['rsi_strategy', 'price_action_patterns', 'support_resistance_strategy', 'moving_average_crossover'],
+                'reason_sell': "Distribución - priorizar ventas",
+                'reason_buy_blocked': "Distribución - evitar compras",
+            },
+            MarketScenario.BREAKOUT: {
+                'preferred_signal': 0,
+                'allowed_buy': ['breakout', 'trend_following', 'ichimoku_cloud_strategy', 'macd_strategy', 'moving_average_crossover', 'news_trading_strategy'],
+                'allowed_sell': ['breakout', 'trend_following', 'ichimoku_cloud_strategy', 'macd_strategy', 'moving_average_crossover', 'news_trading_strategy'],
+                'reason_buy': "Ruptura - seguir impulso alcista",
+                'reason_sell': "Ruptura - seguir impulso bajista",
+            },
+            MarketScenario.LOW_VOLATILITY: {
+                'preferred_signal': 0,
+                'allowed_buy': ['bollinger_bands_strategy', 'range_trading_strategy', 'rsi_strategy', 'stochastic_strategy'],
+                'allowed_sell': ['bollinger_bands_strategy', 'range_trading_strategy', 'rsi_strategy', 'stochastic_strategy'],
+                'reason_buy': "Baja volatilidad - señales sutiles",
+                'reason_sell': "Baja volatilidad - señales sutiles",
+            },
+            MarketScenario.FAKE_BREAKOUT: {
+                'preferred_signal': 0,
+                'allowed_buy': ['price_action_patterns', 'support_resistance_strategy', 'rsi_strategy', 'range_trading_strategy'],
+                'allowed_sell': ['price_action_patterns', 'support_resistance_strategy', 'rsi_strategy', 'range_trading_strategy'],
+                'reason_buy': "Falsa ruptura - reversión alcista",
+                'reason_sell': "Falsa ruptura - reversión bajista",
+            },
+            MarketScenario.UNCLEAR: {
+                'preferred_signal': 0,
+                'allowed_buy': [strategy for strategy in self.forex_mappings.get(MarketScenario.UNCLEAR, {}).keys()],
+                'allowed_sell': [strategy for strategy in self.forex_mappings.get(MarketScenario.UNCLEAR, {}).keys()],
+                'reason_buy': "Escenario no claro - permitir evaluación",
+                'reason_sell': "Escenario no claro - permitir evaluación",
+            },
+        }
+
+        scenario_rules = rules.get(scenario, rules[MarketScenario.UNCLEAR])
+
+        if signal_type == 1:
+            allowed = strategy_name in scenario_rules.get('allowed_buy', [])
+            reason = scenario_rules.get('reason_buy', 'Compra permitida') if allowed else scenario_rules.get('reason_buy_blocked', 'Compra no recomendada')
+        elif signal_type == -1:
+            allowed = strategy_name in scenario_rules.get('allowed_sell', [])
+            reason = scenario_rules.get('reason_sell', 'Venta permitida') if allowed else scenario_rules.get('reason_sell_blocked', 'Venta no recomendada')
+        else:
+            allowed = True
+            reason = "Señal neutral - permitir evaluación"
+
+        return allowed, reason
+        
     
     def get_prioritized_strategies(self, scenario: MarketScenario, 
                                  available_strategies: List[str] = None) -> Dict[str, StrategyPriority]:

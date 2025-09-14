@@ -320,6 +320,11 @@ class SimulationHandler:
                                                                    debug_mode=getattr(self, 'debug_mode', False))
                     # Reset por seguridad antes de empezar
                     self.risk_manager.reset()
+                    # Estado runtime adicional
+                    self._last_market_analysis_time = 0.0
+                    self._cooldown_open_times = {}
+                    self._cooldown_exit_times = {}
+                    self._audit_log_file = None
                 except Exception as e:
                     self.log(f"⚠️ Error inicializando Risk Manager: {e}", color='orange')
                 
@@ -740,14 +745,29 @@ class SimulationHandler:
             # Obtener la última vela
             last_candle = df.iloc[-1]
             
-            # Análisis de mercado cada 5 velas
-            if not hasattr(self, 'candle_count_for_market_analysis'):
-                self.candle_count_for_market_analysis = 0
-            self.candle_count_for_market_analysis += 1
-            
-            if self.candle_count_for_market_analysis >= 5:
-                self._analyze_market_type(df)
-                self.candle_count_for_market_analysis = 0
+            # Análisis de mercado según configuración (segundos o velas)
+            try:
+                every_seconds = int(self._get_config_value('market_analysis_every_seconds', 0) or 0)
+            except Exception:
+                every_seconds = 0
+            if every_seconds > 0:
+                last_ts = getattr(self, '_last_market_analysis_time', 0.0) or 0.0
+                now_ts = time.time()
+                if (now_ts - last_ts) >= every_seconds:
+                    self._analyze_market_type(df)
+                    self._last_market_analysis_time = now_ts
+            else:
+                # Caer a frecuencia por número de velas
+                try:
+                    every_candles = int(self._get_config_value('market_analysis_every_candles', 5) or 5)
+                except Exception:
+                    every_candles = 5
+                if not hasattr(self, 'candle_count_for_market_analysis'):
+                    self.candle_count_for_market_analysis = 0
+                self.candle_count_for_market_analysis += 1
+                if self.candle_count_for_market_analysis >= max(1, every_candles):
+                    self._analyze_market_type(df)
+                    self.candle_count_for_market_analysis = 0
             
             # Debug mode: mostrar información de la vela (alcista/bajista)
             if getattr(self, 'debug_mode', False):
@@ -830,12 +850,23 @@ class SimulationHandler:
                     # Contadores actuales
                     active_total = int(self.risk_manager.get_operaciones_activas_count()) if hasattr(self, 'risk_manager') and self.risk_manager else 0
                     active_candle = count_active_by_prefix('candle_')
-
                     opens_candle_this_tick = 0
 
                     # Preparar MarketStrategyMapper
                     mapper = MarketStrategyMapper()
                     scenario = getattr(self, 'current_market_scenario', None)
+
+                    # Reordenar Candle por prioridad (HIGH -> LOW) para consumir slots primero en las más recomendadas
+                    try:
+                        def _candle_weight(item):
+                            try:
+                                name = item.get('name') if isinstance(item, dict) else None
+                                return mapper.get_priority_weight(name, scenario) if name else 0.0
+                            except Exception:
+                                return 0.0
+                        selected_candles.sort(key=_candle_weight, reverse=True)
+                    except Exception:
+                        pass
 
                     # Para cada estrategia seleccionada
                     for item in selected_candles:
@@ -849,10 +880,30 @@ class SimulationHandler:
                             if active_total >= max_orders_total:
                                 if getattr(self, 'debug_mode', False):
                                     self.log(f"🚫 Límite total de órdenes alcanzado ({active_total}/{max_orders_total})", 'orange')
+                                try:
+                                    self._audit_log({
+                                        'type': 'candle', 'event': 'skipped_slot_limit_total',
+                                        'strategy': strategy_name,
+                                        'active_total': active_total,
+                                        'max_total': max_orders_total,
+                                        'scenario': getattr(scenario, 'value', None)
+                                    })
+                                except Exception:
+                                    pass
                                 break
                             if active_candle + opens_candle_this_tick >= max_candle_ops:
                                 if getattr(self, 'debug_mode', False):
                                     self.log(f"🚫 Límite de órdenes Candle alcanzado en esta vela ({active_candle + opens_candle_this_tick}/{max_candle_ops})", 'orange')
+                                try:
+                                    self._audit_log({
+                                        'type': 'candle', 'event': 'skipped_slot_limit_type',
+                                        'strategy': strategy_name,
+                                        'active_type': active_candle + opens_candle_this_tick,
+                                        'max_type': max_candle_ops,
+                                        'scenario': getattr(scenario, 'value', None)
+                                    })
+                                except Exception:
+                                    pass
                                 continue
 
                             # Instanciar estrategia con config de patrones (detección)
@@ -884,7 +935,90 @@ class SimulationHandler:
                             if not allowed:
                                 if getattr(self, 'debug_mode', False):
                                     self.log(f"🚫 {strategy_name} bloqueada por escenario: {getattr(scenario, 'value', scenario)} ({reason})", 'orange')
+                                try:
+                                    self._audit_log({
+                                        'type': 'candle', 'event': 'blocked_by_scenario',
+                                        'strategy': strategy_name, 'signal': int(signal_value),
+                                        'scenario': getattr(scenario, 'value', None), 'reason': reason
+                                    })
+                                except Exception:
+                                    pass
                                 continue
+
+                            # Evitar duplicados por estrategia/dirección (gestión interna sin nuevos campos UI)
+                            try:
+                                estrategia_nombre = f"candle_{strategy_name}"
+                                # Determinar si es cierre por señal (-1 con operaciones activas) para NO bloquear
+                                has_any_active = any(
+                                    getattr(op, 'estado', 'ACTIVA') == 'ACTIVA' and getattr(op, 'estrategia', '') == estrategia_nombre
+                                    for op in getattr(self.risk_manager, 'operaciones_activas', [])
+                                ) if hasattr(self, 'risk_manager') and self.risk_manager else False
+
+                                # Cooldown por estrategia/dirección (solo aperturas)
+                                try:
+                                    cooldown_s = int(self._get_config_value('strategy_cooldown_seconds', 0) or 0)
+                                except Exception:
+                                    cooldown_s = 0
+                                entry_side = None
+                                if signal_value == 1:
+                                    entry_side = 'BUY'
+                                elif signal_value == -1 and not has_any_active:
+                                    entry_side = 'SELL'
+                                if entry_side is not None and cooldown_s > 0:
+                                    if self._is_cooldown_hit(estrategia_nombre, entry_side, cooldown_s):
+                                        if getattr(self, 'debug_mode', False):
+                                            self.log(f"⏳ Cooldown activo para {estrategia_nombre} {entry_side}", 'yellow')
+                                        try:
+                                            self._audit_log({
+                                                'type': 'candle', 'event': 'cooldown_skip',
+                                                'strategy': strategy_name, 'entry_side': entry_side,
+                                                'cooldown_seconds': cooldown_s
+                                            })
+                                        except Exception:
+                                            pass
+                                        continue
+
+                                # Exit cooldown: si -1 y no hay activas, evitar reintentos redundantes
+                                try:
+                                    exit_cd_s = int(self._get_config_value('exit_cooldown_seconds', 0) or 0)
+                                except Exception:
+                                    exit_cd_s = 0
+                                if signal_value == -1 and not has_any_active and exit_cd_s > 0:
+                                    if self._is_exit_cooldown_hit(estrategia_nombre, exit_cd_s):
+                                        if getattr(self, 'debug_mode', False):
+                                            self.log(f"⏳ Exit cooldown activo para {estrategia_nombre}", 'yellow')
+                                        try:
+                                            self._audit_log({
+                                                'type': 'candle', 'event': 'exit_cooldown_skip',
+                                                'strategy': strategy_name,
+                                                'cooldown_seconds': exit_cd_s
+                                            })
+                                        except Exception:
+                                            pass
+                                        continue
+                                    else:
+                                        self._mark_exit_cooldown(estrategia_nombre)
+
+                                if signal_value == 1:
+                                    has_buy_active = any(
+                                        getattr(op, 'estado', 'ACTIVA') == 'ACTIVA' and getattr(op, 'estrategia', '') == estrategia_nombre and getattr(op, 'tipo', '') == 'BUY'
+                                        for op in getattr(self.risk_manager, 'operaciones_activas', [])
+                                    ) if hasattr(self, 'risk_manager') and self.risk_manager else False
+                                    if has_buy_active:
+                                        if getattr(self, 'debug_mode', False):
+                                            self.log(f"⏭️ BUY duplicado omitido para {estrategia_nombre}", 'yellow')
+                                        continue
+                                elif signal_value == -1 and not has_any_active:
+                                    has_sell_active = any(
+                                        getattr(op, 'estado', 'ACTIVA') == 'ACTIVA' and getattr(op, 'estrategia', '') == estrategia_nombre and getattr(op, 'tipo', '') == 'SELL'
+                                        for op in getattr(self.risk_manager, 'operaciones_activas', [])
+                                    ) if hasattr(self, 'risk_manager') and self.risk_manager else False
+                                    if has_sell_active:
+                                        if getattr(self, 'debug_mode', False):
+                                            self.log(f"⏭️ SELL duplicado omitido para {estrategia_nombre}", 'yellow')
+                                        continue
+                            except Exception:
+                                pass
 
                             # Niveles SL/TP desde estrategia (si disponibles)
                             sl_override = float(row['StopLoss']) if 'StopLoss' in result_df.columns and pd.notna(row.get('StopLoss')) else None
@@ -918,6 +1052,19 @@ class SimulationHandler:
                                 active_candle += 1
                                 if getattr(self, 'debug_mode', False):
                                     self.log(f"✅ Apertura {estrategia_nombre} ({'BUY' if signal_value==1 else 'SELL'}) @ {precio_actual:.5f}", 'green')
+                                try:
+                                    self._audit_log({
+                                        'type': 'candle', 'event': 'opened',
+                                        'strategy': strategy_name,
+                                        'signal': int(signal_value),
+                                        'price': float(precio_actual),
+                                        'scenario': getattr(scenario, 'value', None)
+                                    })
+                                except Exception:
+                                    pass
+                                # Marcar cooldown
+                                if entry_side is not None:
+                                    self._mark_cooldown(estrategia_nombre, entry_side)
                         except Exception as e:
                             if getattr(self, 'debug_mode', False):
                                 self.log(f"Error evaluando {item}: {e}", 'red')
@@ -925,15 +1072,6 @@ class SimulationHandler:
             except Exception as e:
                 if getattr(self, 'debug_mode', False):
                     self.log(f"Error T04 Candle Strategies: {e}", 'orange')
-
-            # Verificar cierres de órdenes automáticos (SL/TP) del RiskManager
-            try:
-                if hasattr(self, 'risk_manager') and self.risk_manager:
-                    self.risk_manager.verificar_cierre_operaciones(float(last_candle.get('Close', 0)), df.index[-1])
-            except Exception:
-                pass
-
-            self._verificar_cierre_ordenes(last_candle)
 
             # T05: Evaluar Forex Strategies seleccionadas y enviar a RiskManagerIntegration
             try:
@@ -962,6 +1100,25 @@ class SimulationHandler:
                     # Instancia única de ForexStrategies para el DF actual
                     fs = ForexStrategies(df)
 
+                    # Preparar mapper y reordenar por prioridad segun escenario
+                    fx_mapper = MarketStrategyMapper()
+                    scenario = getattr(self, 'current_market_scenario', None)
+                    try:
+                        # Construir prioridades por escenario
+                        available_fx = [fx.get('name') for fx in selected_forex if isinstance(fx, dict) and fx.get('name')]
+                        prioritized_fx = fx_mapper.get_prioritized_forex_strategies(scenario, available_fx)
+                        def _fx_weight(item):
+                            try:
+                                n = item.get('name') if isinstance(item, dict) else None
+                                pr = prioritized_fx.get(n)
+                                # Convertir prioridad a peso numérico (igual que get_priority_weight para candle)
+                                return {1: 1.0, 2: 0.5, 3: 0.2, 4: 0.0}.get(getattr(pr, 'value', 99), 0.0)
+                            except Exception:
+                                return 0.0
+                        selected_forex.sort(key=_fx_weight, reverse=True)
+                    except Exception:
+                        pass
+
                     for fx in selected_forex:
                         try:
                             name = fx.get('name') if isinstance(fx, dict) else None
@@ -972,10 +1129,30 @@ class SimulationHandler:
                             if active_total >= max_orders_total:
                                 if getattr(self, 'debug_mode', False):
                                     self.log(f"🚫 Límite total de órdenes alcanzado ({active_total}/{max_orders_total})", 'orange')
+                                try:
+                                    self._audit_log({
+                                        'type': 'forex', 'event': 'skipped_slot_limit_total',
+                                        'strategy': name,
+                                        'active_total': active_total,
+                                        'max_total': max_orders_total,
+                                        'scenario': getattr(scenario, 'value', None)
+                                    })
+                                except Exception:
+                                    pass
                                 break
                             if active_forex + opens_forex_this_tick >= max_forex_ops:
                                 if getattr(self, 'debug_mode', False):
                                     self.log(f"🚫 Límite de órdenes Forex alcanzado en esta vela ({active_forex + opens_forex_this_tick}/{max_forex_ops})", 'orange')
+                                try:
+                                    self._audit_log({
+                                        'type': 'forex', 'event': 'skipped_slot_limit_type',
+                                        'strategy': name,
+                                        'active_type': active_forex + opens_forex_this_tick,
+                                        'max_type': max_forex_ops,
+                                        'scenario': getattr(scenario, 'value', None)
+                                    })
+                                except Exception:
+                                    pass
                                 continue
 
                             method = getattr(fs, name, None)
@@ -1003,6 +1180,99 @@ class SimulationHandler:
 
                             if signal_value == 0:
                                 continue
+
+                            # Filtrado por escenario (priorización/permiso) para Forex
+                            try:
+                                allowed_fx, reason_fx = fx_mapper.should_execute_forex_strategy(name, scenario, signal_value)
+                            except Exception:
+                                allowed_fx, reason_fx = True, 'No mapper'
+                            if not allowed_fx:
+                                if getattr(self, 'debug_mode', False):
+                                    self.log(f"🚫 {name} bloqueada por escenario: {getattr(scenario, 'value', scenario)} ({reason_fx})", 'orange')
+                                try:
+                                    self._audit_log({
+                                        'type': 'forex', 'event': 'blocked_by_scenario',
+                                        'strategy': name, 'signal': int(signal_value),
+                                        'scenario': getattr(scenario, 'value', None), 'reason': reason_fx
+                                    })
+                                except Exception:
+                                    pass
+                                continue
+
+                            # Evitar duplicados por estrategia/dirección (gestión interna)
+                            try:
+                                estrategia_nombre = f"forex_{name}"
+                                # -1 con operaciones activas: cierre por señal permitido
+                                has_any_active = any(
+                                    getattr(op, 'estado', 'ACTIVA') == 'ACTIVA' and getattr(op, 'estrategia', '') == estrategia_nombre
+                                    for op in getattr(self.risk_manager, 'operaciones_activas', [])
+                                ) if hasattr(self, 'risk_manager') and self.risk_manager else False
+
+                                # Cooldown por estrategia/dirección (solo aperturas)
+                                try:
+                                    cooldown_s = int(self._get_config_value('strategy_cooldown_seconds', 0) or 0)
+                                except Exception:
+                                    cooldown_s = 0
+                                entry_side = None
+                                if signal_value == 1:
+                                    entry_side = 'BUY'
+                                elif signal_value == -1 and not has_any_active:
+                                    entry_side = 'SELL'
+                                if entry_side is not None and cooldown_s > 0:
+                                    if self._is_cooldown_hit(estrategia_nombre, entry_side, cooldown_s):
+                                        if getattr(self, 'debug_mode', False):
+                                            self.log(f"⏳ Cooldown activo para {estrategia_nombre} {entry_side}", 'yellow')
+                                        try:
+                                            self._audit_log({
+                                                'type': 'forex', 'event': 'cooldown_skip',
+                                                'strategy': name, 'entry_side': entry_side,
+                                                'cooldown_seconds': cooldown_s
+                                            })
+                                        except Exception:
+                                            pass
+                                        continue
+
+                                # Exit cooldown: si -1 y no hay activas, evitar reintentos redundantes
+                                try:
+                                    exit_cd_s = int(self._get_config_value('exit_cooldown_seconds', 0) or 0)
+                                except Exception:
+                                    exit_cd_s = 0
+                                if signal_value == -1 and not has_any_active and exit_cd_s > 0:
+                                    if self._is_exit_cooldown_hit(estrategia_nombre, exit_cd_s):
+                                        if getattr(self, 'debug_mode', False):
+                                            self.log(f"⏳ Exit cooldown activo para {estrategia_nombre}", 'yellow')
+                                        try:
+                                            self._audit_log({
+                                                'type': 'forex', 'event': 'exit_cooldown_skip',
+                                                'strategy': name,
+                                                'cooldown_seconds': exit_cd_s
+                                            })
+                                        except Exception:
+                                            pass
+                                        continue
+                                    else:
+                                        self._mark_exit_cooldown(estrategia_nombre)
+
+                                if signal_value == 1:
+                                    has_buy_active = any(
+                                        getattr(op, 'estado', 'ACTIVA') == 'ACTIVA' and getattr(op, 'estrategia', '') == estrategia_nombre and getattr(op, 'tipo', '') == 'BUY'
+                                        for op in getattr(self.risk_manager, 'operaciones_activas', [])
+                                    ) if hasattr(self, 'risk_manager') and self.risk_manager else False
+                                    if has_buy_active:
+                                        if getattr(self, 'debug_mode', False):
+                                            self.log(f"⏭️ BUY duplicado omitido para {estrategia_nombre}", 'yellow')
+                                        continue
+                                elif signal_value == -1 and not has_any_active:
+                                    has_sell_active = any(
+                                        getattr(op, 'estado', 'ACTIVA') == 'ACTIVA' and getattr(op, 'estrategia', '') == estrategia_nombre and getattr(op, 'tipo', '') == 'SELL'
+                                        for op in getattr(self.risk_manager, 'operaciones_activas', [])
+                                    ) if hasattr(self, 'risk_manager') and self.risk_manager else False
+                                    if has_sell_active:
+                                        if getattr(self, 'debug_mode', False):
+                                            self.log(f"⏭️ SELL duplicado omitido para {estrategia_nombre}", 'yellow')
+                                        continue
+                            except Exception:
+                                pass
 
                             # Niveles desde estrategia
                             sl_override = float(row['StopLoss']) if 'StopLoss' in result_df.columns and pd.notna(row.get('StopLoss')) else None
@@ -1038,6 +1308,21 @@ class SimulationHandler:
                                 active_forex += 1
                                 if getattr(self, 'debug_mode', False):
                                     self.log(f"✅ Apertura {estrategia_nombre} ({'BUY' if signal_value==1 else 'SELL'}) @ {precio_actual:.5f} | riesgo {risk_percent:.2f}% RR {rr_ratio}", 'green')
+                                try:
+                                    self._audit_log({
+                                        'type': 'forex', 'event': 'opened',
+                                        'strategy': name,
+                                        'signal': int(signal_value),
+                                        'price': float(precio_actual),
+                                        'risk_percent': float(risk_percent),
+                                        'rr_ratio': float(rr_ratio),
+                                        'scenario': getattr(scenario, 'value', None)
+                                    })
+                                except Exception:
+                                    pass
+                                # Marcar cooldown
+                                if entry_side is not None:
+                                    self._mark_cooldown(estrategia_nombre, entry_side)
                         except Exception as e:
                             if getattr(self, 'debug_mode', False):
                                 self.log(f"Error evaluando forex {fx}: {e}", 'red')
