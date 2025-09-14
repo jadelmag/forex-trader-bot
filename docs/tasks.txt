@@ -4,3 +4,18 @@ TODO
 2. Añadir IA a datos en tiempo real.
 3. Conectar con metatrader [TODO]
 
+quiero que los logs siguientes se vean en el log y no en modo debug como hasta ahora:
+
+✅ Apertura 
+SEÑAL DE VENTA/CIERRE
+
+
+Error evaluando forex {'name': 'support_resistance_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'price_action_patterns', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'support_resistance_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+DEBUG Columnas estandarizadas: ['Open', 'High', 'Low', 'Close', 'Volume'] -> ['open', 'high', 'low', 'close', 'volume']
+Error evaluando forex {'name': 'support_resistance_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+
+
+Error evaluando forex {'name': 'macd_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
+Error evaluando forex {'name': 'support_resistance_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'

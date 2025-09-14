@@ -319,14 +319,15 @@ class SimulationHandler:
                         initial_capital = float(config.get('capital', 1000.0))
 
                     max_orders = int(config.get('max_orders', 5))
-                    self.risk_manager = RiskManager(capital_inicial=initial_capital,
-                                                    max_operaciones_activas=max_orders,
-                                                    debug_mode=getattr(self, 'debug_mode', False))
+                    
                     # Config FORZADO para operaciones SHORT/LONG
                     rm_cfg = RiskConfig()
                     rm_cfg.enable_sell_operations = True  # SIEMPRE habilitado
                     rm_cfg.force_open_operations = True   # FORZAR apertura
                     rm_cfg.default_risk_percent = 0.02    # 2% riesgo por operación
+                    self.risk_manager = RiskManager(capital_inicial=initial_capital,
+                                                    max_operaciones_activas=max_orders,
+                                                    debug_mode=getattr(self, 'debug_mode', False))
                     self.risk_integration = RiskManagerIntegration(self.risk_manager, config=rm_cfg,
                                                                    debug_mode=getattr(self, 'debug_mode', False))
                     # Reset por seguridad antes de empezar
@@ -1041,7 +1042,14 @@ class SimulationHandler:
                             # Niveles SL/TP desde estrategia (si disponibles)
                             sl_override = float(row['StopLoss']) if 'StopLoss' in result_df.columns and pd.notna(row.get('StopLoss')) else None
                             tp_override = float(row['TakeProfit']) if 'TakeProfit' in result_df.columns and pd.notna(row.get('TakeProfit')) else None
-                            atr_value = float(row['ATR']) if 'ATR' in result_df.columns and pd.notna(row.get('ATR')) else max(float(row['High']) - float(row['Low']), 1e-6)
+                            # Calcular ATR value - usar columnas del DataFrame original si no están en result_df
+                            if 'ATR' in result_df.columns and pd.notna(row.get('ATR')):
+                                atr_value = float(row['ATR'])
+                            elif 'High' in result_df.columns and 'Low' in result_df.columns:
+                                atr_value = max(float(row['High']) - float(row['Low']), 1e-6)
+                            else:
+                                # Fallback: usar datos de la vela actual
+                                atr_value = max(float(last_candle.get('High', 0)) - float(last_candle.get('Low', 0)), 1e-6)
 
                             # Preparar parámetros para integración
                             precio_actual = float(row.get('Close') or last_candle.get('Close', 0))
@@ -1116,7 +1124,21 @@ class SimulationHandler:
                     opens_forex_this_tick = 0
 
                     # Instancia única de ForexStrategies para el DF actual
-                    fs = ForexStrategies(df)
+                    # Crear copia con columnas en mayúsculas para compatibilidad
+                    df_forex = df.copy()
+                    column_mapping = {
+                        'open': 'Open',
+                        'high': 'High', 
+                        'low': 'Low',
+                        'close': 'Close',
+                        'volume': 'Volume'
+                    }
+                    columns_to_rename = {col: column_mapping[col] for col in df_forex.columns if col in column_mapping}
+                    if columns_to_rename:
+                        df_forex.rename(columns=columns_to_rename, inplace=True)
+                    
+                    
+                    fs = ForexStrategies(df_forex)
 
                     # Preparar mapper y reordenar por prioridad segun escenario
                     fx_mapper = MarketStrategyMapper()
@@ -1178,8 +1200,14 @@ class SimulationHandler:
                                 continue
 
                             # Ejecutar estrategia (usa ExecSignal/StopLoss/TakeProfit/ATR propios)
-                            result_df = method()
-                            if result_df is None or len(result_df) == 0:
+                            try:
+                                result_df = method()
+                                if result_df is None or len(result_df) == 0:
+                                    continue
+                            except Exception as e:
+                                import traceback
+                                self.log(f"❌ Error ejecutando estrategia {name}: {str(e)}", 'red')
+                                self.log(f"Stack trace: {traceback.format_exc()}", 'red')
                                 continue
                             row = result_df.iloc[-1]
 
@@ -1317,7 +1345,14 @@ class SimulationHandler:
                             # Niveles desde estrategia
                             sl_override = float(row['StopLoss']) if 'StopLoss' in result_df.columns and pd.notna(row.get('StopLoss')) else None
                             tp_override = float(row['TakeProfit']) if 'TakeProfit' in result_df.columns and pd.notna(row.get('TakeProfit')) else None
-                            atr_value = float(row['ATR']) if 'ATR' in result_df.columns and pd.notna(row.get('ATR')) else max(float(row['High']) - float(row['Low']), 1e-6)
+                            # Calcular ATR value - usar columnas del DataFrame original si no están en result_df
+                            if 'ATR' in result_df.columns and pd.notna(row.get('ATR')):
+                                atr_value = float(row['ATR'])
+                            elif 'High' in result_df.columns and 'Low' in result_df.columns:
+                                atr_value = max(float(row['High']) - float(row['Low']), 1e-6)
+                            else:
+                                # Fallback: usar datos de la vela actual
+                                atr_value = max(float(last_candle.get('High', 0)) - float(last_candle.get('Low', 0)), 1e-6)
 
                             precio_actual = float(row.get('Close') or last_candle.get('Close', 0))
                             ts = result_df.index[-1]
@@ -1364,12 +1399,11 @@ class SimulationHandler:
                                 if entry_side is not None:
                                     self._mark_cooldown(estrategia_nombre, entry_side)
                         except Exception as e:
-                            if getattr(self, 'debug_mode', False):
-                                self.log(f"Error evaluando forex {fx}: {e}", 'red')
+                            # Mostrar error siempre, no solo en debug mode
+                            self.log(f"Error evaluando forex {fx}: {e}", 'red')
                             continue
             except Exception as e:
-                if getattr(self, 'debug_mode', False):
-                    self.log(f"Error T05 Forex Strategies: {e}", 'orange')
+                self.log(f"Error T05 Forex Strategies: {e}", 'orange')
             
             # Actualizar contadores de slots (para labels del encabezado de la gráfica)
             try:
