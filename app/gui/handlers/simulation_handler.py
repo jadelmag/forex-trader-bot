@@ -222,7 +222,7 @@ class SimulationHandler:
                 except Exception:
                     initial = {}
 
-            from trading_view import CandleStreamerConfigModal
+            from trading_view.config_modal import CandleStreamerConfigModal
 
             def on_connect(config):
                 # Sincronizar capital desde el modal si viene informado
@@ -258,7 +258,7 @@ class SimulationHandler:
                 self._start_streamer_with_config(config)
 
             CandleStreamerConfigModal(
-                parent=self.root,
+                parent=self.main_app.root,
                 symbols=symbols,
                 on_connect=on_connect,
                 initial_values=initial
@@ -632,7 +632,7 @@ class SimulationHandler:
             from strategies.risk_manager_integration import RiskManagerIntegration
             
             # Verificar capital inicial (configurable)
-            capital_limit = self._get_capital_limit()
+            capital_limit = RiskManager()._get_capital_limit()
             if self.main_app.strategy_handler.dinero_ficticio <= capital_limit:
                 self.log(f"OPERACIÓN SALTADA: Capital insuficiente (mínimo ${capital_limit:,.2f})", color='yellow')
                 if progress_callback:
@@ -683,21 +683,6 @@ class SimulationHandler:
         except Exception as e:
             self.log(f"Error en simulación de estrategias de velas: {str(e)}", color='red')
             
-    def _get_capital_limit(self):
-        """Obtiene el límite mínimo de capital desde config/app_config.json (coherente con RiskManager)."""
-        try:
-            # Ubicación del config a nivel de proyecto
-            project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-            config_dir = os.path.join(project_root, 'config')
-            config_file = os.path.join(config_dir, 'app_config.json')
-            if os.path.exists(config_file):
-                with open(config_file, 'r', encoding='utf-8') as f:
-                    cfg = json.load(f)
-                return float(cfg.get('capital_limit', 100.0))
-            return 100.0
-        except Exception:
-            return 100.0
-        
     def _mostrar_estadisticas_finales(self, balance_inicial, balance_final, beneficios_totales, perdidas_totales):
         """Muestra las estadísticas finales de la simulación"""
         # Actualizar la interfaz con los totales
@@ -1464,6 +1449,113 @@ class SimulationHandler:
                 self.main_app.thread_manager.queue_gui_update('simulation_status', (status, color))
         except Exception as e:
             self.log(f"Error actualizando estado de simulación: {str(e)}", color='red')
+    
+    # =====================
+    # Helpers de configuración y auditoría
+    # =====================
+    def _get_config_value(self, key: str, default=None):
+        """Obtiene un valor de configuración desde la simulación o app_config.json.
+        Prioridad: self.simulation_config -> app_config.json -> default.
+        """
+        try:
+            # 1) Config específica de la simulación
+            if hasattr(self, 'simulation_config') and isinstance(self.simulation_config, dict):
+                if key in self.simulation_config:
+                    return self.simulation_config.get(key, default)
+            # 2) Config global de la aplicación
+            try:
+                from app.config_app_modal import ConfigAppModal
+                cfg = ConfigAppModal.get_config() or {}
+                if key in cfg:
+                    return cfg.get(key, default)
+            except Exception:
+                pass
+        except Exception:
+            pass
+        return default
+
+    def _ensure_audit_dir(self) -> str:
+        """Asegura la carpeta de audit log y devuelve su ruta absoluta."""
+        try:
+            audit_dir_name = str(self._get_config_value('audit_log_dir', 'logs') or 'logs')
+            # Carpeta base del proyecto
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+            audit_dir = os.path.join(project_root, audit_dir_name)
+            os.makedirs(audit_dir, exist_ok=True)
+            return audit_dir
+        except Exception:
+            # Fallback a carpeta local
+            try:
+                os.makedirs('logs', exist_ok=True)
+            except Exception:
+                pass
+            return 'logs'
+
+    def _audit_log(self, data: dict):
+        """Escribe un evento de auditoría en formato JSONL si está habilitado en config."""
+        try:
+            enabled = bool(self._get_config_value('audit_log_enabled', True))
+            if not enabled:
+                return
+            audit_dir = self._ensure_audit_dir()
+            # Archivo diario
+            import datetime as _dt
+            date_str = _dt.datetime.utcnow().strftime('%Y%m%d')
+            file_path = os.path.join(audit_dir, f'audit_{date_str}.jsonl')
+            record = {
+                'ts': time.time(),
+                'iso': _dt.datetime.utcnow().isoformat() + 'Z',
+                **(data or {})
+            }
+            with open(file_path, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(record, ensure_ascii=False) + '\n')
+        except Exception:
+            # No romper el flujo si falla la auditoría
+            pass
+
+    # =====================
+    # Helpers de cooldown
+    # =====================
+    def _cooldown_key(self, strategy_name: str, side: str) -> str:
+        return f"{strategy_name}::{side}"
+
+    def _is_cooldown_hit(self, strategy_name: str, side: str, cooldown_seconds: int) -> bool:
+        try:
+            if cooldown_seconds <= 0:
+                return False
+            now = time.time()
+            key = self._cooldown_key(strategy_name, side)
+            last = (self._cooldown_open_times or {}).get(key, 0.0)
+            return (now - last) < cooldown_seconds
+        except Exception:
+            return False
+
+    def _mark_cooldown(self, strategy_name: str, side: str):
+        try:
+            if not hasattr(self, '_cooldown_open_times') or self._cooldown_open_times is None:
+                self._cooldown_open_times = {}
+            key = self._cooldown_key(strategy_name, side)
+            self._cooldown_open_times[key] = time.time()
+        except Exception:
+            pass
+
+    def _is_exit_cooldown_hit(self, strategy_name: str, cooldown_seconds: int) -> bool:
+        try:
+            if cooldown_seconds <= 0:
+                return False
+            now = time.time()
+            last = (self._cooldown_exit_times or {}).get(strategy_name, 0.0)
+            return (now - last) < cooldown_seconds
+        except Exception:
+            return False
+
+    def _mark_exit_cooldown(self, strategy_name: str):
+        try:
+            if not hasattr(self, '_cooldown_exit_times') or self._cooldown_exit_times is None:
+                self._cooldown_exit_times = {}
+            self._cooldown_exit_times[strategy_name] = time.time()
+        except Exception:
+            pass
             
     def log(self, message, color='white'):
         """Método para logging - redirige al main_app si existe"""

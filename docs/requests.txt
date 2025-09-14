@@ -5,6 +5,8 @@ TODO
 3. Conectar con metatrader [TODO]
 
 
+Hacer scrollable ConfigAppModal
+
 
 TODO:
 

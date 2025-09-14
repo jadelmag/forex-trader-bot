@@ -15,7 +15,7 @@ class ConfigAppModal(tk.Toplevel):
         super().__init__(parent)
         self.parent = parent
         self.title("Configuración Forex Trader Bot")
-        self.geometry("460x620")
+        self.geometry("460x800")
         self.resizable(False, False)
         self.grab_set()  # Modal
         
