@@ -4,3 +4,5 @@ TODO
 2. Añadir IA a datos en tiempo real.
 3. Conectar con metatrader [TODO]
 
+
+

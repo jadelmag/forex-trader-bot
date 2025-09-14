@@ -49,7 +49,7 @@ class CandleStreamer:
             
         # Configurar velas visibles
         self.visible_candles = max(1, min(visible_candles, max_plot))
-        self.load_all_candles = True  # Flag para cargar todas las velas al aceptar config
+        self.load_all_candles = False  # Flag para NO cargar todas las velas de golpe
         self.progressive_reveal = True  # Revelado progresivo siempre activado
 
         self.url = URL
@@ -469,8 +469,8 @@ class CandleStreamer:
                 except Exception:
                     pass
             finally:
-                # Notificar que el dibujado visual ha terminado completamente
-                self._log(" Simulación visual completada - Todas las velas dibujadas", 'green')
+                # Notificar que la SIMULACIÓN ha terminado (se procesaron todas las velas del CSV)
+                self._log("📊 Simulación completada - Se procesaron todas las velas del archivo", 'green')
             return
         
         # Programar siguiente paso - 5 segundos entre velas para simular tiempo real
@@ -827,27 +827,39 @@ class CandleStreamer:
                 # Redibujar para que la nueva vela tenga alpha=1 y permita hover
                 # Usar render síncrono para no depender de flags de refresco
                 self._plot_last_candles()
+                
+                # CRÍTICO: Ejecutar callbacks para que detecten patrones en la nueva vela visible
+                # Notificar solo hasta las velas visibles
+                if hasattr(self, 'df') and not self.df.empty:
+                    df_visible = self.df.iloc[:self.visible_candles].copy()
+                    for callback in self._candle_update_callbacks:
+                        try:
+                            if callable(callback):
+                                callback(df_visible)
+                        except Exception as e:
+                            if self.debug_mode:
+                                self._log(f"Error en callback durante revelado: {e}", 'red')
+                
                 # Continuar si aún quedan velas por revelar
                 if self.visible_candles < min(total, self.max_plot):
                     self._schedule_opacity_reveal_step()
                 else:
-                    # Todas reveladas
+                    # Todas las velas han sido DIBUJADAS visualmente
                     self.stop_opacity_reveal()
                     try:
-                        self._log("Analizadas todas las velas", 'green')
+                        self._log(f"✅ Velas visibles: {self.visible_candles}/{min(total, self.max_plot)}", 'green')
                     except Exception:
                         pass
             else:
-                # Nada que revelar (ya estamos al máximo)
+                # Ya se alcanzó el máximo de velas visibles
                 self.stop_opacity_reveal()
                 try:
-                    self._log("Analizadas todas las velas", 'green')
+                    self._log(f"✅ Máximo alcanzado: {self.visible_candles} velas visibles", 'green')
                 except Exception:
                     pass
         except Exception as e:
             self._log(f"Error en opacity reveal step: {e}", 'red')
             self.stop_opacity_reveal()
-
     def on_candle_update(self, callback):
         """Permite registrar un callback que será llamado con el DataFrame
         de velas cada vez que haya una actualización (incluye la vela en curso).
@@ -1321,14 +1333,13 @@ class CandleStreamer:
                 
                 # Control de opacidad: solo las primeras visible_candles son completamente visibles
                 # El resto comienzan con opacidad 0 si progressive_reveal está activado
-                if self.progressive_reveal and i >= self.visible_candles:
-                    alpha = 0.0  # Velas ocultas inicialmente
+                if self.progressive_reveal and not self.load_all_candles and i >= self.visible_candles:
+                    alpha = 0.0  # Velas ocultas inicialmente (NO permiten hover)
                 else:
-                    alpha = 1.0  # Velas visibles
+                    alpha = 1.0  # Velas visibles (permiten hover)
                 
                 # Color de la vela
-                is_bullish = close_price >= open_price
-                candle_color = '#2ca02c' if is_bullish else '#d62728'  # Verde/Rojo
+                candle_color = '#28a745' if close_price >= open_price else '#dc3545'
                 
                 # Dibujar línea de sombra (high-low)
                 shadow_line = self.ax_price.plot([date_num, date_num], [low_price, high_price], 
@@ -1621,35 +1632,43 @@ class CandleStreamer:
                 if self.debug_hover:
                     self._log("No _last_x data available", 'gray')
                 return
+            # Buscar vela más cercana SOLO dentro del rango de datos visibles
+            loc = int(np.argmin(np.abs(self._last_x - event.xdata)))
+            loc = max(0, min(loc, len(self._last_df) - 1))
             
-            # Verificar si event.xdata está en el rango de _last_x
-            x_min, x_max = min(self._last_x), max(self._last_x)
-            if event.xdata < x_min or event.xdata > x_max:
-                if self.debug_hover:
-                    self._log(f"event.xdata {event.xdata:.2f} fuera del rango [{x_min:.2f}, {x_max:.2f}]", 'yellow')
-                # Intentar mapear a coordenadas del eje
+            # PRIMERA VERIFICACIÓN: Verificar que el mouse esté realmente cerca de una vela
+            if loc < len(self._last_x):
+                closest_x = self._last_x[loc]
+                # Calcular distancia en coordenadas del gráfico
                 xlim = self.ax_price.get_xlim()
-                if xlim[0] <= event.xdata <= xlim[1]:
-                    # Mapear desde coordenadas del eje a índice de datos
-                    ratio = (event.xdata - xlim[0]) / (xlim[1] - xlim[0])
-                    loc = int(ratio * (len(self._last_x) - 1))
-                else:
+                graph_width = xlim[1] - xlim[0]
+                tolerance = graph_width * 0.02  # 2% del ancho del gráfico
+                
+                if abs(event.xdata - closest_x) > tolerance:
+                    # Mouse demasiado lejos de cualquier vela - ocultar tooltip
+                    if self._hover_annot is not None and self._hover_annot.get_visible():
+                        if self.debug_hover:
+                            self._log(f"Hiding tooltip - mouse too far from candles", 'gray')
+                        self._hover_annot.set_visible(False)
+                        if self._hover_marker is not None and self._hover_marker.get_visible():
+                            self._hover_marker.set_visible(False)
+                        self._force_canvas_draw()
                     return
-            else:
-                loc = int(np.argmin(np.abs(self._last_x - event.xdata)))
-                loc = max(0, min(loc, len(self._last_df) - 1))
-
-            # Verificar si la vela está dentro del rango visible (solo hover en velas con opacidad = 1)
-            if loc >= self.visible_candles:
-                # Ocultar tooltip si estaba visible
-                if self._hover_annot is not None and self._hover_annot.get_visible():
-                    if self.debug_hover:
-                        self._log(f"Hiding tooltip - candle {loc} is not visible (>= {self.visible_candles})", 'gray')
-                    self._hover_annot.set_visible(False)
-                    if self._hover_marker is not None and self._hover_marker.get_visible():
-                        self._hover_marker.set_visible(False)
-                    self._force_canvas_draw()
-                return
+            
+            # SEGUNDA VERIFICACIÓN: Solo permitir hover en velas realmente visibles (con alpha=1.0)
+            # En modo revelado progresivo, solo las primeras visible_candles tienen alpha=1.0
+            if self.progressive_reveal and not self.load_all_candles:
+                # En modo progresivo, verificar si la vela está dentro del rango visible
+                if loc >= self.visible_candles:
+                    # Ocultar tooltip si estaba visible
+                    if self._hover_annot is not None and self._hover_annot.get_visible():
+                        if self.debug_hover:
+                            self._log(f"Hiding tooltip - candle {loc} is beyond visible range (>= {self.visible_candles})", 'gray')
+                        self._hover_annot.set_visible(False)
+                        if self._hover_marker is not None and self._hover_marker.get_visible():
+                            self._hover_marker.set_visible(False)
+                        self._force_canvas_draw()
+                    return
 
             ts = self._last_df.index[loc]
             row = self._last_df.iloc[loc]
@@ -1758,14 +1777,18 @@ class CandleStreamer:
                 loc = int(np.argmin(np.abs(self._last_x - event.xdata)))
                 loc = max(0, min(loc, len(self._last_df) - 1))
 
-            # Verificar si la vela está dentro del rango visible
-            if loc >= self.visible_candles:
-                if self._hover_annot is not None and self._hover_annot.get_visible():
-                    self._hover_annot.set_visible(False)
-                    if self._hover_marker is not None and self._hover_marker.get_visible():
-                        self._hover_marker.set_visible(False)
-                    self._force_canvas_draw()
-                return
+            # CRÍTICO: Solo permitir hover en velas realmente visibles (con alpha=1.0)
+            # En modo revelado progresivo, solo las primeras visible_candles tienen alpha=1.0
+            if self.progressive_reveal and not self.load_all_candles:
+                # En modo progresivo, verificar si la vela está dentro del rango visible
+                if loc >= self.visible_candles:
+                    # Ocultar tooltip si estaba visible
+                    if self._hover_annot is not None and self._hover_annot.get_visible():
+                        self._hover_annot.set_visible(False)
+                        if self._hover_marker is not None and self._hover_marker.get_visible():
+                            self._hover_marker.set_visible(False)
+                        self._force_canvas_draw()
+                    return
 
             ts = self._last_df.index[loc]
             row = self._last_df.iloc[loc]
@@ -2036,8 +2059,10 @@ class CandleStreamer:
                 if self.debug_mode:
                     self._log(f"Precargadas {len(hist_df)} velas históricas para {self.symbol} ({self.interval}).", 'green')
                 
-                # Programar actualización de gráfico en hilo principal
-                self._schedule_plot_update()
+                # IMPORTANTE: NO mostrar todas las velas de golpe
+                # Solo dibujar las velas iniciales (visible_candles)
+                # El resto se revelarán progresivamente cada 5 segundos
+                self._plot_last_candles()  # Esto respetará visible_candles
                 
                 # Actualizar CSV en background
                 self._thread_pool.submit(self._update_csv_threaded)
