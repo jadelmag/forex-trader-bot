@@ -1,4 +1,6 @@
-# Forex Trader Bot
+# Forex Trader Bot — Visión General y Guía Profesional
+
+Este documento resume el estado actual de la aplicación, las optimizaciones clave realizadas y el nuevo esquema de archivos, con una descripción clara del propósito de cada módulo.
 
 Bot de trading Forex con interfaz gráfica (Tkinter) y soporte de Reinforcement Learning (FinRL + Stable-Baselines3).
 
@@ -9,9 +11,7 @@ Este proyecto permite:
 * Ejecutar estrategias de RL y backtesting.
 * Exportar datos históricos a PKL.
 
- [Ver descripción completa de la aplicación (Overview)](docs/overview.md)
-
----
+[Ver descripción completa de la aplicación (Overview)](docs/overview.md)
 
 ## Requisitos
 
@@ -19,124 +19,238 @@ Este proyecto permite:
 * Conexión a internet (para descargar datos de Yahoo Finance y FinRL)
 * Git (para clonar el repositorio) [Download: https://git-scm.com/downloads]
 
----
+## Características Principales
 
-## Estructura del proyecto
+- Detección de patrones de velas (candlestick) y estrategias forex integradas.
+- Sistema de gestión de riesgo robusto con soporte completo para operaciones BUY/SELL.
+- Simulación de mercado en “tiempo real” usando datos CSV: una nueva vela cada 5 segundos.
+- Sincronización precisa entre el dibujado del gráfico y la detección/operación.
+- Optimización de rendimiento, threading seguro y métricas internas.
+- Configuración dinámica de límites de capital y parámetros de patrones.
+
+## Flujo de Funcionamiento
+
+1. `trading_view/candle_streamer.py` simula la llegada de velas nuevas cada 5 segundos desde CSV.
+2. En cada paso:
+   - Se dibuja la nueva vela en el gráfico (thread UI, no bloqueante).
+   - Inmediatamente (sin delays artificiales) se ejecutan las detecciones de patrones y las estrategias en un thread separado.
+   - Las estrategias generan señales que son procesadas por `strategies/risk_manager_integration.py`, el cual delega a `strategies/risk_manager.py` para abrir/cerrar operaciones con reglas de riesgo.
+3. El sistema registra logs y estadísticas, y actualiza la UI en tiempo real.
+
+## Optimizaciones Clave Implementadas
+
+- Sincronización adaptada al contexto reemplazada por ejecución inmediata tras el dibujado: detección/operaciones ya no esperan delays.
+- Intervalo de simulación realista: 5 segundos entre velas en `_schedule_next_simulation_step()`.
+- Detección en paralelo (`thread` daemon) para no bloquear la UI del gráfico.
+- Consolidación de trailing stops y cierre de operaciones en `RiskManager` con thread safety.
+- Reducción de ruido en logs: mensajes detallados solo en `debug_mode`.
+- Correcciones y mejoras de patrones de velas con configuración centralizada en `patterns/`.
+
+## Esquema de Directorios y Archivos (Resumen)
 
 ```
-forex-trader-bot/
-│
+app/
+├── __init__.py
+├── __main__.py
+├── gui/
+│   ├── __init__.py
+│   ├── main_window.py              # Clase GUIPrincipal: integra modales, gráficos y control general
+│   ├── components/
+│   │   ├── __init__.py
+│   │   ├── menu_bar.py             # Componentes de menú
+│   │   ├── status_bar.py           # Barra de estado con información financiera
+│   │   ├── log_panel.py            # Panel de logs
+│   │   ├── telegram_panel.py       # Panel de Telegram
+│   │   └── progress_bar.py         # Barra de progreso
+│   ├── handlers/
+│   │   ├── __init__.py
+│   │   ├── csv_handler.py          # Manejo de CSV (carga, validaciones, parsing)
+│   │   ├── pattern_handler.py      # Orquestación de detección de patrones de velas
+│   │   ├── strategy_handler.py     # Gestión de estrategias seleccionadas
+│   │   ├── rl_handler.py           # Manejo de aprendizaje por refuerzo
+│   │   ├── simulation_handler.py   # Control del ciclo de simulación
+│   │   └── telegram_handler.py     # Integración con Telegram
+│   └── managers/
+│       ├── __init__.py
+│       ├── thread_manager.py       # Gestión de threads y colas
+│       ├── cache_manager.py        # Gestión de caché (datos y resultados)
+│       └── strategy_manager.py     # Gestión y coordinación de estrategias
 |
-├─ app/                                 # Paquete principal
-│ ├─ __init__.py                        # Inicializa el paquete
-│ ├─ __main__.py                        # Punto de entrada para python -m app
-│ ├─ ai_trainer.py                      # Clase AITrainer, permite entrenar IA
-│ ├─ ai_training_modal.py               # Clase AITrainingModal, permite entrenar IA
-│ ├─ binance_modal.py                   # BinanceSimulationModal, permite simular trading en Binance
-│ ├─ candle_strategies_modal.py         # CandleStrategiesModal, permite simular trading en Binance
-│ ├─ candlestick_chart.py               # Clase CandlestickChart, dibuja velas de CSV o yfinance
-│ ├─ config_app_modal.py                # ConfigAppModal, configuración de email y reportes automáticos
-│ ├─ csv_loader_modal.py                # Clase CSVLoaderModal, permite cargar CSVs
-│ ├─ csv_manager.py                     # Clase CSVManager para manejar archivos CSV
-│ ├─ csv_to_pkl_modal.py                # Clase CSVToPklModal para convertir CSVs a PKLs
-│ ├─ email_service.py                   # EmailService, envío automático de reportes por SMTP
-│ ├─ grafico_manager.py                 # Clase GraficoManager para manejar gráficos
-│ ├─ gui_main.py                        # Clase GUIPrincipal que organiza frames y widgets
-│ ├─ main.py                            # Función main() para ejecutar la app
-│ ├─ patterns_modal.py                  # Clase PatternsModal, permite cargar patrones de velas
-│ ├─ processed_loader_modal.py          # Clase ProcessedLoaderModal, permite cargar archivos PKLs
-│ ├─ progress_modal.py                  # Clase ProgressModal, muestra progreso de operaciones
-│ ├─ report_generator.py                # ReportGenerator, generación automática de reportes de trading
-│ ├─ rl_training_modal.py               # Clase RLTrainingModal, permite entrenar RL
-│ ├─ scheduler_service.py               # SchedulerService, temporizador automático para reportes
-│ ├─ strategies_modal.py                # Clase StrategiesModal, permite cargar estrategias de RL
-│ ├─ test_runner.py                     # PRunner que ejecuta todos los tests
-│ ├─ tooltip_zoom_pan.py                # Funciones para tooltip, zoom y pan [TODO]
-│ └─ window.py                          # Clase Window principal, coordina la GUI
+├── logs/
+│   ├── audit_YYYYMMDD.jsonl        # Auditoría de acciones
+│   └── log_YYYYMMDD_HHMMSS.txt     # Logs de aplicación
 |
-├─ assets/                  # Archivos de assets
-│ └─ icon.png               # Icono de la aplicación
+├── assets/
+│   └── icon.png
 |
-├─ backtesting/             # Carpeta donde se guardan los archivos de backtesting
-│ ├─ __init__.py            # ForexBacktester
-│ └─ backtester.py          # Fichero de backtesting
+├── backtesting/
+│   └── backtester.py               # Infraestructura para pruebas históricas
 |
-├─ config/                  # Archivos de configuración
-│ ├─ app_config.json        # Configuración de email y reportes automáticos
-│ └─ scheduler_state.json   # Estado del scheduler de reportes
+├── config/
+│   ├── app_config.json             # Límites de capital y preferencias de app
+│   ├── candle_bearish_engulfing_reversal.json
+│   ├── candle_bearish_engulfing_strategy.json
+│   ├── candle_bullish_engulfing_reversal.json
+│   ├── ... (más configuraciones de estrategias de velas)
+│   └── ... (más configuraciones de estrategias de velas)
+├── csv/
+│   ├── audusd/
+│   │   ├── DAT_ASCII_AUDUSD_M1_2000.csv
+│   │   ├── DAT_ASCII_AUDUSD_M1_2001.csv
+│   │   └── ...
+│   └── eurusd/
+│       ├── DAT_ASCII_EURUSD_M1_2000.csv
+│       ├── DAT_ASCII_EURUSD_M1_2001.csv
+│       └── ...
+├── docs/
+|   ├── PROJECT_README.md               
+|   ├── market_scene.md                              
+|   ├── schema.md                       
+|   ├── tasks.txt
+|   └── requests.txt
 |
-├─ csv/                     # Archivos CSV de velas
-│ ├─ audusd/ DAT_ASCII_AUDUSD_M1_2023.csv # Velas de AUD/USD
-│ └─ eurusd/ DAT_ASCII_EURUSD_M1_2024.csv # Velas de EUR/USD
+├── ia/
+│   ├── __init__.py
+│   ├── candle_strategy_optimizer.py    # Optimizador y utilidades IA
+│   ├── smart_order_analyzer.py
+│   └── trading_rl_agent.py
 |
-├─ ia/                      # Carpeta donde se guardan los archivos de IA
-│ ├─ __init__.py            # ForexIA
-│ ├─ smart_order_analyzer.py # Nueva clase para análisis inteligente
-│ └─ trading_rl_agent.py    # Clases RL existentes (extensión corregida)
+├── logs/                               # Carpeta general de logs (si aplica)
 |
-├─ logs/
-|├─ best_config_*.json
-|├─ log_*.txt
-|└─ best_model_*.zip
+├── models_rl/
+│   └── ppo_trading.zip
 |
-├─ models_rl/               # Carpeta donde se guardan los archivos de modelos de RL
-│ └─ ppo_trading.zip        # Fichero de modelos de RL
+├── old_code/
+|   ├── candlestickpatterns_optimized.py
+|   ├── candlestickpatterns_original.py
+|   ├── candlestickpatterns_v0.py
+|   └── gui_main_backup.py
 |
-├─ patterns/                # Carpeta donde se guardan los archivos de patrones de velas
-| ├─ __init__.py            # CandlestickPatterns
-| ├─ patterns_utils.py      # Utilidades para patrones
-| └─ candlestickpatterns.py # Patrones de velas
+├── patterns/
+│   ├── __init__.py
+│   ├── candlestickpatterns.py          # Implementación de patrones, configurable
+│   └── pattern_utils.py
 |
-├─ processed/               # Carpeta donde se guardan los archivos procesados (.pkl)
+├── processed/
+|   ├── 2024_first_1000_candles.pkl
+|   ├── DAT_ASCII_EURUSD_M1_2023.pkl
+|   ├── EURUSD_2022.pkl
+|   ├── ...
+|   └── processed_data_2024.pkl
 |
-├─ reports/                 # Reportes automáticos de trading
-│ └─ trading_report_*.txt   # Reportes generados automáticamente
+├── reports/
 |
-├─ rl/                      # Carpeta donde se guardan los archivos de RL
-│ ├─ __init__.py            # ForexRL
-│ └─ rl_agent.py            # Fichero de RL
-│ └─ rl_env.py              # El entorno Gymnasium (TradingEnv)
+├── rl/
+│   ├── __init__.py
+│   ├── rl_agent.py
+│   └── rl_env.py
 |
-├─ strategies/              # Carpeta donde se guardan los archivos de estrategias
-│ ├─ __init__.py            # ForexStrategies
-│ ├─ candle_strategies.py   # Estrategias de velas
-│ ├─ risk_manager.py        # Gestión de riesgo
-│ ├─ strategies.py          # Estrategias de Forex
-│ └─ strategies_utils.py    # Utilidades para estrategias
+├── strategies/
+│   ├── __init__.py
+│   ├── candle_strategies.py            # Estrategias basadas en patrones de velas
+│   ├── market_strategy_mapper.py       # Mapeo de estrategias según contexto de mercado
+│   ├── risk_manager.py                 # Gestión de riesgo consolidada (BUY/SELL, SL/TP, trailing)
+│   └── risk_manager_integration.py     # Integración señales -> operaciones con RiskManager
 |
-├─ symbols/                 # Carpeta donde se guardan los archivos de símbolos
-│ └─ symbols.csv            # Símbolos de monedas
+├── symbols/
+│   └── symbols.csv
 |
-├─ telegram/                # Carpeta donde se guardan los archivos de Telegram
-│ ├─ __init__.py            # TelegramNotifier
-│ └─ telegram-notifier.py   # Notificador de Telegram
+├── telegram/
+│   ├── __init__.py
+│   └── telegram-notifier.py
 |
-├─ trading_view/            # Carpeta donde se guardan los archivos de Trading View
-│ ├─ __init__.py            # CandleStreamer
-│ ├─ trade_view_csv/        # Carpeta donde se guardan los archivos CSV de Trading View
-│ │ └─ EURUSDT_data.csv     # Fichero CSV de Trading View
-│ ├─ candle_streamer.py     # Fichero de Trading View
-│ └─ config_modal.py        # Modal de configuración de CandleStreamer
+├── temp/
 |
-├─ tensorboard_logs/        # Carpeta donde se guardan los archivos de TensorBoard
+├── tensorboard_logs/
 |
-├─ test/
-│ ├─ __init__.py                    # Inicializa el paquete
-│ ├─ quick_test.py                  # Test rápido de estrategias de velas
-│ ├─ simple_test.py                 # Test simple de estrategias de velas
-│ ├─ test_candle_strategies_comprehensive.py                 # Test completo de estrategias de velas
-│ ├─ test_candle_strategies.py      # Test simple de estrategias de velas
-│ ├─ test_candlestick_patterns.py   # Test simple de patrones de velas
-│ ├─ test_strategies.py             # Test simple de estrategias de velas
-│ └─ verify_candle_strategies.py    # Test de estrategias de velas
-|
-├─ .gitignore               # Fichero .gitignore
-├─ csv_parser.py            # Script para convertir CSV crudos de Dukascopy al formato estándar
-├─ LICENSE                  # Licencia del proyecto
-├─ README.md                # Instrucciones de instalación y uso
-├─ requirements.txt         # Dependencias necesarias
-└─ setup.py                 # Configuración del paquete y entry point
+├── trading_view/
+│   ├── __init__.py
+│   ├── trading_view_csv/
+|   |  └── [currency]_data.csv  
+│   ├── candle_streamer.py              # Simulación de mercado; dibujado + notificación de velas
+│   └── config_modal.py                 # Configuración de streaming/visualización
+├── .gitignore
+├── csv_parser.py
+├── LICENSE
+├── README.md                           # README del proyecto (original)
+├── requirements.txt
+└── setup.py
 ```
+
+## Detalles Técnicos por Módulo Clave
+
+- `trading_view/candle_streamer.py`
+  - Simula la llegada de velas desde CSV cada 5s.
+  - Método `_execute_simulation_step()`:
+    - Dibuja la vela con `_update_simulation_chart(df_current)` (UI thread).
+    - Lanza detección/operaciones en paralelo con `_execute_pattern_detection_and_trading(df_current)`.
+  - Threading seguro con locks de datos para evitar condiciones de carrera.
+  - Callbacks de estrategias registrados via `on_candle_update()`.
+
+- `strategies/risk_manager.py`
+  - Gestión de riesgo integral: BUY/SELL, SL/TP, trailing stops, cierres por señal, métricas.
+  - Thread safety con `RLock` para estructuras compartidas.
+  - Sistema de caché para conteo de operaciones activas y limpieza periódica.
+  - Lógica de cierre centralizada, estadísticas y control de capital configurable (lee `config/app_config.json`).
+
+- `strategies/risk_manager_integration.py`
+  - Traduce señales (1, -1, 2, -2, 0) a acciones concretas usando `RiskManager`.
+  - Soporta modo síncrono (`sync_mode=True`) para integraciones con GUI que requieren la Operación devuelta.
+  - Logs de éxito/fallo solo en `debug_mode` para minimizar ruido.
+
+- `patterns/candlestickpatterns.py`
+  - Implementación corregida y robusta de patrones de velas (bullish/bearish) con parámetros configurables:
+    - `doji_threshold`, `tweezer_tolerance`, `min_confidence`, `partial_factor`, `atr_period`, etc.
+  - Correcciones de índices Timestamp vs enteros y lógica bullish/bearish coherente.
+  - `combined_signal_optimized()` usa conteo de patrones y resolución de conflictos.
+
+- `strategies/candle_strategies.py`
+  - Orquesta el uso de patrones para generar señales operativas.
+  - Integra parámetros de configuración y filtros por contexto de mercado.
+
+- `app/gui/main_window.py`
+  - Control de simulaciones y lanzamiento de modales (Estrategias, Binance, Config).
+  - Correcciones de estructura `try/except` y flujo de validaciones.
+
+- `trading_view/config_modal.py`
+  - Parámetros visuales, conexión y setup de la simulación/streaming.
+
+- `config/app_config.json`
+  - Persistencia de límite de capital y otros ajustes de aplicación (con fallback seguro).
+
+## Señales y Convenciones (Resumen)
+
+- `1`: Abrir BUY
+- `-1`: Abrir SELL (si `enable_sell_operations=True`) o cerrar si no se permite SELL
+- `-2`: Forzar abrir SELL siempre
+- `2`: Cerrar operaciones SELL por señal
+- `0`: Cerrar todas las operaciones de la estrategia
+
+## Simulación “Tiempo Real” con CSV
+
+- Intervalo fijo de 5 segundos entre velas.
+- Dibujo y detección desacoplados:
+  - El gráfico se actualiza en el hilo principal.
+  - Las estrategias se ejecutan inmediatamente en paralelo, sin afectar la UI.
+- Esto emula un feed en vivo estable sin depender del WebSocket de Binance.
+
+## Configuración y Requisitos
+
+- Python 3.9+
+- Instalar dependencias: `pip install -r requirements.txt`
+- Configurar límites de capital y preferencias en `config/app_config.json`.
+
+## Buenas Prácticas y Depuración
+
+- Activar `debug_mode` para ver logs detallados (detecciones, timings, callbacks).
+- Verificar el rendimiento con `verify_timing_performance()` en `candle_streamer.py`.
+- Mantener actualizado `app_config.json` para límites y credenciales.
+
+## Próximos Pasos Recomendados
+
+- Integración con MetaTrader para ejecución real.
+- Afinar estrategias para mercados laterales de baja volatilidad.
+- Añadir IA para clasificación del contexto de mercado en tiempo real.
 
 ---
 
@@ -263,6 +377,7 @@ python -m app help
 ```
 
 ---
+
 
 ## Uso básico
 
