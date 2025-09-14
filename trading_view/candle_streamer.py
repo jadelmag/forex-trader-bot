@@ -172,8 +172,8 @@ class CandleStreamer:
         self._last_df = pd.DataFrame()
         self._last_x = None  # posiciones x (mdates float) del último DF
         self._hover_annot = None
+        self.debug_hover = True  # Activar debug para diagnosticar
         self._hover_cid = None
-        self.debug_hover = False  # activar para logs de eventos de hover
         self._hover_marker = None  # marcador visual en la vela
         # Zoom con scroll
         self._scroll_cid = None
@@ -767,15 +767,36 @@ class CandleStreamer:
                 for issue in issues:
                     self._log(f"  - {issue}", 'yellow')
                 return False
-                
         except Exception as e:
             self._log(f"Error verificando timing: {e}", 'red')
             return False
 
     def test_tooltip_visibility(self):
         """Método de prueba para verificar si el tooltip está funcionando"""
+        self._log("=== DIAGNÓSTICO DE TOOLTIP ===", 'cyan')
+        
+        # Verificar si existe la anotación
         if not hasattr(self, '_hover_annot') or self._hover_annot is None:
             self._log("ERROR: Tooltip annotation no existe", 'red')
+            return False
+        
+        # Verificar si los eventos están conectados
+        if not hasattr(self, '_hover_cid') or self._hover_cid is None:
+            self._log("ERROR: Eventos de hover no conectados", 'red')
+            return False
+        
+        # Verificar si hay datos
+        if self._last_df is None or self._last_df.empty:
+            self._log("ERROR: No hay datos para mostrar tooltip", 'red')
+            return False
+        
+        # Verificar canvas
+        if hasattr(self, 'canvas') and self.canvas:
+            self._log("✅ Canvas Tkinter disponible", 'green')
+        elif hasattr(self, 'fig') and self.fig:
+            self._log("✅ Figura matplotlib disponible", 'green')
+        else:
+            self._log("ERROR: No hay canvas disponible", 'red')
             return False
         
         if not hasattr(self, 'ax_price') or self.ax_price is None:
@@ -806,6 +827,8 @@ class CandleStreamer:
     def force_show_tooltip_test(self):
         """Fuerza mostrar el tooltip en el centro del gráfico para pruebas"""
         try:
+            self._log("=== FORZANDO TOOLTIP DE PRUEBA ===", 'cyan')
+            
             if self._last_df is None or self._last_df.empty:
                 self._log("No hay datos para mostrar tooltip de prueba", 'red')
                 return
@@ -828,6 +851,8 @@ class CandleStreamer:
             # Crear texto de prueba
             txt = f"TOOLTIP TEST\n{ts}\nOpen: {float(row['Open']):.5f}\nClose: {float(row['Close']):.5f}"
             
+            self._log(f"Configurando tooltip en posición ({x:.2f}, {y:.2f})", 'blue')
+            
             # Mostrar tooltip
             self._hover_annot.xy = (x, y)
             self._hover_annot.set_position((20, 20))
@@ -839,11 +864,45 @@ class CandleStreamer:
             self._hover_marker.set_markerfacecolor('red')
             self._hover_marker.set_visible(True)
             
-            self._log(f"Tooltip de prueba mostrado en ({x:.2f}, {y:.2f})", 'green')
-            self._force_canvas_draw()
+            self._log(f"Tooltip configurado - Visible: {self._hover_annot.get_visible()}", 'green')
+            self._log(f"Marcador configurado - Visible: {self._hover_marker.get_visible()}", 'green')
+            
+            # Forzar redibujado inmediato
+            if hasattr(self, 'canvas') and self.canvas:
+                self.canvas.draw()
+                self._log("Canvas redibujado con draw()", 'green')
+            elif hasattr(self, 'fig') and self.fig:
+                self.fig.canvas.draw()
+                self._log("Fig canvas redibujado con draw()", 'green')
+            
+            # Verificar después del redibujado
+            self._log(f"POST-DRAW - Tooltip visible: {self._hover_annot.get_visible()}", 'yellow')
             
         except Exception as e:
             self._log(f"Error en tooltip de prueba: {e}", 'red')
+    
+    def debug_tooltip_events(self):
+        """Método para debuggear eventos de tooltip"""
+        self._log("=== DEBUG DE EVENTOS DE TOOLTIP ===", 'cyan')
+        
+        # Verificar conexiones de eventos
+        if hasattr(self, 'fig') and self.fig:
+            callbacks = self.fig.canvas.callbacks.callbacks
+            motion_callbacks = callbacks.get('motion_notify_event', {})
+            self._log(f"Callbacks de motion_notify_event: {len(motion_callbacks)}", 'blue')
+            
+            # Verificar si nuestro callback está registrado
+            if self._hover_cid in motion_callbacks:
+                self._log("✅ Nuestro callback de hover está registrado", 'green')
+            else:
+                self._log("❌ Nuestro callback de hover NO está registrado", 'red')
+        
+        # Verificar estado de debug
+        self._log(f"Debug hover activado: {self.debug_hover}", 'blue')
+        
+        # Verificar datos
+        self._log(f"Datos disponibles: {len(self._last_df) if self._last_df is not None else 0} velas", 'blue')
+        self._log(f"Coordenadas X disponibles: {len(self._last_x) if self._last_x is not None else 0}", 'blue')
 
     # =====================
     # Opacity reveal (alpha)
@@ -1248,7 +1307,88 @@ class CandleStreamer:
         except Exception as e:
             if self.debug_mode:
                 self._log(f"Error verificando datos del gráfico: {e}", 'red')
+
+    def _schedule_plot_update(self):
+        """Programa actualización de gráfico usando thread pool"""
+        if not self.running:
+            return
+        
+        # Enviar tarea de preparación de datos al thread pool
+        future = self._thread_pool.submit(self._prepare_plot_data)
+        
+        # Programar verificación del resultado en el hilo principal
+        if self.parent_frame:
+            self.parent_frame.after(10, lambda: self._check_plot_ready(future))
+        else:
+            # Si no hay parent_frame, ejecutar directamente
+            try:
+                plot_data = future.result(timeout=0.1)
+                if plot_data:
+                    self._update_plot_with_data(plot_data)
+            except:
+                pass
     
+    def _prepare_plot_data(self):
+        """Prepara datos para el gráfico en hilo separado"""
+        try:
+            with self._data_lock:
+                # Construir DataFrame a plotear
+                if self.load_all_candles:
+                    last_df = self.df.copy()  # Cargar todas las velas
+                else:
+                    last_df = self.df.tail(self.max_plot).copy()
+                    
+                if self.current_candle is not None:
+                    temp = pd.DataFrame([self.current_candle]).set_index('Date')
+                    last_df = pd.concat([last_df, temp])
+                    
+                # Asegurar orden por fecha
+                if not last_df.empty:
+                    last_df.sort_index(inplace=True)
+            
+            # Si solo hay 1 fila, añadir punto ficticio
+            if len(last_df) == 1:
+                try:
+                    idx = last_df.index[0]
+                    secs = int(self.interval[:-1]) if self.interval[-1] == 's' else int(self.interval[:-1]) * 60
+                    idx2 = idx + timedelta(seconds=secs)
+                    row = last_df.iloc[0]
+                    dummy = pd.DataFrame({
+                        'Open': [row['Close']],
+                        'High': [row['Close']],
+                        'Low': [row['Close']],
+                        'Close': [row['Close']],
+                        'Volume': [0.0]
+                    }, index=[idx2])
+                    last_df = pd.concat([last_df, dummy])
+                except Exception:
+                    pass
+            
+            if self.debug_mode:
+                self._log(f"Preparando datos: {len(last_df)} filas (visible: {self.visible_candles})", 'gray')
+            
+            return last_df if not last_df.empty else None
+            
+        except Exception as e:
+            if self.debug_mode:
+                self._log(f"Error preparando datos del gráfico: {e}", 'red')
+            return None
+
+    def _check_plot_ready(self, future):
+        """Verifica si los datos del gráfico están listos"""
+        try:
+            if future.done():
+                plot_data = future.result()
+                if plot_data is not None:
+                    self._update_plot_with_data(plot_data)
+            else:
+                # Si no está listo, verificar de nuevo en 10ms
+                if self.parent_frame and self.running:
+                    self.parent_frame.after(10, lambda: self._check_plot_ready(future))
+        except Exception as e:
+            if self.debug_hover:
+                self._log(f"Error verificando datos del gráfico: {e}", 'red')
+
     def _update_plot_with_data(self, last_df):
         """Actualiza el gráfico con datos preparados (ejecuta en hilo principal)"""
         try:
@@ -1257,9 +1397,120 @@ class CandleStreamer:
             # Cachear posiciones X en coordenadas de Matplotlib
             try:
                 self._last_x = mdates.date2num(self._last_df.index.to_pydatetime()) if not self._last_df.empty else None
-            except Exception:
+                if self.debug_hover:
+                    self._log(f"_update_plot_with_data: Actualizando _last_x con {len(self._last_x) if self._last_x is not None else 0} elementos", 'cyan')
+            except Exception as e:
                 self._last_x = None
+                if self.debug_hover:
+                    self._log(f"_update_plot_with_data: Error actualizando _last_x: {e}", 'red')
             
+            # Limpiar los ejes
+            if hasattr(self, 'ax_price'):
+                self.ax_price.clear()
+            if hasattr(self, 'ax_volume'):
+                self.ax_volume.clear()
+            
+            # Limpiar listas de patches
+            self._candle_patches.clear()
+            self._volume_patches.clear()
+            
+            # Dibujar el gráfico con opacidad personalizada
+            self._plot_candles_with_opacity(last_df)
+            
+            # Asegurar que la anotación de hover existe tras limpiar/redibujar
+            self._ensure_hover_annotation()
+
+            # Restaurar límites de zoom del usuario si existen
+            if self._user_xlim is not None:
+                try:
+                    self.ax_price.set_xlim(self._user_xlim)
+                    if hasattr(self, 'ax_volume') and self.ax_volume:
+                        self.ax_volume.set_xlim(self._user_xlim)
+                except Exception:
+                    pass
+
+            # Actualizar el canvas si está en modo embebido
+            if hasattr(self, 'canvas'):
+                self.canvas.draw_idle()  # Usar draw_idle para mejor rendimiento
+            else:
+                plt.pause(0.01)
+                
+            self._pending_refresh = False
+            self._last_refresh_time = time.time()
+            
+        except Exception as e:
+            self._log(f"Error actualizando el gráfico: {e}", 'red')
+            self._pending_refresh = False
+
+    def _refresh_plot(self):
+        """Refresca el gráfico y reinicia el temporizador (thread-safe)"""
+        if self._pending_refresh and self.running:
+            try:
+                # Usar thread pool para procesamiento de datos y after() para UI
+                self._schedule_plot_update()
+            except Exception as e:
+                if self.debug_hover:
+                    self._log(f"Error refrescando gráfico: {e}", 'red')
+            finally:
+                self._pending_refresh = False
+                self._last_refresh_time = time.time()
+
+    def _plot_last_candles(self):
+        # Construir DataFrame a plotear - cargar todas las velas si load_all_candles está activo
+        if self.load_all_candles:
+            last_df = self.df.copy()  # Cargar todas las velas
+        else:
+            last_df = self.df.tail(self.max_plot).copy()
+            
+        if self.current_candle is not None:
+            temp = pd.DataFrame([self.current_candle]).set_index('Date')
+            last_df = pd.concat([last_df, temp])
+        # Asegurar orden por fecha
+        if not last_df.empty:
+            last_df.sort_index(inplace=True)
+
+        # Si solo hay 1 fila, mplfinance puede no dibujar nada (ancho cero). Añadimos un punto ficticio.
+        if len(last_df) == 1:
+            try:
+                idx = last_df.index[0]
+                # Calcular delta temporal desde el intervalo
+                secs = int(self.interval[:-1]) if self.interval[-1] == 's' else int(self.interval[:-1]) * 60
+                idx2 = idx + timedelta(seconds=secs)
+                row = last_df.iloc[0]
+                dummy = pd.DataFrame({
+                    'Open': [row['Close']],
+                    'High': [row['Close']],
+                    'Low': [row['Close']],
+                    'Close': [row['Close']],
+                    'Volume': [0.0]
+                }, index=[idx2])
+                last_df = pd.concat([last_df, dummy])
+                if self.debug_mode:
+                    self._log("Añadido punto ficticio para visualizar la primera vela", 'gray')
+            except Exception as e:
+                if self.debug_mode:
+                    self._log(f"No se pudo añadir punto ficticio: {e}", 'red')
+
+        if self.debug_mode:
+            self._log(f"Plotting {len(last_df)} filas (visible: {self.visible_candles})", 'gray')
+
+        # Guardar el último DF para el manejo de hover
+        self._last_df = last_df
+        # Cachear posiciones X en coordenadas de Matplotlib para evitar problemas de zona horaria
+        try:
+            self._last_x = mdates.date2num(self._last_df.index.to_pydatetime()) if not self._last_df.empty else None
+            if self.debug_hover:
+                self._log(f"_plot_last_candles: Actualizando _last_x con {len(self._last_x) if self._last_x is not None else 0} elementos", 'cyan')
+        except Exception as e:
+            self._last_x = None
+            if self.debug_hover:
+                self._log(f"_plot_last_candles: Error actualizando _last_x: {e}", 'red')
+        
+        if last_df.empty:
+            return
+
+    def _update_plot():
+        try:
             # Limpiar los ejes
             if hasattr(self, 'ax_price'):
                 self.ax_price.clear()
@@ -1750,9 +2001,20 @@ class CandleStreamer:
 
             # Buscar índice de vela más cercano usando coordenadas x numéricas (evita problemas de tz)
             if self._last_x is None or len(self._last_x) == 0:
-                if self.debug_hover:
-                    self._log("No _last_x data available", 'gray')
-                return
+                # Intentar recalcular _last_x si tenemos datos pero _last_x está vacío
+                if self._last_df is not None and not self._last_df.empty:
+                    try:
+                        self._last_x = mdates.date2num(self._last_df.index.to_pydatetime())
+                        if self.debug_hover:
+                            self._log(f"Recalculando _last_x en hover: {len(self._last_x)} elementos", 'yellow')
+                    except Exception as e:
+                        if self.debug_hover:
+                            self._log(f"Error recalculando _last_x: {e}", 'red')
+                        return
+                else:
+                    if self.debug_hover:
+                        self._log("No _last_x data available y no se puede recalcular", 'gray')
+                    return
             # Buscar vela más cercana SOLO dentro del rango de datos visibles
             loc = int(np.argmin(np.abs(self._last_x - event.xdata)))
             loc = max(0, min(loc, len(self._last_df) - 1))
@@ -1868,7 +2130,18 @@ class CandleStreamer:
             
             # Buscar índice de vela más cercano usando coordenadas x numéricas
             if self._last_x is None or len(self._last_x) == 0:
-                return
+                # Intentar recalcular _last_x si tenemos datos pero _last_x está vacío
+                if self._last_df is not None and not self._last_df.empty:
+                    try:
+                        self._last_x = mdates.date2num(self._last_df.index.to_pydatetime())
+                        if self.debug_hover:
+                            self._log(f"Recalculando _last_x en force_show_tooltip_test: {len(self._last_x)} elementos", 'yellow')
+                    except Exception as e:
+                        if self.debug_hover:
+                            self._log(f"Error recalculando _last_x en force_show_tooltip_test: {e}", 'red')
+                        return
+                else:
+                    return
             
             # Verificar si event.xdata está en el rango de _last_x
             x_min, x_max = min(self._last_x), max(self._last_x)
