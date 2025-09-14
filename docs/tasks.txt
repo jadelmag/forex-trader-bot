@@ -5,10 +5,15 @@ TODO
 3. Conectar con metatrader [TODO]
 
 
+Al hacer hover sobre las velas no se muestra el tooltip, puede ser por el z-index??
+
+
+
 quiero que cuando se abra una operacion short o long se actualice el label dinero,
 el dinero se actualizara restando el precio de apertura de la operacion.
 
 y que cuando se cierre la operacion se actualicen los labels:
 - si ha sido con beneficios se actulizara el label de beneficios y se actualizara el label dinero con el dinero actual con el beneficio
-- si ha sido con pérdidas se actulizara el label de pérdidas y se actualizara el label dinero con el dinero actual con la pérdida total
+- si ha sido con pérdidas se actulizara el label de pérdidas y se actualizara el label dinero calculando la diferencia entre el precio de apertura y el precio de cierre.
 
+puedes analizar el fichero audit_20250914.jsonl junto con el testing_logs.txt y ver por qué no se cierra ninguna operacion.

@@ -324,6 +324,28 @@ class RiskManager:
             self.operaciones_perdidas += 1
             self.perdida_perdedoras_total += profit
 
+        # Actualizar labels de dinero cuando se cierra operación
+        try:
+            from app.gui.handlers.simulation_handler import SimulationHandler
+            if hasattr(SimulationHandler, '_current_instance') and SimulationHandler._current_instance:
+                handler = SimulationHandler._current_instance
+                if hasattr(handler.main_app, 'strategy_handler'):
+                    strategy_handler = handler.main_app.strategy_handler
+                    
+                    # Actualizar dinero ficticio con el nuevo capital
+                    strategy_handler.dinero_ficticio = self.capital
+                    
+                    # Actualizar beneficios o pérdidas acumuladas
+                    if profit >= 0:
+                        strategy_handler.beneficios += profit
+                    else:
+                        strategy_handler.perdidas += abs(profit)
+                    
+                    # Actualizar labels
+                    strategy_handler.actualizar_labels()
+        except Exception:
+            pass
+
         # Limpiar notificaciones de estrategia
         if operacion.estrategia:
             self.estrategias_buy_activa_notificadas.discard(operacion.estrategia)
@@ -454,6 +476,22 @@ class RiskManager:
                 # Añadir a operaciones activas
                 self.operaciones_activas.append(operacion)
                 self._invalidar_cache()
+                
+                # Actualizar labels de dinero cuando se abre operación
+                try:
+                    from app.gui.handlers.simulation_handler import SimulationHandler
+                    if hasattr(SimulationHandler, '_current_instance') and SimulationHandler._current_instance:
+                        handler = SimulationHandler._current_instance
+                        if hasattr(handler.main_app, 'strategy_handler'):
+                            strategy_handler = handler.main_app.strategy_handler
+                            
+                            # Actualizar dinero ficticio con el capital después de reservar riesgo
+                            strategy_handler.dinero_ficticio = self.capital
+                            
+                            # Actualizar labels
+                            strategy_handler.actualizar_labels()
+                except Exception:
+                    pass
                 
                 # Registrar estrategia si aplica
                 if estrategia:
