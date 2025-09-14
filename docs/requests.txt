@@ -7,12 +7,7 @@ TODO
 
 TODO:
 
-3. por que muestra simulacion completada en el log y en la grafica se sigue dibujando las velas??
-Quiero que se muestre Simulacion completada cuando se hayan terminado de dibujar TODAS las velas, 
-porque parece que pare a mitad de la simulacion. De echo, para de dibujar velas durante un tiempo (mayor a 5 segundos, como un minuto) y luego sigue dibujando velas.
-
-4. risk_manager_integration.py 
-- esta correcto con las nuevos cambios que se han añadido???
-- Hay codigo duplicado 
-- Hay codigo innecesario
-- Interpreta bien las señales 
+a ver si me explico, candle streamer funciona como si fuera un mercado forex en el que las velas se muestran en "tiempo real".
+Como hay problemas con el websocket de binance, lo que hago es que descargue n velas que yo le indico e intente detectar en que tipo de mercado estamos y empiece a analizar si se pueden abrir operaciones short/long con estrategias forex  y candle strategies seleccionadas.
+Entonces para simular que se van cargando las velas, cada 5 segundos se dibuja una nueva del csv.
+por lo que quiero que implementes la forma mas optima en la que cuando se dibuje la vela se ejecuten las detecciones + operaciones. El procesamiento es solo para dibujar la vela en la grafica y no debe afectar a las estrategias para su deteccion 

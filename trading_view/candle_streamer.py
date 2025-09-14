@@ -473,11 +473,14 @@ class CandleStreamer:
                 self._log(" Simulación visual completada - Todas las velas dibujadas", 'green')
             return
         
-        # Programar siguiente paso
+        # Programar siguiente paso - 5 segundos entre velas para simular tiempo real
+        INTERVALO_VELAS_MS = 5000  # 5 segundos en milisegundos
+        INTERVALO_VELAS_SEC = 5.0  # 5 segundos
+        
         if hasattr(self, 'parent_frame') and self.parent_frame:
             # Guardar el ID para poder cancelar al detener
             try:
-                self._simulation_after_id = self.parent_frame.after(1000, self._execute_simulation_step)  # 1 segundo por vela
+                self._simulation_after_id = self.parent_frame.after(INTERVALO_VELAS_MS, self._execute_simulation_step)
             except Exception:
                 self._simulation_after_id = None
         else:
@@ -488,7 +491,7 @@ class CandleStreamer:
                         self._simulation_timer.cancel()
                     except Exception:
                         pass
-                self._simulation_timer = threading.Timer(1.0, self._execute_simulation_step)
+                self._simulation_timer = threading.Timer(INTERVALO_VELAS_SEC, self._execute_simulation_step)
                 self._simulation_timer.daemon = True
                 self._simulation_timer.start()
             except Exception:
@@ -510,23 +513,143 @@ class CandleStreamer:
             # Crear DataFrame hasta la vela actual (simulando progreso temporal)
             df_current = self.df.iloc[:self.simulation_index + 1].copy()
             
-            # Notificar a los callbacks (esto activa la detección de patrones y trading)
-            for cb in list(self._candle_update_callbacks):
-                try:
-                    cb(df_current)
-                except Exception as e:
-                    if self.debug_mode:
-                        self._log(f"Error en callback de simulación: {e}", 'red')
+            # PASO 1: Actualizar el gráfico visual (no bloqueante)
+            self._update_simulation_chart(df_current)
+            
+            # PASO 2: Ejecutar callbacks INMEDIATAMENTE para detección + operaciones
+            # Sin delays artificiales - las estrategias deben ejecutarse tan pronto la vela esté lista
+            import threading
+            callback_thread = threading.Thread(
+                target=self._execute_pattern_detection_and_trading,
+                args=(df_current,),
+                daemon=True
+            )
+            callback_thread.start()
             
             # Incrementar índice para siguiente vela
             self.simulation_index += 1
             
-            # Programar siguiente paso
+            # Programar siguiente vela en 5 segundos (simulando tiempo real del mercado)
             self._schedule_next_simulation_step()
             
         except Exception as e:
             self._log(f"Error en paso de simulación: {e}", 'red')
     
+    def _execute_pattern_detection_and_trading(self, df_current):
+        """Ejecuta detección de patrones y operaciones de trading en thread separado"""
+        try:
+            # Log de inicio si debug está activo
+            if self.debug_mode:
+                self._log(f"Ejecutando detección de patrones para vela {self.simulation_index}", 'blue')
+            
+            # Ejecutar todos los callbacks registrados (detección + trading)
+            # Esto incluye estrategias forex y candle patterns
+            for callback in self._candle_update_callbacks:
+                try:
+                    if callable(callback):
+                        callback(df_current)
+                except Exception as e:
+                    if self.debug_mode:
+                        self._log(f"Error en callback: {e}", 'red')
+            
+            if self.debug_mode:
+                self._log(f"Detección completada para vela {self.simulation_index}", 'green')
+                
+        except Exception as e:
+            self._log(f"Error en detección de patrones: {e}", 'red')
+    
+    def _update_simulation_chart(self, df_current):
+        """Actualiza el gráfico con la nueva vela (no bloqueante)"""
+        try:
+            # Actualizar datos internos de forma thread-safe
+            with self._data_lock:
+                self._last_df = df_current.copy()
+            
+            # Programar actualización visual en el thread principal de UI
+            # Esto no bloquea la ejecución de estrategias
+            self._schedule_plot_update()
+            
+            if self.debug_mode:
+                self._log(f"Vela {self.simulation_index} dibujada en gráfico", 'cyan')
+            
+        except Exception as e:
+            if self.debug_mode:
+                self._log(f"Error actualizando gráfico en simulación: {e}", 'red')
+    
+    def _run_callbacks_safe(self, df_current):
+        """Wrapper thread-safe para ejecutar callbacks"""
+        try:
+            # Ejecutar callbacks directamente sin delays adicionales
+            for callback in self._candle_update_callbacks:
+                try:
+                    if callable(callback):
+                        callback(df_current)
+                except Exception as e:
+                    if self.debug_mode:
+                        self._log(f"Error ejecutando callback: {e}", 'red')
+                        
+        except Exception as e:
+            if self.debug_mode:
+                self._log(f"Error en ejecución de callbacks: {e}", 'red')
+
+    def verify_timing_performance(self):
+        """Verifica que el sistema de timing no cause retrasos críticos"""
+        try:
+            import time
+            
+            # Medir tiempo de detección de contexto
+            start_time = time.perf_counter()
+            delay = self._get_adaptive_callback_delay()
+            context_time = (time.perf_counter() - start_time) * 1000
+            
+            # Determinar contexto actual
+            if hasattr(self, 'simulation_mode') and self.simulation_mode:
+                context = "simulación"
+                expected_delay = 150
+            elif self.running and hasattr(self, 'ws') and self.ws:
+                context = "tiempo real"
+                expected_delay = 10
+            else:
+                context = "CSV"
+                expected_delay = 50
+            
+            # Verificaciones de rendimiento
+            performance_ok = True
+            issues = []
+            
+            # 1. Verificar que el delay sea el esperado
+            if delay != expected_delay:
+                issues.append(f"Delay incorrecto: {delay}ms (esperado: {expected_delay}ms)")
+                performance_ok = False
+            
+            # 2. Verificar que la detección de contexto sea rápida (<1ms)
+            if context_time > 1.0:
+                issues.append(f"Detección de contexto lenta: {context_time:.2f}ms")
+                performance_ok = False
+            
+            # 3. Verificar que el delay para tiempo real sea mínimo
+            if context == "tiempo real" and delay > 20:
+                issues.append(f"Delay demasiado alto para tiempo real: {delay}ms")
+                performance_ok = False
+            
+            # 4. Verificar que tengamos acceso a parent_frame para scheduling
+            if not hasattr(self, 'parent_frame') or self.parent_frame is None:
+                issues.append("Sin acceso a parent_frame - usando threading.Timer")
+            
+            # Reportar resultados
+            if performance_ok:
+                self._log(f"✅ Timing optimizado - Contexto: {context}, Delay: {delay}ms, Detección: {context_time:.2f}ms", 'green')
+                return True
+            else:
+                self._log(f"⚠️ Problemas de timing detectados:", 'yellow')
+                for issue in issues:
+                    self._log(f"  - {issue}", 'yellow')
+                return False
+                
+        except Exception as e:
+            self._log(f"Error verificando timing: {e}", 'red')
+            return False
+
     def test_tooltip_visibility(self):
         """Método de prueba para verificar si el tooltip está funcionando"""
         if not hasattr(self, '_hover_annot') or self._hover_annot is None:
