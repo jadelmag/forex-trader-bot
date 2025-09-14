@@ -5,14 +5,10 @@ TODO
 3. Conectar con metatrader [TODO]
 
 
-Hacer scrollable ConfigAppModal
-
-
 TODO:
 
-1. Modificar config_app_modal.py para que muestre las nuevas variables de configuracion que se han creado en app_config.json.
-
-2. Modos de trailing (‘aggressive’, ‘conservative’, ‘hybrid’) leídos desde candle_config y con defaults globales en config. hay algun sitio donde se pueda seleccionar el modo de tralling?
+2. Modos de trailing (‘aggressive’, ‘conservative’, ‘hybrid’) leídos desde candle_config y 
+con defaults globales en config. hay algun sitio donde se pueda seleccionar el modo de tralling?
 
 3. por que muestra simulacion completada en el log y en la grafica se sigue dibujando las velas??
 Quiero que se muestre Simulacion completada cuando se hayan terminado de dibujar TODAS las velas, 

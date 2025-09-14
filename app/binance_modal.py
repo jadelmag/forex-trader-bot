@@ -889,6 +889,20 @@ class BinanceSimulationModal(tk.Toplevel):
         """Devuelve preset por tipo de estrategia según recomendaciones."""
         name = resolve_strategy_name(strategy_name, "candle") if strategy_name else ""
 
+        # Obtener configuración global de trailing desde app_config.json
+        global_trailing_enabled = False
+        global_trailing_mode = ""
+        global_trailing_mult = 1.5
+        
+        try:
+            from .config_app_modal import ConfigAppModal
+            app_config = ConfigAppModal.get_config()
+            global_trailing_enabled = app_config.get('default_trailing_enabled', False)
+            global_trailing_mode = str(app_config.get('default_trailing_mode', '') or '')
+            global_trailing_mult = float(app_config.get('default_trailing_multiplier', 1.5))
+        except Exception:
+            pass
+
         # Categorías
         reversal = {
             "hammer_reversal_strategy",
@@ -919,36 +933,51 @@ class BinanceSimulationModal(tk.Toplevel):
         sltp = {"stop_loss_take_profit"}
         combined = {"multi_pattern_strategy", "swing_trading", "swing_trading_strategy"}
 
-        # Presets
-        def cfg(use_ts, sl, tp, ts_mult=None, use_sc=True, use_sl=True, use_tp=True, use_pr=False):
+        # Presets - usar configuración global como base
+        def cfg(use_ts=None, sl=1.5, tp=3.0, ts_mult=None, use_sc=True, use_sl=True, use_tp=True, use_pr=False, ts_mode=None):
+            # Si no se especifica, usar configuración global
+            final_use_ts = use_ts if use_ts is not None else global_trailing_enabled
+            final_ts_mult = ts_mult if ts_mult is not None else global_trailing_mult
+            final_ts_mode = ts_mode if ts_mode is not None else global_trailing_mode
+            
             d = {
                 "use_signal_change": use_sc,
                 "use_stop_loss": use_sl,
                 "use_take_profit": use_tp,
-                "use_trailing_stop": use_ts,
+                "use_trailing_stop": final_use_ts,
                 "use_pattern_reversal": use_pr,
                 "atr_sl_multiplier": sl,
                 "atr_tp_multiplier": tp,
-                "atr_trailing_multiplier": ts_mult if ts_mult is not None else 1.5
+                "atr_trailing_multiplier": final_ts_mult
             }
+            
+            # Añadir modo de trailing si está configurado
+            if final_ts_mode and final_ts_mode in ('aggressive', 'conservative', 'hybrid'):
+                d["trailing_mode"] = final_ts_mode
+                
             return d
 
         if name in reversal:
-            # Reversión: trailing opcional; por defecto desactivado
-            return cfg(use_ts=False, sl=1.5, tp=3.0, ts_mult=1.5)
+            # Reversión: usar configuración global o desactivado por defecto
+            return cfg(sl=1.5, tp=3.0)
         if name in trend:
+            # Tendencia: forzar trailing activo con multiplicadores específicos
             return cfg(use_ts=True, sl=2.0, tp=4.0, ts_mult=2.0)
         if name in scalping:
-            return cfg(use_ts=True, sl=1.0, tp=2.0, ts_mult=1.5)
+            # Scalping: forzar trailing activo con multiplicadores agresivos
+            return cfg(use_ts=True, sl=1.0, tp=2.0, ts_mult=1.5, ts_mode="aggressive")
         if name in swing_cons:
-            return cfg(use_ts=False, sl=2.5, tp=4.0, ts_mult=2.0)
+            # Swing conservativo: usar configuración global
+            return cfg(sl=2.5, tp=4.0, ts_mult=2.0)
         if name in sltp:
-            return cfg(use_ts=False, sl=1.5, tp=3.0, ts_mult=1.5, use_sc=True)
+            # SL/TP: usar configuración global con signal change
+            return cfg(sl=1.5, tp=3.0, use_sc=True)
         if name in combined:
-            return cfg(use_ts=False, sl=1.5, tp=3.0, ts_mult=1.5)
+            # Combinado: usar configuración global
+            return cfg(sl=1.5, tp=3.0)
 
-        # Default fallback
-        return cfg(use_ts=False, sl=1.5, tp=3.0, ts_mult=1.5)
+        # Default fallback: usar configuración global
+        return cfg(sl=1.5, tp=3.0)
 
     def _schedule_strategy_discovery(self):
         """Programa el discovery de estrategias en background."""

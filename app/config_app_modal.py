@@ -43,6 +43,10 @@ class ConfigAppModal(tk.Toplevel):
         self.exit_cd_var = tk.StringVar(value="0")
         self.audit_enabled_var = tk.IntVar(value=1)
         self.audit_dir_var = tk.StringVar(value="logs")
+        # Trailing global por defecto
+        self.default_trailing_enabled_var = tk.IntVar(value=0)
+        self.default_trailing_mode_var = tk.StringVar(value="")
+        self.default_trailing_mult_var = tk.StringVar(value="1.5")
         
         # Cargar configuración existente
         self._cargar_configuracion()
@@ -186,6 +190,27 @@ class ConfigAppModal(tk.Toplevel):
         row_idx += 1
         tk.Entry(main_frame, textvariable=self.max_account_risk_var, width=10).grid(row=row_idx, column=0, sticky="w", pady=(0,6))
 
+        # Trailing global por defecto
+        row_idx += 1
+        tk.Label(main_frame, text="Trailing por defecto (global):", font=("Segoe UI", 10, "bold")).grid(row=row_idx, column=0, sticky="w", pady=(10, 4))
+        row_idx += 1
+        # Habilitar
+        tk.Checkbutton(main_frame, text="Habilitar trailing global por defecto", variable=self.default_trailing_enabled_var).grid(row=row_idx, column=0, sticky="w")
+        row_idx += 1
+        # Modo por defecto
+        tk.Label(main_frame, text="Modo trailing por defecto (vacío = sin modo):", font=("Segoe UI", 10)).grid(row=row_idx, column=0, sticky="w")
+        row_idx += 1
+        try:
+            mode_combo = ttk.Combobox(main_frame, textvariable=self.default_trailing_mode_var, values=["", "aggressive", "conservative", "hybrid"], state="readonly", width=18)
+            mode_combo.grid(row=row_idx, column=0, sticky="w", pady=(0,6))
+        except Exception:
+            tk.Entry(main_frame, textvariable=self.default_trailing_mode_var, width=18).grid(row=row_idx, column=0, sticky="w", pady=(0,6))
+        row_idx += 1
+        # Multiplicador por defecto
+        tk.Label(main_frame, text="Multiplicador ATR trailing por defecto:", font=("Segoe UI", 10)).grid(row=row_idx, column=0, sticky="w")
+        row_idx += 1
+        tk.Entry(main_frame, textvariable=self.default_trailing_mult_var, width=10).grid(row=row_idx, column=0, sticky="w", pady=(0,6))
+
         # Auditoría
         row_idx += 1
         audit_frame = tk.Frame(main_frame)
@@ -296,6 +321,13 @@ class ConfigAppModal(tk.Toplevel):
                 self.exit_cd_var.set(str(config.get('exit_cooldown_seconds', 0)))
                 self.audit_enabled_var.set(1 if config.get('audit_log_enabled', True) else 0)
                 self.audit_dir_var.set(config.get('audit_log_dir', 'logs'))
+                # Trailing global por defecto
+                self.default_trailing_enabled_var.set(1 if config.get('default_trailing_enabled', False) else 0)
+                self.default_trailing_mode_var.set(str(config.get('default_trailing_mode', '') or ''))
+                try:
+                    self.default_trailing_mult_var.set(str(float(config.get('default_trailing_multiplier', 1.5))))
+                except Exception:
+                    self.default_trailing_mult_var.set("1.5")
                 
         except Exception as e:
             print(f"Error al cargar configuración: {e}")
@@ -311,6 +343,9 @@ class ConfigAppModal(tk.Toplevel):
             self.exit_cd_var.set('0')
             self.audit_enabled_var.set(1)
             self.audit_dir_var.set('logs')
+            self.default_trailing_enabled_var.set(0)
+            self.default_trailing_mode_var.set('')
+            self.default_trailing_mult_var.set('1.5')
     
     def _actualizar_risk_manager(self, capital_limit):
         """Actualizar el archivo risk_manager.py con el nuevo límite de capital"""
@@ -417,6 +452,9 @@ class ConfigAppModal(tk.Toplevel):
                 'exit_cooldown_seconds': int(self.exit_cd_var.get() or 0),
                 'audit_log_enabled': True if self.audit_enabled_var.get() == 1 else False,
                 'audit_log_dir': self.audit_dir_var.get().strip() or 'logs',
+                'default_trailing_enabled': True if self.default_trailing_enabled_var.get() == 1 else False,
+                'default_trailing_mode': (self.default_trailing_mode_var.get() or '').strip(),
+                'default_trailing_multiplier': float(self.default_trailing_mult_var.get() or 1.5),
                 'last_updated': str(datetime.now())
             }
             
@@ -460,6 +498,7 @@ class ConfigAppModal(tk.Toplevel):
         self.analysis_seconds_var.trace_add('write', lambda *args: numeric_only(self.analysis_seconds_var, allow_float=False))
         self.strategy_cd_var.trace_add('write', lambda *args: numeric_only(self.strategy_cd_var, allow_float=False))
         self.exit_cd_var.trace_add('write', lambda *args: numeric_only(self.exit_cd_var, allow_float=False))
+        self.default_trailing_mult_var.trace_add('write', lambda *args: numeric_only(self.default_trailing_mult_var, allow_float=True))
     
     def _cancelar(self):
         """Cancelar y cerrar el modal"""
