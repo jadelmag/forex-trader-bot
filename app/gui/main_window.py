@@ -110,10 +110,16 @@ class GUIPrincipal:
                 self.root.destroy()
             except:
                 pass
-            # Terminar el proceso Python completamente
-            import sys
-            sys.exit(0)
-        
+            # Terminar el proceso Python completamente (forzado)
+            try:
+                import sys
+                sys.exit(0)
+            except SystemExit:
+                pass
+            # Garantizar la terminación inmediata del proceso, evitando que hilos no-daemon lo mantengan vivo
+            import os
+            os._exit(0)
+            
     def reiniciar_app(self):
         """Reinicia la aplicación reemplazando el proceso actual por `python -m app.main`."""
         confirmar = messagebox.askyesno(

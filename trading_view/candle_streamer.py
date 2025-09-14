@@ -126,6 +126,12 @@ class CandleStreamer:
         self._opacity_reveal_enabled = False
         self._opacity_reveal_timer_id = None
         self._opacity_reveal_interval_ms = DEFAULT_CANDLE_REVEAL_INTERVAL
+        # Timers gestionados cuando no hay parent_frame (threading.Timer)
+        self._opacity_timer_thread = None
+
+        # Timers para simulación CSV
+        self._simulation_timer = None            # threading.Timer cuando no hay parent_frame
+        self._simulation_after_id = None         # ID devuelto por Tkinter after() cuando hay parent_frame
         
         # Si se proporciona un frame padre, usamos FigureCanvasTkAgg
         if self.parent_frame:
@@ -420,9 +426,24 @@ class CandleStreamer:
         
         # Programar siguiente paso
         if hasattr(self, 'parent_frame') and self.parent_frame:
-            self.parent_frame.after(1000, self._execute_simulation_step)  # 1 segundo por vela
+            # Guardar el ID para poder cancelar al detener
+            try:
+                self._simulation_after_id = self.parent_frame.after(1000, self._execute_simulation_step)  # 1 segundo por vela
+            except Exception:
+                self._simulation_after_id = None
         else:
-            threading.Timer(1.0, self._execute_simulation_step).start()
+            # Usar Timer daemon y conservar referencia para cancelarlo en stop()
+            try:
+                if self._simulation_timer is not None:
+                    try:
+                        self._simulation_timer.cancel()
+                    except Exception:
+                        pass
+                self._simulation_timer = threading.Timer(1.0, self._execute_simulation_step)
+                self._simulation_timer.daemon = True
+                self._simulation_timer.start()
+            except Exception:
+                self._simulation_timer = None
     
     def _execute_simulation_step(self):
         """Ejecuta un paso de la simulación (procesa una vela)"""
@@ -594,7 +615,18 @@ class CandleStreamer:
             if hasattr(self, 'parent_frame') and self.parent_frame:
                 self._opacity_reveal_timer_id = self.parent_frame.after(self._opacity_reveal_interval_ms, self._opacity_reveal_step)
             else:
-                threading.Timer(self._opacity_reveal_interval_ms / 1000.0, self._opacity_reveal_step).start()
+                # Usar Timer daemon y conservar referencia para cancelarlo en stop()
+                try:
+                    if self._opacity_timer_thread is not None:
+                        try:
+                            self._opacity_timer_thread.cancel()
+                        except Exception:
+                            pass
+                    self._opacity_timer_thread = threading.Timer(self._opacity_reveal_interval_ms / 1000.0, self._opacity_reveal_step)
+                    self._opacity_timer_thread.daemon = True
+                    self._opacity_timer_thread.start()
+                except Exception:
+                    self._opacity_timer_thread = None
         except Exception as e:
             self._log(f"Error programando opacity reveal: {e}", 'red')
 
@@ -1571,7 +1603,7 @@ class CandleStreamer:
             close_price = float(row['Close'])
             change = close_price - open_price
             change_pct = (change / open_price) * 100 if open_price != 0 else 0
-            color = '#28a745' if close_price >= open_price else '#dc3545'
+            color = '#28a745' if close_price >= open_price else '#dc3545'  # Verde si sube, rojo si baja
             
             # Formatear fecha y valores
             ts_str = ts.strftime('%Y-%m-%d %H:%M:%S') if hasattr(ts, 'strftime') else str(ts)
@@ -2030,6 +2062,12 @@ class CandleStreamer:
         self.running = False
         self._pending_refresh = False
         
+        # Detener modo simulación para evitar reprogramaciones
+        try:
+            self.simulation_mode = False
+        except Exception:
+            pass
+        
         # Detener opacity reveal
         self.stop_opacity_reveal()
         
@@ -2051,13 +2089,46 @@ class CandleStreamer:
             except Exception:
                 pass
         
+        # Cancelar timers de simulación/opacity creados sin parent_frame
+        try:
+            if self._simulation_timer is not None:
+                try:
+                    self._simulation_timer.cancel()
+                except Exception:
+                    pass
+                self._simulation_timer = None
+        except Exception:
+            pass
+        try:
+            if self._opacity_timer_thread is not None:
+                try:
+                    self._opacity_timer_thread.cancel()
+                except Exception:
+                    pass
+                self._opacity_timer_thread = None
+        except Exception:
+            pass
+        
+        # Cancelar callbacks programados con Tkinter after
+        try:
+            if hasattr(self, 'parent_frame') and self.parent_frame and self._simulation_after_id is not None:
+                try:
+                    self.parent_frame.after_cancel(self._simulation_after_id)
+                except Exception:
+                    pass
+                self._simulation_after_id = None
+        except Exception:
+            pass
+
+        
         # Cerrar thread pool y esperar a que terminen las tareas
         if hasattr(self, '_thread_pool'):
             try:
                 self._thread_pool.shutdown(wait=False, cancel_futures=True)
             except Exception:
                 pass
-            
+			
+			
         # Cerrar la figura de matplotlib
         if hasattr(self, 'fig') and self.fig:
             try:
