@@ -296,6 +296,19 @@ class RiskManager:
         
         profit = operacion.cerrar(precio_cierre, timestamp)
         
+        # Log de cierre de operación
+        profit_text = f"+{profit:.5f}" if profit >= 0 else f"{profit:.5f}"
+        color = "green" if profit >= 0 else "red"
+        
+        # Importar logger si está disponible
+        try:
+            from app.gui.handlers.simulation_handler import SimulationHandler
+            if hasattr(SimulationHandler, '_current_instance') and SimulationHandler._current_instance:
+                handler = SimulationHandler._current_instance
+                handler.log(f"🔴 Cierre {operacion.estrategia} {operacion.tipo} @ {precio_cierre:.5f} | P&L: {profit_text} | {motivo}", color)
+        except Exception:
+            pass
+        
         # Gestión de capital unificada
         if operacion.tipo in ['BUY', 'SELL']:
             self.capital += operacion.riesgo_reservado + profit

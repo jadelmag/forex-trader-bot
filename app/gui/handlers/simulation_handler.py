@@ -14,9 +14,12 @@ from strategies.market_strategy_mapper import MarketStrategyMapper
 from strategies.strategies import ForexStrategies
 
 class SimulationHandler:
+    _current_instance = None
     def __init__(self, main_app):
         self.main_app = main_app
         self.candle_streamer = None
+        # Establecer instancia actual para logs de cierre
+        SimulationHandler._current_instance = self
         
     def iniciar_streamer(self):
         """Muestra el modal de configuración y luego inicia el CandleStreamer"""
@@ -1076,8 +1079,7 @@ class SimulationHandler:
                                 opens_candle_this_tick += 1
                                 active_total += 1
                                 active_candle += 1
-                                if getattr(self, 'debug_mode', False):
-                                    self.log(f"✅ Apertura {estrategia_nombre} ({'BUY' if signal_value==1 else 'SELL'}) @ {precio_actual:.5f}", 'green')
+                                self.log(f"✅ Apertura {estrategia_nombre} ({'BUY' if signal_value==1 else 'SELL'}) @ {precio_actual:.5f}", 'green')
                                 try:
                                     self._audit_log({
                                         'type': 'candle', 'event': 'opened',
@@ -1381,8 +1383,7 @@ class SimulationHandler:
                                 opens_forex_this_tick += 1
                                 active_total += 1
                                 active_forex += 1
-                                if getattr(self, 'debug_mode', False):
-                                    self.log(f"✅ Apertura {estrategia_nombre} ({'BUY' if signal_value==1 else 'SELL'}) @ {precio_actual:.5f} | riesgo {risk_percent:.2f}% RR {rr_ratio}", 'green')
+                                self.log(f"✅ Apertura {estrategia_nombre} ({'BUY' if signal_value==1 else 'SELL'}) @ {precio_actual:.5f} | riesgo {risk_percent:.2f}% RR {rr_ratio}", 'green')
                                 try:
                                     self._audit_log({
                                         'type': 'forex', 'event': 'opened',

@@ -4,18 +4,11 @@ TODO
 2. Añadir IA a datos en tiempo real.
 3. Conectar con metatrader [TODO]
 
-quiero que los logs siguientes se vean en el log y no en modo debug como hasta ahora:
 
-✅ Apertura 
-SEÑAL DE VENTA/CIERRE
+quiero que cuando se abra una operacion short o long se actualice el label dinero,
+el dinero se actualizara restando el precio de apertura de la operacion.
 
+y que cuando se cierre la operacion se actualicen los labels:
+- si ha sido con beneficios se actulizara el label de beneficios y se actualizara el label dinero con el dinero actual con el beneficio
+- si ha sido con pérdidas se actulizara el label de pérdidas y se actualizara el label dinero con el dinero actual con la pérdida total
 
-Error evaluando forex {'name': 'support_resistance_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
-Error evaluando forex {'name': 'price_action_patterns', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
-Error evaluando forex {'name': 'support_resistance_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
-DEBUG Columnas estandarizadas: ['Open', 'High', 'Low', 'Close', 'Volume'] -> ['open', 'high', 'low', 'close', 'volume']
-Error evaluando forex {'name': 'support_resistance_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
-
-
-Error evaluando forex {'name': 'macd_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
-Error evaluando forex {'name': 'support_resistance_strategy', 'risk': 0.01, 'rr_ratio': 2.0}: 'High'
