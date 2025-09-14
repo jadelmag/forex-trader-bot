@@ -395,6 +395,129 @@ class RiskManager:
         """Mismo método que original"""
         return self.get_estadisticas()
 
+    def abrir_operacion(self, tipo, precio, timestamp, stop_loss, take_profit, 
+                       riesgo_por_operacion=0.01, estrategia=None):
+        """
+        Abre una nueva operación BUY o SELL
+        
+        NOTA: Este método es usado SOLO para BACKTESTING con datos PKL/CSV.
+        Para trading en tiempo real con Binance, las operaciones se manejan
+        a través de risk_manager_integration.py usando el método process_signal().
+        """
+        with self._main_lock:
+            try:
+                inicio_tiempo = time.time()
+                
+                # Validar parámetros
+                if not self._validar_parametros_operacion(tipo, precio, stop_loss, (timestamp, estrategia)):
+                    return None
+                
+                # Calcular lote size
+                lote_size, error = self._calcular_lote_size(tipo, precio, stop_loss, riesgo_por_operacion)
+                if error:
+                    self.last_error = error
+                    return None
+                
+                # Reservar capital según tipo
+                riesgo_dinero = self.capital * riesgo_por_operacion
+                self.capital -= riesgo_dinero
+                
+                # Crear operación
+                self.contador_operaciones += 1
+                operacion = Operacion(
+                    id_operacion=self.contador_operaciones,
+                    tipo=tipo,
+                    precio_apertura=precio,
+                    timestamp=timestamp,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                    lote_size=lote_size,
+                    estrategia=estrategia
+                )
+                
+                # Guardar riesgo reservado
+                operacion.riesgo_reservado = riesgo_dinero
+                
+                # Añadir a operaciones activas
+                self.operaciones_activas.append(operacion)
+                self._invalidar_cache()
+                
+                # Registrar estrategia si aplica
+                if estrategia:
+                    self._registrar_estrategia_en_vela(timestamp, estrategia)
+                
+                # Métricas de rendimiento
+                tiempo_apertura = time.time() - inicio_tiempo
+                self.performance_metrics['operaciones_abiertas'] += 1
+                
+                if hasattr(self, '_tiempos_operacion'):
+                    self._tiempos_operacion.append(tiempo_apertura)
+                    if len(self._tiempos_operacion) > 100:
+                        self._tiempos_operacion = self._tiempos_operacion[-100:]
+                    self.performance_metrics['tiempo_promedio_apertura'] = sum(self._tiempos_operacion) / len(self._tiempos_operacion)
+                else:
+                    self._tiempos_operacion = [tiempo_apertura]
+                    self.performance_metrics['tiempo_promedio_apertura'] = tiempo_apertura
+                
+                return operacion
+                
+            except Exception as e:
+                self.performance_metrics['errores_thread_safety'] += 1
+                logger.error(f"Error abriendo operación: {e}")
+                return None
+
+    def verificar_cierre_operaciones(self, precio_actual, timestamp):
+        """
+        Verifica y cierra operaciones que alcanzan SL o TP
+        
+        NOTA: Este método es usado SOLO para BACKTESTING con datos PKL/CSV.
+        Para trading en tiempo real con Binance, los cierres se manejan
+        a través de risk_manager_integration.py que usa métodos consolidados
+        como cerrar_operacion_por_estrategia() y verificar_trailing_stops().
+        """
+        operaciones_cerradas = []
+        
+        with self._main_lock:
+            try:
+                for operacion in self.operaciones_activas[:]:
+                    if operacion.estado != 'ACTIVA':
+                        continue
+                    
+                    cierre_requerido = False
+                    motivo_cierre = None
+                    
+                    if operacion.tipo == 'BUY':
+                        # Para BUY: cerrar si precio <= SL o precio >= TP
+                        if precio_actual <= operacion.stop_loss:
+                            cierre_requerido = True
+                            motivo_cierre = "STOP_LOSS"
+                        elif precio_actual >= operacion.take_profit:
+                            cierre_requerido = True
+                            motivo_cierre = "TAKE_PROFIT"
+                    
+                    elif operacion.tipo == 'SELL':
+                        # Para SELL: cerrar si precio >= SL o precio <= TP
+                        if precio_actual >= operacion.stop_loss:
+                            cierre_requerido = True
+                            motivo_cierre = "STOP_LOSS"
+                        elif precio_actual <= operacion.take_profit:
+                            cierre_requerido = True
+                            motivo_cierre = "TAKE_PROFIT"
+                    
+                    if cierre_requerido:
+                        self._cerrar_operacion_comun(operacion, precio_actual, timestamp, motivo_cierre)
+                        operaciones_cerradas.append(operacion)
+                        self.operaciones_cerradas.append(operacion)
+                        self.operaciones_activas.remove(operacion)
+                        self._invalidar_cache()
+                
+                return operaciones_cerradas
+                
+            except Exception as e:
+                self.performance_metrics['errores_thread_safety'] += 1
+                logger.error(f"Error en verificar_cierre_operaciones: {e}")
+                return []
+
     def verificar_trailing_stops(self, precio_actual, timestamp, atr_value=None):
         """Verifica y ejecuta trailing stops para operaciones BUY y SELL"""
         operaciones_cerradas = []
