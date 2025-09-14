@@ -285,13 +285,13 @@ class RiskManager:
         
         if lote_size <= 0:
             if self.debug_mode:
-                logger.debug(f"Tamaño de lote inválido (<= 0). riesgo_por_pip={riesgo_por_pip:.8f}, riesgo_dinero={riesgo_dinero:.2f}")
-            return None, "Tamaño de lote inválido (<= 0)"
+                return None, "Lote size calculado <= 0"
+            return None, "Lote size inválido"
 
         return float(lote_size), None
 
     def _cerrar_operacion_comun(self, operacion, precio_cierre, timestamp, motivo="AUTO_CLOSE"):
-        """Método centralizado para cerrar operaciones - elimina duplicación"""
+        """Método centralizado para cerrar operaciones - Sistema Forex completo"""
         inicio_tiempo = time.time()
         
         profit = operacion.cerrar(precio_cierre, timestamp)
@@ -309,22 +309,23 @@ class RiskManager:
         except Exception:
             pass
         
-        # Gestión de capital unificada
-        if operacion.tipo in ['BUY', 'SELL']:
-            self.capital += operacion.riesgo_reservado + profit
-        else:
-            self.capital += profit
+        # SISTEMA FOREX: Balance + Margen + P&L
+        # 1. Devolver el margen bloqueado al balance
+        self.capital += operacion.riesgo_reservado
         
-        # Actualizar estadísticas
+        # 2. Aplicar el P&L al balance
+        self.capital += profit
+        
+        # Actualizar estadísticas globales
         self.beneficio_total += profit
         if profit >= 0:
             self.operaciones_ganadas += 1
             self.ganancia_ganadoras_total += profit
         else:
             self.operaciones_perdidas += 1
-            self.perdida_perdedoras_total += profit
+            self.perdida_perdedoras_total += abs(profit)
 
-        # Actualizar labels de dinero cuando se cierra operación
+        # Actualizar GUI con sistema de beneficios/pérdidas acumuladas
         try:
             from app.gui.handlers.simulation_handler import SimulationHandler
             if hasattr(SimulationHandler, '_current_instance') and SimulationHandler._current_instance:
@@ -332,16 +333,22 @@ class RiskManager:
                 if hasattr(handler.main_app, 'strategy_handler'):
                     strategy_handler = handler.main_app.strategy_handler
                     
-                    # Actualizar dinero ficticio con el nuevo capital
+                    # Actualizar dinero ficticio con el nuevo balance
                     strategy_handler.dinero_ficticio = self.capital
                     
-                    # Actualizar beneficios o pérdidas acumuladas
+                    # Actualizar beneficios y pérdidas ACUMULADAS
                     if profit >= 0:
+                        # Sumar a beneficios acumulados
+                        if not hasattr(strategy_handler, 'beneficios'):
+                            strategy_handler.beneficios = 0.0
                         strategy_handler.beneficios += profit
                     else:
+                        # Sumar a pérdidas acumuladas (valor absoluto)
+                        if not hasattr(strategy_handler, 'perdidas'):
+                            strategy_handler.perdidas = 0.0
                         strategy_handler.perdidas += abs(profit)
                     
-                    # Actualizar labels
+                    # Actualizar labels en tiempo real
                     strategy_handler.actualizar_labels()
         except Exception:
             pass
