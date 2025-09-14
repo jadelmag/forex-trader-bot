@@ -395,15 +395,102 @@ class RiskManager:
         """Mismo método que original"""
         return self.get_estadisticas()
 
-    def get_performance_metrics(self):
+    def verificar_trailing_stops(self, precio_actual, timestamp, atr_value=None):
+        """Verifica y ejecuta trailing stops para operaciones BUY y SELL"""
+        operaciones_cerradas = []
+        
+        try:
+            with self._main_lock:
+                for operacion in self.operaciones_activas[:]:
+                    if not hasattr(operacion, 'trailing_stop_enabled') or not operacion.trailing_stop_enabled:
+                        continue
+                    
+                    if operacion.estado != 'ACTIVA':
+                        continue
+                    
+                    # Obtener multiplicador de trailing (por defecto 1.5)
+                    trailing_mult = getattr(operacion, 'trailing_multiplier', 1.5)
+                    
+                    if operacion.tipo == 'BUY':
+                        # Actualizar precio más alto alcanzado
+                        if not hasattr(operacion, 'highest_price'):
+                            operacion.highest_price = operacion.precio_apertura
+                        
+                        if precio_actual > operacion.highest_price:
+                            operacion.highest_price = precio_actual
+                            
+                            # Calcular nuevo stop loss usando ATR o estimación
+                            if atr_value and atr_value > 0:
+                                new_stop = operacion.highest_price - (atr_value * trailing_mult)
+                            else:
+                                # Estimación basada en movimiento del precio
+                                price_movement = operacion.highest_price - operacion.precio_apertura
+                                estimated_atr = max(price_movement * 0.1, 0.0001)
+                                new_stop = operacion.highest_price - (estimated_atr * trailing_mult)
+                            
+                            # Solo actualizar si el nuevo stop es mayor (más favorable)
+                            operacion.stop_loss = max(operacion.stop_loss, new_stop)
+                        
+                        # Verificar si se debe cerrar por trailing stop
+                        if precio_actual <= operacion.stop_loss:
+                            operacion_cerrada = self._cerrar_operacion_comun(
+                                operacion, precio_actual, timestamp, "TRAILING_STOP"
+                            )
+                            if operacion_cerrada:
+                                operaciones_cerradas.append(operacion_cerrada)
+                    
+                    elif operacion.tipo == 'SELL':
+                        # Actualizar precio más bajo alcanzado
+                        if not hasattr(operacion, 'lowest_price'):
+                            operacion.lowest_price = operacion.precio_apertura
+                        
+                        if precio_actual < operacion.lowest_price:
+                            operacion.lowest_price = precio_actual
+                            
+                            # Calcular nuevo stop loss usando ATR o estimación
+                            if atr_value and atr_value > 0:
+                                new_stop = operacion.lowest_price + (atr_value * trailing_mult)
+                            else:
+                                # Estimación basada en movimiento del precio
+                                price_movement = operacion.precio_apertura - operacion.lowest_price
+                                estimated_atr = max(price_movement * 0.1, 0.0001)
+                                new_stop = operacion.lowest_price + (estimated_atr * trailing_mult)
+                            
+                            # Solo actualizar si el nuevo stop es menor (más favorable)
+                            operacion.stop_loss = min(operacion.stop_loss, new_stop)
+                        
+                        # Verificar si se debe cerrar por trailing stop
+                        if precio_actual >= operacion.stop_loss:
+                            operacion_cerrada = self._cerrar_operacion_comun(
+                                operacion, precio_actual, timestamp, "TRAILING_STOP"
+                            )
+                            if operacion_cerrada:
+                                operaciones_cerradas.append(operacion_cerrada)
+                    
+        except Exception as e:
+            self._thread_errors += 1
+            print(f"❌ Error verificando trailing stops: {e}")
+        
+        return operaciones_cerradas
+
+    def get_performance_metrics(self) -> dict:
         """Obtiene métricas de rendimiento del RiskManager"""
-        return {
-            **self.performance_metrics,
-            'operaciones_activas_actuales': self.get_operaciones_activas_count(),
-            'velas_en_historial': len(self.estrategias_por_vela),
-            'cache_hit_rate': (self.performance_metrics['cache_hits'] / 
-                             max(1, self.performance_metrics['cache_hits'] + self.performance_metrics['cache_misses'])) * 100
-        }
+        with self._main_lock:
+            return {
+                'operaciones_totales': len(self.operaciones_cerradas) + len(self.operaciones_activas),
+                'operaciones_activas': len(self.operaciones_activas),
+                'operaciones_cerradas': len(self.operaciones_cerradas),
+                'operaciones_ganadas': self.operaciones_ganadas,
+                'operaciones_perdidas': self.operaciones_perdidas,
+                'beneficio_total': self.beneficio_total,
+                'capital_actual': self.capital,
+                'cache_hits': self._cache_hits,
+                'cache_misses': self._cache_misses,
+                'cleanup_operations': self._cleanup_count,
+                'avg_operation_time': np.mean(self._operation_times) if self._operation_times else 0,
+                'thread_errors': self._thread_errors,
+                'estrategias_por_vela_count': len(self.estrategias_por_vela)
+            }
 
     def reset(self):
         """Optimizado con thread safety y limpieza completa"""

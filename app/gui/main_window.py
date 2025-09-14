@@ -217,21 +217,22 @@ class GUIPrincipal:
                                 self.log(f"Estrategia {strategy_name}: Sin señales", color='yellow')
                         except Exception as e:
                             self.log(f"Error en estrategia {strategy_name}: {str(e)}", color='red')
+                    else:
+                        self.log(f"Estrategia {strategy_name} no es callable", color='red')
                 else:
-                    self.log(f"Estrategia {strategy_name} no es callable", color='red')
-            else:
-                self.log(f"Estrategia {strategy_name} no encontrada", color='red')
-        
-        if progress_callback:
-            progress_callback(100, "Procesamiento de estrategias completado")
+                    self.log(f"Estrategia {strategy_name} no encontrada", color='red')
             
-        self.log(f"📊 Procesamiento de estrategias completado. Total de señales: {total_signals}", color='cyan')
-        self.log("⏳ Esperando a que termine el dibujado visual de todas las velas...", color='blue')
-        
-    except Exception as e:
-        self.log(f"Error durante la simulación: {str(e)}", color='red')
-        if progress_callback:
-            progress_callback(100, "Error en simulación")
+            if progress_callback:
+                progress_callback(100, "Procesamiento de estrategias completado")
+                
+            self.log(f"📊 Procesamiento de estrategias completado. Total de señales: {total_signals}", color='cyan')
+            self.log("⏳ Esperando a que termine el dibujado visual de todas las velas...", color='blue')
+            
+        except Exception as e:
+            self.log(f"Error durante la simulación: {str(e)}", color='red')
+            if progress_callback:
+                progress_callback(100, "Error en simulación")
+                
     def cleanup_on_exit(self):
         """Limpieza completa al cerrar la aplicación"""
         try:

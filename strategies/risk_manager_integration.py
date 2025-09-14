@@ -531,9 +531,10 @@ class RiskManagerIntegration:
                 # Verificar cierre por SL/TP
                 operaciones_cerradas = self.risk_manager.verificar_cierre_operaciones(row['Close'], idx)
                 
-                # Verificar trailing stops
+                # Verificar trailing stops usando el método consolidado del RiskManager
                 if self.config.enable_trailing_stop:
-                    trailing_cerradas = self._check_trailing_stops(row['Close'], idx)
+                    atr_value = row.get('ATR', max(row['High'] - row['Low'], 0.0001))
+                    trailing_cerradas = self.risk_manager.verificar_trailing_stops(row['Close'], idx, atr_value)
                     operaciones_cerradas.extend(trailing_cerradas)
                 
                 for op in operaciones_cerradas:
@@ -611,51 +612,6 @@ class RiskManagerIntegration:
             logger.error(f"Error procesando dataframe: {e}")
             return []
 
-    def _check_trailing_stops(self, precio_actual, timestamp):
-        """Verifica y ejecuta trailing stops"""
-        operaciones_cerradas = []
-        
-        try:
-            with self._state_lock:
-                for operacion in self.risk_manager.operaciones_activas[:]:
-                    if not hasattr(operacion, 'trailing_stop_enabled') or not operacion.trailing_stop_enabled:
-                        continue
-                    
-                    if operacion.estado != 'ACTIVA':
-                        continue
-                    
-                    if operacion.tipo == 'BUY':
-                        # Actualizar precio más alto
-                        if precio_actual > operacion.highest_price:
-                            operacion.highest_price = precio_actual
-                            # Actualizar stop loss
-                            atr_value = (operacion.highest_price - operacion.precio_apertura) * 0.1  # Estimación
-                            new_stop = operacion.highest_price - (atr_value * operacion.trailing_multiplier)
-                            operacion.stop_loss = max(operacion.stop_loss, new_stop)
-                        
-                        # Verificar si se debe cerrar
-                        if precio_actual <= operacion.stop_loss:
-                            profit = operacion.cerrar(operacion.stop_loss, timestamp)
-                            self.risk_manager.capital += operacion.riesgo_reservado + profit
-                            self.risk_manager.beneficio_total += profit
-                            
-                            if profit >= 0:
-                                self.risk_manager.operaciones_ganadas += 1
-                                self.risk_manager.ganancia_ganadoras_total += profit
-                            else:
-                                self.risk_manager.operaciones_perdidas += 1
-                                self.risk_manager.perdida_perdedoras_total += profit
-                            
-                            operaciones_cerradas.append(operacion)
-                            self.risk_manager.operaciones_cerradas.append(operacion)
-                            self.risk_manager.operaciones_activas.remove(operacion)
-                    
-                    # Lógica similar para SELL (cuando se implemente completamente)
-                    
-        except Exception as e:
-            logger.error(f"Error verificando trailing stops: {e}")
-        
-        return operaciones_cerradas
 
     def get_metrics(self) -> Dict:
         """Obtiene métricas de rendimiento"""
