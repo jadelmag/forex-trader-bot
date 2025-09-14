@@ -117,21 +117,30 @@ class SimulationHandler:
                 import os
                 self.candle_streamer.csv_file = os.path.join(self.candle_streamer.csv_folder, f'{self.candle_streamer.symbol}_data.csv')
             
+            # Configurar modo simulación CSV con velas iniciales
+            visible_candles = config.get("visible_candles", 5)
+            self.candle_streamer.visible_candles = visible_candles
+            
             # Configurar auto-desconexión si está habilitada
             if config.get("auto_disconnect_after_candles", False):
                 target_candles = config.get("target_candles", 500)
                 self.candle_streamer.configure_auto_disconnect(True, target_candles)
             
-            # Iniciar el streamer en un hilo separado
-            def start_streamer():
+            # Iniciar simulación CSV progresiva en lugar de streaming WebSocket
+            def start_csv_simulation():
                 try:
-                    self.candle_streamer.start()
+                    # Obtener velas iniciales desde la configuración del modal
+                    visible_candles = getattr(self.candle_streamer, 'visible_candles', 20)
+                    self.log(f"📊 Iniciando simulación CSV con {visible_candles} velas iniciales", color="blue")
+                    
+                    # Iniciar simulación CSV con procesamiento secuencial
+                    self.candle_streamer.start_csv_simulation(visible_candles=visible_candles)
                 except Exception as e:
-                    self.log(f"Error en CandleStreamer: {str(e)}", color="red")
+                    self.log(f"Error en simulación CSV: {str(e)}", color="red")
             
             # Iniciar el streamer en un hilo para no bloquear la interfaz
             import threading
-            streamer_thread = threading.Thread(target=start_streamer, daemon=True)
+            streamer_thread = threading.Thread(target=start_csv_simulation, daemon=True)
             streamer_thread.start()
             
             # Inicializar el analizador de mercado si no existe
@@ -249,7 +258,7 @@ class SimulationHandler:
                                 self.main_app.risk_manager.capital = initial_money
                             if hasattr(self.main_app, 'status_bar'):
                                 try:
-                                    self.main_app.status_bar.actualizar_labels(dinero_ficticio=initial_money)
+                                    self.main_app.status_bar.actualizar_dinero_ficticio(initial_money)
                                 except Exception:
                                     pass
                 except Exception:
@@ -313,9 +322,11 @@ class SimulationHandler:
                     self.risk_manager = RiskManager(capital_inicial=initial_capital,
                                                     max_operaciones_activas=max_orders,
                                                     debug_mode=getattr(self, 'debug_mode', False))
-                    # Config por defecto (ventas habilitadas)
+                    # Config FORZADO para operaciones SHORT/LONG
                     rm_cfg = RiskConfig()
-                    rm_cfg.enable_sell_operations = True
+                    rm_cfg.enable_sell_operations = True  # SIEMPRE habilitado
+                    rm_cfg.force_open_operations = True   # FORZAR apertura
+                    rm_cfg.default_risk_percent = 0.02    # 2% riesgo por operación
                     self.risk_integration = RiskManagerIntegration(self.risk_manager, config=rm_cfg,
                                                                    debug_mode=getattr(self, 'debug_mode', False))
                     # Reset por seguridad antes de empezar
@@ -794,7 +805,7 @@ class SimulationHandler:
                         self.main_app.label_sim_status.configure(text=f"Esperando {remaining} velas...", fg="blue")
                     except Exception:
                         pass
-                return
+                # NO hacer return aquí - continuar procesando las velas para que se vean en el gráfico
             else:
                 # Justo al alcanzar 0 velas de espera
                 if not getattr(self, '_sim_started_logged', False):

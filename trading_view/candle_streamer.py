@@ -388,114 +388,223 @@ class CandleStreamer:
                     pass
             
             # Iniciar simulación con datos descargados
-            self._start_csv_simulation()
+            self.start_csv_simulation()
             
         except Exception as e:
-            self._log(f"Error durante la desconexión: {e}", 'red')
+            self._log(f"Error en desconexión automática: {e}", 'red')
+
+    def start_csv_simulation(self, visible_candles=None):
+        """Método público para iniciar simulación CSV siguiendo el flujo correcto"""
+        try:
+            # PASO 1: Descargar datos de Binance y guardar en CSV
+            self._log("📥 PASO 1: Descargando datos de Binance...", 'blue')
+            success = self._download_binance_data_to_csv()
+            if not success:
+                self._log("❌ Error descargando datos de Binance", 'red')
+                return False
+            
+            # PASO 2: Cargar velas iniciales desde config
+            initial_candles = visible_candles or getattr(self, 'visible_candles', 20)
+            self._log(f"📊 PASO 2: Cargando {initial_candles} velas iniciales...", 'blue')
+            self._load_initial_candles_from_csv(initial_candles)
+            
+            # PASO 3: Iniciar procesamiento secuencial cada 5 segundos
+            self._log("⏰ PASO 3: Iniciando procesamiento secuencial (5s por vela)...", 'blue')
+            return self._start_csv_simulation()
+            
+        except Exception as e:
+            self._log(f"Error en simulación CSV: {e}", 'red')
+            return False
+    
+    def _download_binance_data_to_csv(self):
+        """Descarga datos de Binance y los guarda en CSV"""
+        try:
+            import requests
+            
+            if not self.symbol:
+                self._log("❌ No hay símbolo configurado", 'red')
+                return False
+            
+            # Construir URL de Binance API
+            base_url = "https://api.binance.com/api/v3/klines"
+            params = {
+                'symbol': self.symbol,
+                'interval': self.interval,
+                'limit': self.max_plot
+            }
+            
+            self._log(f"🌐 Descargando {self.max_plot} velas de {self.symbol} ({self.interval})...", 'white')
+            response = requests.get(base_url, params=params, timeout=10)
+            
+            if response.status_code != 200:
+                self._log(f"❌ Error API Binance: {response.status_code}", 'red')
+                return False
+            
+            data = response.json()
+            if not data:
+                self._log("❌ No se recibieron datos de Binance", 'red')
+                return False
+            
+            # Convertir a DataFrame
+            df = pd.DataFrame(data, columns=[
+                'timestamp', 'Open', 'High', 'Low', 'Close', 'Volume',
+                'close_time', 'quote_asset_volume', 'number_of_trades',
+                'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore'
+            ])
+            
+            # Procesar datos
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            df = df[['timestamp', 'Open', 'High', 'Low', 'Close', 'Volume']]
+            df[['Open', 'High', 'Low', 'Close', 'Volume']] = df[['Open', 'High', 'Low', 'Close', 'Volume']].astype(float)
+            df.set_index('timestamp', inplace=True)
+            df.index.name = 'Date'
+            
+            # Guardar en CSV
+            os.makedirs(self.csv_folder, exist_ok=True)
+            df.to_csv(self.csv_file)
+            if self.debug_mode:
+                self._log(f"✅ Datos guardados en: {self.csv_file}", 'green')
+                self._log(f"📊 {len(df)} velas descargadas correctamente", 'green')
+            
+            return True
+            
+        except Exception as e:
+            self._log(f"❌ Error descargando datos: {e}", 'red')
+            return False
+    
+    def _load_initial_candles_from_csv(self, initial_candles):
+        """Carga las velas iniciales desde el CSV y las visualiza"""
+        try:
+            if not os.path.exists(self.csv_file):
+                self._log(f"❌ Archivo CSV no encontrado: {self.csv_file}", 'red')
+                return False
+            
+            # Cargar CSV completo
+            full_df = pd.read_csv(self.csv_file, index_col='Date', parse_dates=True)
+            
+            if full_df.empty:
+                self._log("❌ CSV está vacío", 'red')
+                return False
+            
+            # Tomar solo las velas iniciales
+            self.df = full_df.head(initial_candles).copy()
+            self.full_csv_data = full_df  # Guardar datos completos para procesamiento secuencial
+            self.simulation_index = initial_candles + 1  # Empezar desde la siguiente vela
+            
+            self._log(f"✅ Cargadas {len(self.df)} velas iniciales", 'green')
+            self._log(f"📈 Rango: {self.df.index[0]} a {self.df.index[-1]}", 'white')
+            
+            # Visualizar velas iniciales
+            self._plot_candles()
+            
+            return True
+            
+        except Exception as e:
+            self._log(f"❌ Error cargando velas iniciales: {e}", 'red')
+            return False
+    
+    def _plot_candles(self):
+        """Método wrapper para dibujar velas usando el sistema de opacidad"""
+        try:
+            if hasattr(self, 'df') and self.df is not None and not self.df.empty:
+                self._plot_candles_with_opacity(self.df)
+            else:
+                self._log("⚠️ No hay datos para dibujar", 'yellow')
+        except Exception as e:
+            self._log(f"❌ Error dibujando velas: {e}", 'red')
     
     def _start_csv_simulation(self):
-        """Inicia simulación progresiva con los datos CSV descargados"""
+        """Inicia simulación progresiva con procesamiento secuencial cada 5 segundos"""
         try:
-            if self.df is None or self.df.empty:
-                self._log("No hay datos para simular", 'red')
-                return
+            if not hasattr(self, 'full_csv_data') or self.full_csv_data is None or self.full_csv_data.empty:
+                self._log("❌ No hay datos CSV para simular", 'red')
+                return False
             
             # Cambiar a modo simulación
             self.running = False  # WebSocket desconectado
             self.simulation_mode = True
-            self.simulation_index = 0
-            # Activar revelado incremental cada 5 segundos para CSV
-            try:
-                self.enable_incremental_reveal(True)
-            except Exception:
-                self.load_all_candles = False
             
-            # Iniciar simulación progresiva
+            if not hasattr(self, 'simulation_index'):
+                self.simulation_index = len(self.df)  # Empezar después de las velas iniciales
+            
+            self._log(f"🚀 Simulación iniciada desde vela {self.simulation_index}", 'green')
+            
+            # Iniciar procesamiento secuencial
             self._schedule_next_simulation_step()
             
+            return True
+            
         except Exception as e:
-            self._log(f"Error iniciando simulación CSV: {e}", 'red')
+            self._log(f"❌ Error iniciando simulación: {e}", 'red')
+            return False
 
     def _schedule_next_simulation_step(self):
-        """Programa el siguiente paso de la simulación"""
-        if not hasattr(self, 'simulation_mode') or not self.simulation_mode:
-            return
-        
-        if not hasattr(self, 'simulation_index'):
-            self.simulation_index = 0
-        
-        # Verificar si hay más datos para simular
-        if self.simulation_index >= len(self.df):
-            # Finalizar de forma ordenada y anunciar al terminar
-            try:
-                self.simulation_mode = False
-                # Cancelar after() si existe
+        """Programa el siguiente paso de simulación"""
+        try:
+            if not hasattr(self, 'simulation_mode') or not self.simulation_mode:
+                return
+            
+            if not hasattr(self, 'simulation_index'):
+                self.simulation_index = 0
+            
+            # Verificar si hay más datos para simular
+            if self.simulation_index >= len(self.full_csv_data):
+                # Finalizar de forma ordenada y anunciar al terminar
                 try:
-                    if hasattr(self, 'parent_frame') and self.parent_frame and getattr(self, '_simulation_after_id', None):
-                        try:
-                            self.parent_frame.after_cancel(self._simulation_after_id)
-                        except Exception:
-                            pass
-                        self._simulation_after_id = None
+                    self.simulation_mode = False
+                    # Cancelar after() si existe
+                    try:
+                        if hasattr(self, 'parent_frame') and self.parent_frame and getattr(self, '_simulation_after_id', None):
+                            try:
+                                self.parent_frame.after_cancel(self._simulation_after_id)
+                            except Exception:
+                                pass
+                            self._simulation_after_id = None
+                    except Exception:
+                        pass
+                    # Cancelar Timer si existe
+                    try:
+                        if getattr(self, '_simulation_timer', None) is not None:
+                            try:
+                                self._simulation_timer.cancel()
+                            except Exception:
+                                pass
+                        self._simulation_timer = None
+                    except Exception:
+                        pass
                 except Exception:
                     pass
-                # Cancelar Timer si existe
+                finally:
+                    # Notificar que la SIMULACIÓN ha terminado (se procesaron todas las velas del CSV)
+                    self._log("📊 Simulación completada - Se procesaron todas las velas del archivo", 'green')
+                return
+            
+            # Programar siguiente paso - 5 segundos entre velas para simular tiempo real
+            INTERVALO_VELAS_MS = 5000  # 5 segundos en milisegundos
+            INTERVALO_VELAS_SEC = 5.0  # 5 segundos
+            
+            if hasattr(self, 'parent_frame') and self.parent_frame:
+                # Guardar el ID para poder cancelar al detener
                 try:
-                    if getattr(self, '_simulation_timer', None) is not None:
+                    self._simulation_after_id = self.parent_frame.after(INTERVALO_VELAS_MS, self._execute_simulation_step)
+                except Exception:
+                    self._simulation_after_id = None
+            else:
+                # Usar Timer daemon y conservar referencia para cancelarlo en stop()
+                try:
+                    if self._simulation_timer is not None:
                         try:
                             self._simulation_timer.cancel()
                         except Exception:
                             pass
+                    self._simulation_timer = threading.Timer(INTERVALO_VELAS_SEC, self._execute_simulation_step)
+                    self._simulation_timer.daemon = True
+                    self._simulation_timer.start()
+                except Exception:
                     self._simulation_timer = None
-                except Exception:
-                    pass
-                # Detener revelado incremental
-                try:
-                    self.stop_opacity_reveal()
-                except Exception:
-                    pass
-                # Forzar un último render del gráfico antes de anunciar fin
-                try:
-                    if hasattr(self, 'canvas') and self.canvas is not None:
-                        try:
-                            self.canvas.draw_idle()
-                        except Exception:
-                            self.canvas.draw()
-                    elif hasattr(self, 'fig') and self.fig is not None and hasattr(self.fig, 'canvas'):
-                        try:
-                            self.fig.canvas.draw_idle()
-                        except Exception:
-                            self.fig.canvas.draw()
-                except Exception:
-                    pass
-            finally:
-                # Notificar que la SIMULACIÓN ha terminado (se procesaron todas las velas del CSV)
-                self._log("📊 Simulación completada - Se procesaron todas las velas del archivo", 'green')
-            return
-        
-        # Programar siguiente paso - 5 segundos entre velas para simular tiempo real
-        INTERVALO_VELAS_MS = 5000  # 5 segundos en milisegundos
-        INTERVALO_VELAS_SEC = 5.0  # 5 segundos
-        
-        if hasattr(self, 'parent_frame') and self.parent_frame:
-            # Guardar el ID para poder cancelar al detener
-            try:
-                self._simulation_after_id = self.parent_frame.after(INTERVALO_VELAS_MS, self._execute_simulation_step)
-            except Exception:
-                self._simulation_after_id = None
-        else:
-            # Usar Timer daemon y conservar referencia para cancelarlo en stop()
-            try:
-                if self._simulation_timer is not None:
-                    try:
-                        self._simulation_timer.cancel()
-                    except Exception:
-                        pass
-                self._simulation_timer = threading.Timer(INTERVALO_VELAS_SEC, self._execute_simulation_step)
-                self._simulation_timer.daemon = True
-                self._simulation_timer.start()
-            except Exception:
-                self._simulation_timer = None
+                
+        except Exception as e:
+            self._log(f"Error programando siguiente paso: {e}", 'red')
     
     def _execute_simulation_step(self):
         """Ejecuta un paso de la simulación (procesa una vela)"""
@@ -503,15 +612,23 @@ class CandleStreamer:
             if not hasattr(self, 'simulation_mode') or not self.simulation_mode:
                 return
             
-            if self.simulation_index >= len(self.df):
+            if self.simulation_index >= len(self.full_csv_data):
                 return
             
-            # Obtener la vela actual
-            current_row = self.df.iloc[self.simulation_index]
-            current_timestamp = self.df.index[self.simulation_index]
+            # Obtener la vela actual del CSV completo
+            current_row = self.full_csv_data.iloc[self.simulation_index]
+            current_timestamp = self.full_csv_data.index[self.simulation_index]
+            
+            # Agregar la nueva vela al DataFrame actual
+            new_row_df = pd.DataFrame([current_row], index=[current_timestamp])
+            self.df = pd.concat([self.df, new_row_df])
+            
+            # Incrementar velas visibles para mostrar la nueva vela
+            if len(self.df) > self.visible_candles:
+                self.visible_candles = len(self.df)
             
             # Crear DataFrame hasta la vela actual (simulando progreso temporal)
-            df_current = self.df.iloc[:self.simulation_index + 1].copy()
+            df_current = self.df.copy()
             
             # PASO 1: Actualizar el gráfico visual (no bloqueante)
             self._update_simulation_chart(df_current)
@@ -525,6 +642,10 @@ class CandleStreamer:
                 daemon=True
             )
             callback_thread.start()
+            
+            # Log de progreso
+            if self.debug_mode:
+                self._log(f"⏰ Procesada vela {len(self.df)}/{len(self.full_csv_data)} - {current_timestamp}", 'cyan')
             
             # Incrementar índice para siguiente vela
             self.simulation_index += 1
@@ -564,13 +685,14 @@ class CandleStreamer:
             # Actualizar datos internos de forma thread-safe
             with self._data_lock:
                 self._last_df = df_current.copy()
+                # Actualizar también self.df para que el gráfico use los datos más recientes
+                self.df = df_current.copy()
             
-            # Programar actualización visual en el thread principal de UI
-            # Esto no bloquea la ejecución de estrategias
-            self._schedule_plot_update()
+            # Forzar redibujado inmediato del gráfico
+            self._plot_candles()
             
             if self.debug_mode:
-                self._log(f"Vela {self.simulation_index} dibujada en gráfico", 'cyan')
+                self._log(f"Vela {self.simulation_index} dibujada en gráfico ({len(df_current)} velas totales)", 'cyan')
             
         except Exception as e:
             if self.debug_mode:
@@ -753,7 +875,6 @@ class CandleStreamer:
 
     def enable_incremental_reveal(self, enable=True):
         """Activa o desactiva el modo de revelado incremental de velas.
-        
         Args:
             enable (bool): True para activar revelado incremental, False para mostrar todas las velas
         """

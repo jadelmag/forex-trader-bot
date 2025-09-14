@@ -5,4 +5,10 @@ TODO
 3. Conectar con metatrader [TODO]
 
 
+El flujo de carga y de la visualizacion de las velas deberia ser el siguiente:
 
+1. Descargar los datos de binance y guardarlo en un csv.
+2. Cargar las velas que vienen de config_modal.py con el atributo "Velas iniciales" (Procesa y visualiza dichas velas)
+3. Cada 5 segundos, lee del fichero csv la siguiente fila, lo procesa y lo visualiza.
+4. Se intenta abrir una orden long o short mediante el detector de patrones de velas 
+o abrir una orden long o short de tipo forex

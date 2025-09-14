@@ -31,9 +31,10 @@ class RiskConfig:
     atr_trailing_multiplier: float = 1.5
     max_strategies_per_candle: int = 3
     enable_trailing_stop: bool = False
-    enable_sell_operations: bool = True
+    enable_sell_operations: bool = True  # SIEMPRE habilitado para SHORT/LONG
     worker_timeout: float = 0.5
     queue_maxsize: int = 2000
+    force_open_operations: bool = True  # Forzar apertura de operaciones
     
     def to_dict(self) -> dict:
         return asdict(self)
@@ -343,25 +344,24 @@ class RiskManagerIntegration:
                 logger.warning(f"ATR inválido: {atr_value}, usando valor por defecto")
                 atr_value = 0.0001  # Valor mínimo por defecto
 
-            # Determinar tipo de operación basado en la señal
+            # Determinar tipo de operación basado en la señal - FORZAR APERTURA DE OPERACIONES
             if senal == 1:
                 tipo = 'BUY'
             elif senal == -1:
-                # Señal -1: intentar primero cerrar operaciones; si no hay, abrir SELL si está habilitado
-                # 1) Intentar cierre por estrategia
-                cerradas = self.risk_manager.cerrar_operacion_por_estrategia(
-                    estrategia_nombre, precio_actual, timestamp, "EXIT_SIGNAL"
-                )
-                if cerradas:
-                    return cerradas
-                # 2) Si no cerró nada y las ventas están habilitadas, abrir SELL
-                if getattr(self.config, 'enable_sell_operations', False):
+                # Señal -1: SIEMPRE intentar abrir SELL si está habilitado
+                if getattr(self.config, 'enable_sell_operations', True):  # Default True
                     tipo = 'SELL'
                 else:
-                    # Ventas deshabilitadas: solo cierre por señal
-                    return []
+                    # Solo si está explícitamente deshabilitado, intentar cierre
+                    cerradas = self.risk_manager.cerrar_operacion_por_estrategia(
+                        estrategia_nombre, precio_actual, timestamp, "EXIT_SIGNAL"
+                    )
+                    return cerradas if cerradas else []
+            elif senal == -2:
+                # Señal -2: FORZAR apertura SELL (ignorar flag enable_sell_operations)
+                tipo = 'SELL'
             elif senal == 2:
-                # Compatibilidad: 2 = Cierre explícito por señal (si alguna UI lo usa)
+                # Compatibilidad: 2 = Cierre explícito por señal
                 return self.risk_manager.cerrar_operacion_por_estrategia(
                     estrategia_nombre, precio_actual, timestamp, "EXIT_SIGNAL_EXPLICIT"
                 )

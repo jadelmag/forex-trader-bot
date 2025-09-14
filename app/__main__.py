@@ -31,6 +31,8 @@ def main():
             print("  python -m app help    # Show this help message")
             print()
             print("📁 Test Files Available:")
+            print("  check_detection_with_draw_candles  # Check detection with draw candles")
+            print("  test_risk_manager_orders  # RiskManager Orders Test")
             print()
             print("💡 Usage Examples:")
             print("  python -m app run     # Launch the forex trading application")
