@@ -67,15 +67,6 @@ class StatusBar:
         )
         self.label_market_type.pack(side="left", padx=12)
         
-        # Etiqueta de estado de conexión del streamer
-        self.label_streamer_status = tk.Label(
-            self.parent_frame,
-            text="Estado: Desconectado",
-            fg="red",
-            bg=COLORS['BACKGROUND']
-        )
-        self.label_streamer_status.pack(side="left", padx=12)
-        
     def actualizar_labels(self, dinero_ficticio=None, beneficios=None, perdidas=None):
         """Actualiza las etiquetas de estado financiero"""
         if dinero_ficticio is not None:
@@ -104,9 +95,9 @@ class StatusBar:
     def actualizar_estado_streamer(self, conectado=False):
         """Actualiza el estado de conexión del streamer"""
         if conectado:
-            self.label_streamer_status.config(text="Streamer: Conectado", fg="green")
+            self.label_sim_status.config(text="Estado: Conectado", fg="green")
         else:
-            self.label_streamer_status.config(text="Streamer: Desconectado", fg="red")
+            self.label_sim_status.config(text="Estado: Desconectado", fg="red")
             
     def actualizar_tipo_mercado(self, tipo_mercado="Indeterminado"):
         """Actualiza el tipo de mercado detectado"""

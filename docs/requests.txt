@@ -8,3 +8,12 @@ TODO
 1. en config_modal.py es donde se añade el dinero ficticio (capital) que por defecto son 1000, quiero que uses ese.
 2. Quiero que hagas lo que me propones, que arregles todos los errores que has encontrado y elimines codigo que no se utiliza o esta duplicado.
 
+quiero que sigas la traza desde binace modal donde seleccionados las estrategias forex y las candles strategias y el numero maximo de operaciones short y long para cada estrategia, pasando por candle streamer donde se van dibujando las velas, por risk_manager y risk_manager_integration donde se abren operaciones short y long dependiendo del fichero strategies para las forex y candle strategies y candlestickpatterns para las candle estrategies. creo recordar que dependiendo del mercado da prioridad a unas estrategias u a otras
+
+Analiza pasando por esos fichero si encuentras:
+- si esta correcto y todo encaja para que abra operaciones short y long para las candle strategies y las estrategias forex 
+- si hay algun tipo de error 
+- si hay codigo duplicado o ambiguo
+- si detecta bien las estrategias forex y las candle stratgies teniendo en cuenta que se trabaja en tiempo real ( a intervalos de 5 segundos )
+- si aplica bien las configuraciones de todas las estrategias independiendemente de q sean forex o candle
+- cualquier cosa que haga que veas que 

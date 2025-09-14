@@ -30,14 +30,31 @@ class SimulationHandler:
                 try:
                     if "initial_money" in config:
                         initial_money = float(config["initial_money"])
-                        if hasattr(self.main_app, 'dinero_ficticio'):
-                            self.main_app.dinero_ficticio = initial_money
-                        if hasattr(self.main_app, 'risk_manager') and self.main_app.risk_manager is not None:
-                            self.main_app.risk_manager.capital_inicial = initial_money
-                            self.main_app.risk_manager.capital = initial_money
-                        # Refrescar UI si existe el método
-                        if hasattr(self.main_app, 'actualizar_labels'):
-                            self.main_app.actualizar_labels()
+                        # Arquitectura modular: usar StrategyHandler si existe
+                        if hasattr(self.main_app, 'strategy_handler') and self.main_app.strategy_handler is not None:
+                            sh = self.main_app.strategy_handler
+                            try:
+                                sh.dinero_ficticio = initial_money
+                                if hasattr(sh, 'risk_manager') and sh.risk_manager is not None:
+                                    sh.risk_manager.capital_inicial = initial_money
+                                    sh.risk_manager.capital = initial_money
+                                # Refrescar labels
+                                if hasattr(sh, 'actualizar_labels'):
+                                    sh.actualizar_labels()
+                            except Exception:
+                                pass
+                        else:
+                            # Fallback retrocompatible
+                            if hasattr(self.main_app, 'dinero_ficticio'):
+                                self.main_app.dinero_ficticio = initial_money
+                            if hasattr(self.main_app, 'risk_manager') and self.main_app.risk_manager is not None:
+                                self.main_app.risk_manager.capital_inicial = initial_money
+                                self.main_app.risk_manager.capital = initial_money
+                            if hasattr(self.main_app, 'status_bar'):
+                                try:
+                                    self.main_app.status_bar.actualizar_labels(dinero_ficticio=initial_money)
+                                except Exception:
+                                    pass
                 except Exception:
                     pass
                 # Iniciar streamer con nueva configuración
@@ -154,17 +171,29 @@ class SimulationHandler:
                 try:
                     if "initial_money" in config:
                         initial_money = float(config["initial_money"])
-                        self.dinero_ficticio = initial_money
-                        if hasattr(self, 'risk_manager') and self.risk_manager is not None:
-                            self.risk_manager.capital_inicial = initial_money
-                            self.risk_manager.capital = initial_money
-                        try:
-                            self.entry_dinero.delete(0, tk.END)
-                            self.entry_dinero.insert(0, f"{initial_money}")
-                        except Exception:
-                            pass
-                        self.actualizar_labels()
-                        self._queue_gui_update('cash', initial_money)
+                        if hasattr(self.main_app, 'strategy_handler') and self.main_app.strategy_handler is not None:
+                            sh = self.main_app.strategy_handler
+                            try:
+                                sh.dinero_ficticio = initial_money
+                                if hasattr(sh, 'risk_manager') and sh.risk_manager is not None:
+                                    sh.risk_manager.capital_inicial = initial_money
+                                    sh.risk_manager.capital = initial_money
+                                if hasattr(sh, 'actualizar_labels'):
+                                    sh.actualizar_labels()
+                            except Exception:
+                                pass
+                        else:
+                            # Fallback retrocompatible
+                            if hasattr(self.main_app, 'dinero_ficticio'):
+                                self.main_app.dinero_ficticio = initial_money
+                            if hasattr(self.main_app, 'risk_manager') and self.main_app.risk_manager is not None:
+                                self.main_app.risk_manager.capital_inicial = initial_money
+                                self.main_app.risk_manager.capital = initial_money
+                            if hasattr(self.main_app, 'status_bar'):
+                                try:
+                                    self.main_app.status_bar.actualizar_labels(dinero_ficticio=initial_money)
+                                except Exception:
+                                    pass
                 except Exception:
                     pass
                 # Reiniciar con nueva configuración (internamente limpia el gráfico y detiene si está corriendo)
@@ -766,7 +795,7 @@ class SimulationHandler:
                     self.main_app.status_bar.actualizar_tipo_mercado(scenario_text)
                 
                 # Log del cambio de escenario
-                self.log(f"📊 Tipo de mercado detectado: {scenario_text}", color="blue")
+                self.log(f"📊 Tipo de mercado detectado: {scenario_text}", color="white")
                 
                 # Debug: mostrar información adicional si está habilitado
                 if getattr(self, 'debug_mode', False):
