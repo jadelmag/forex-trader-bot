@@ -201,49 +201,6 @@ class CandleStreamer:
         self._header_layout_done = False
         self._ensure_header_ax()
 
-    def set_overlay_texts(self, market_text: str, slots_text: str):
-        """Dibuja/actualiza etiquetas centradas dentro del gráfico de precios.
-        - market_text: "Tipo de mercado: ..."
-        - slots_text:  "Slots: total/max | Candle: x/y | Forex: a/b"
-        """
-        try:
-            ax = getattr(self, 'ax_price', None)
-            if ax is None:
-                return
-            # Texto de tipo de mercado (centro)
-            if self._overlay_market_text is None:
-                self._overlay_market_text = ax.text(
-                    0.5, 0.52, market_text,
-                    transform=ax.transAxes, ha='center', va='center', fontsize=11,
-                    color='white', bbox=dict(facecolor='black', alpha=0.35, boxstyle='round,pad=0.3')
-                )
-            else:
-                self._overlay_market_text.set_text(market_text)
-            # Texto de slots (ligeramente debajo)
-            if self._overlay_slots_text is None:
-                self._overlay_slots_text = ax.text(
-                    0.5, 0.44, slots_text,
-                    transform=ax.transAxes, ha='center', va='center', fontsize=10,
-                    color='white', bbox=dict(facecolor='black', alpha=0.35, boxstyle='round,pad=0.3')
-                )
-            else:
-                self._overlay_slots_text.set_text(slots_text)
-
-            # Solicitar redibujo ligero
-            if hasattr(self, 'canvas') and self.canvas is not None:
-                try:
-                    self.canvas.draw_idle()
-                except Exception:
-                    self.canvas.draw()
-            elif hasattr(self, 'fig') and self.fig is not None:
-                try:
-                    self.fig.canvas.draw_idle()
-                except Exception:
-                    self.fig.canvas.draw()
-        except Exception:
-            # No romper el flujo si falla el overlay
-            pass
-
     def _ensure_header_ax(self):
         """Crea (si no existe) un eje de encabezado en la parte superior de la figura
         y ajusta el margen superior para no invadir el área de velas."""
@@ -327,16 +284,6 @@ class CandleStreamer:
         }, index=idx)
         df.index.name = 'Date'
         return df
-
-    def set_debug_mode(self, debug: bool):
-        """Activa o desactiva el modo debug"""
-        self.debug_mode = debug
-        self._log(f"Modo debug {'activado' if debug else 'desactivado'}", 'blue')
-    
-    def set_debug_hover(self, debug: bool):
-        """Activa o desactiva el debug específico para hover"""
-        self.debug_hover = debug
-        self._log(f"Debug hover {'activado' if debug else 'desactivado'}", 'blue')
     
     def configure_auto_disconnect(self, enabled: bool, target_candles: int = 0):
         """Configura la desconexión automática después de alcanzar el número objetivo de velas"""
@@ -687,6 +634,17 @@ class CandleStreamer:
                 self._last_df = df_current.copy()
                 # Actualizar también self.df para que el gráfico use los datos más recientes
                 self.df = df_current.copy()
+                
+                # IMPORTANTE: Actualizar _last_x con las coordenadas de todas las velas
+                # para que el hover funcione en las nuevas velas añadidas
+                try:
+                    self._last_x = mdates.date2num(self._last_df.index.to_pydatetime()) if not self._last_df.empty else None
+                    if self.debug_hover:
+                        self._log(f"_update_simulation_chart: Actualizando _last_x con {len(self._last_x) if self._last_x is not None else 0} elementos", 'cyan')
+                except Exception as e:
+                    self._last_x = None
+                    if self.debug_hover:
+                        self._log(f"_update_simulation_chart: Error actualizando _last_x: {e}", 'red')
             
             # Forzar redibujado inmediato del gráfico
             self._plot_candles()
@@ -698,22 +656,6 @@ class CandleStreamer:
             if self.debug_mode:
                 self._log(f"Error actualizando gráfico en simulación: {e}", 'red')
     
-    def _run_callbacks_safe(self, df_current):
-        """Wrapper thread-safe para ejecutar callbacks"""
-        try:
-            # Ejecutar callbacks directamente sin delays adicionales
-            for callback in self._candle_update_callbacks:
-                try:
-                    if callable(callback):
-                        callback(df_current)
-                except Exception as e:
-                    if self.debug_mode:
-                        self._log(f"Error ejecutando callback: {e}", 'red')
-                        
-        except Exception as e:
-            if self.debug_mode:
-                self._log(f"Error en ejecución de callbacks: {e}", 'red')
-
     def verify_timing_performance(self):
         """Verifica que el sistema de timing no cause retrasos críticos"""
         try:
@@ -1040,6 +982,7 @@ class CandleStreamer:
         except Exception as e:
             self._log(f"Error en opacity reveal step: {e}", 'red')
             self.stop_opacity_reveal()
+    
     def on_candle_update(self, callback):
         """Permite registrar un callback que será llamado con el DataFrame
         de velas cada vez que haya una actualización (incluye la vela en curso).
@@ -1213,100 +1156,15 @@ class CandleStreamer:
     def _schedule_refresh(self):
         """Programa un refresco del gráfico si no hay uno pendiente (optimizado)"""
         if not self._pending_refresh and self.running:
-            self._pending_refresh = True
-            current_time = time.time()
-            
-            # Limitar frecuencia de refresco para evitar sobrecarga
-            min_interval = max(self._refresh_interval, 0.1)  # Mínimo 100ms
-            
-            if current_time - self._last_refresh_time >= min_interval:
+            try:
                 # Usar thread pool para procesamiento de datos y after() para UI
                 self._schedule_plot_update()
-            elif self.parent_frame:
-                # Programar para más tarde
-                delay = int((min_interval - (current_time - self._last_refresh_time)) * 1000)
-                self.parent_frame.after(max(50, delay), self._schedule_plot_update)
-    
-    def _schedule_plot_update(self):
-        """Programa actualización de gráfico usando thread pool"""
-        if not self.running:
-            return
-        
-        # Enviar tarea de preparación de datos al thread pool
-        future = self._thread_pool.submit(self._prepare_plot_data)
-        
-        # Programar verificación del resultado en el hilo principal
-        if self.parent_frame:
-            self.parent_frame.after(10, lambda: self._check_plot_ready(future))
-        else:
-            # Si no hay parent_frame, ejecutar directamente
-            try:
-                plot_data = future.result(timeout=0.1)
-                if plot_data:
-                    self._update_plot_with_data(plot_data)
-            except:
-                pass
-    
-    def _prepare_plot_data(self):
-        """Prepara datos para el gráfico en hilo separado"""
-        try:
-            with self._data_lock:
-                # Construir DataFrame a plotear
-                if self.load_all_candles:
-                    last_df = self.df.copy()  # Cargar todas las velas
-                else:
-                    last_df = self.df.tail(self.max_plot).copy()
-                    
-                if self.current_candle is not None:
-                    temp = pd.DataFrame([self.current_candle]).set_index('Date')
-                    last_df = pd.concat([last_df, temp])
-                    
-                # Asegurar orden por fecha
-                if not last_df.empty:
-                    last_df.sort_index(inplace=True)
-            
-            # Si solo hay 1 fila, añadir punto ficticio
-            if len(last_df) == 1:
-                try:
-                    idx = last_df.index[0]
-                    secs = int(self.interval[:-1]) if self.interval[-1] == 's' else int(self.interval[:-1]) * 60
-                    idx2 = idx + timedelta(seconds=secs)
-                    row = last_df.iloc[0]
-                    dummy = pd.DataFrame({
-                        'Open': [row['Close']],
-                        'High': [row['Close']],
-                        'Low': [row['Close']],
-                        'Close': [row['Close']],
-                        'Volume': [0.0]
-                    }, index=[idx2])
-                    last_df = pd.concat([last_df, dummy])
-                except Exception:
-                    pass
-            
-            if self.debug_mode:
-                self._log(f"Preparando datos: {len(last_df)} filas (visible: {self.visible_candles})", 'gray')
-            
-            return last_df if not last_df.empty else None
-            
-        except Exception as e:
-            if self.debug_mode:
-                self._log(f"Error preparando datos del gráfico: {e}", 'red')
-            return None
-    
-    def _check_plot_ready(self, future):
-        """Verifica si los datos del gráfico están listos"""
-        try:
-            if future.done():
-                plot_data = future.result()
-                if plot_data is not None:
-                    self._update_plot_with_data(plot_data)
-            else:
-                # Si no está listo, verificar de nuevo en 10ms
-                if self.parent_frame and self.running:
-                    self.parent_frame.after(10, lambda: self._check_plot_ready(future))
-        except Exception as e:
-            if self.debug_mode:
-                self._log(f"Error verificando datos del gráfico: {e}", 'red')
+            except Exception as e:
+                if self.debug_hover:
+                    self._log(f"Error refrescando gráfico: {e}", 'red')
+            finally:
+                self._pending_refresh = False
+                self._last_refresh_time = time.time()
 
     def _schedule_plot_update(self):
         """Programa actualización de gráfico usando thread pool"""
@@ -1538,10 +1396,14 @@ class CandleStreamer:
 
             # Actualizar el canvas si está en modo embebido
             if hasattr(self, 'canvas'):
-                self.canvas.draw_idle()  # Usar draw_idle para mejor rendimiento
-            else:
-                plt.pause(0.01)
-                
+                self.canvas.draw()
+                if self.debug_hover:
+                    self._log("Canvas draw executed", 'green')
+            elif hasattr(self, 'fig') and self.fig:
+                self.fig.canvas.draw()
+                if self.debug_hover:
+                    self._log("Fig canvas draw executed", 'green')
+            
             self._pending_refresh = False
             self._last_refresh_time = time.time()
             
@@ -1941,7 +1803,7 @@ class CandleStreamer:
                     dx = event.xdata - self._pan_start_x
                     # desplazamiento inverso: mover a la derecha cuando arrastras a la derecha
                     left = cur_left - dx
-                    right = cur_right - dx
+                    right = left + (cur_right - cur_left)
                     self.ax_price.set_xlim(left, right)
                     if hasattr(self, 'ax_volume') and self.ax_volume:
                         self.ax_volume.set_xlim(left, right)
@@ -1999,7 +1861,7 @@ class CandleStreamer:
                     self._log(f"_last_x range: {min(self._last_x):.2f} to {max(self._last_x):.2f}", 'gray')
                     self._log(f"event.xdata: {event.xdata:.2f}", 'gray')
 
-            # Buscar índice de vela más cercano usando coordenadas x numéricas (evita problemas de tz)
+            # Buscar índice de vela más cercano usando coordenadas x numéricas (evita problemas de zona horaria)
             if self._last_x is None or len(self._last_x) == 0:
                 # Intentar recalcular _last_x si tenemos datos pero _last_x está vacío
                 if self._last_df is not None and not self._last_df.empty:
@@ -2081,7 +1943,7 @@ class CandleStreamer:
             # Ajustar posición para que no se salga de los límites
             x_offset = 20 if x < (xlim[0] + xlim[1]) / 2 else -120  # Más espacio para el texto
             y_offset = 20 if y < (ylim[0] + ylim[1]) / 2 else -120
-            
+        
             # Actualizar anotación
             self._hover_annot.xy = (x, y)
             self._hover_annot.set_position((x_offset, y_offset))
@@ -2704,8 +2566,7 @@ class CandleStreamer:
                 self._thread_pool.shutdown(wait=False, cancel_futures=True)
             except Exception:
                 pass
-			
-			
+            
         # Cerrar la figura de matplotlib
         if hasattr(self, 'fig') and self.fig:
             try:
