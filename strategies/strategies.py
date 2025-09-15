@@ -532,8 +532,13 @@ class ForexStrategies:
         df['Res'] = df['High'].where(df['PivotHigh'] == 1).ffill()
         df['Sup'] = df['Low'].where(df['PivotLow'] == 1).ffill()
         df['Signal'] = 0
-        buy = (df['Close'] > df['Sup']) & (df['Low'] <= df['Sup']*1.001)
-        sell = (df['Close'] < df['Res']) & (df['High'] >= df['Res']*0.999)
+        
+        # CORRECCIÓN: Invertir la lógica de las señales
+        # BUY cuando el precio toca el SOPORTE (para rebotar hacia arriba)
+        buy = (df['Close'] < df['Sup']*1.001) & (df['Low'] <= df['Sup'])
+        # SELL cuando el precio toca la RESISTENCIA (para rebotar hacia abajo)  
+        sell = (df['Close'] > df['Res']*0.999) & (df['High'] >= df['Res'])
+        
         df.loc[buy, 'Signal'] = 1
         df.loc[sell, 'Signal'] = -1
         
@@ -646,8 +651,8 @@ class ForexStrategies:
         
         df = self.data.copy()
         tr1 = df['High'] - df['Low']
-        tr2 = (df['High'] - df['Close'].shift(1)).abs()
-        tr3 = (df['Low'] - df['Close'].shift(1)).abs()
+        tr2 = (df['High'] - df['Close'].shift(1, fill_value=df['Close'].iloc[0])).abs()
+        tr3 = (df['Low'] - df['Close'].shift(1, fill_value=df['Close'].iloc[0])).abs()
         df['TR'] = np.maximum(tr1, np.maximum(tr2, tr3))
         df['ATR_pre'] = df['TR'].rolling(pre_window).mean()
         df['Spike'] = df['TR'] > (spike_mult * df['ATR_pre'])
