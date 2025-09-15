@@ -325,6 +325,33 @@ class RiskManager:
         
         profit = operacion.cerrar(precio_cierre, timestamp)
         
+        # AUDITORÍA: Registrar evento de cierre
+        try:
+            import json
+            import time as time_module
+            audit_entry = {
+                "ts": time_module.time(),
+                "iso": timestamp.isoformat() + "Z" if hasattr(timestamp, 'isoformat') else f"{timestamp}Z",
+                "type": "forex" if not operacion.estrategia.startswith('candle_') else "candle",
+                "event": "closed",
+                "strategy": operacion.estrategia.replace('forex_', '').replace('candle_', ''),
+                "signal": 1 if operacion.tipo == "BUY" else -1,
+                "entry_price": float(operacion.precio_apertura),
+                "exit_price": float(precio_cierre),
+                "profit": float(profit),
+                "reason": motivo,
+                "risk_percent": 1.0,
+                "scenario": getattr(self, 'current_scenario', None)
+            }
+            
+            # Escribir a archivo de auditoría
+            from datetime import datetime
+            audit_file = f"app/logs/audit_{datetime.now().strftime('%Y%m%d')}.jsonl"
+            with open(audit_file, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(audit_entry) + '\n')
+        except Exception:
+            pass
+        
         # Log de cierre de operación
         profit_text = f"+{profit:.5f}" if profit >= 0 else f"{profit:.5f}"
         color = "green" if profit >= 0 else "red"
@@ -338,11 +365,15 @@ class RiskManager:
         except Exception:
             pass
         
-        # SISTEMA FOREX: Balance + Margen + P&L
-        # 1. Devolver el margen bloqueado al balance
-        self.capital += operacion.riesgo_reservado
+        # SISTEMA FOREX CORREGIDO: Gestión precisa de capital
+        # El capital ya incluye el riesgo reservado cuando se abre la operación
+        # Solo necesitamos aplicar el P&L real de la operación
         
-        # 2. Aplicar el P&L al balance
+        # ANTES: self.capital += operacion.riesgo_reservado  # INCORRECTO - doble contabilidad
+        # ANTES: self.capital += profit                      # INCORRECTO - doble modificación
+        
+        # CORREGIDO: Solo aplicar el P&L neto al capital
+        # El riesgo_reservado ya está incluido en el cálculo del profit de la operación
         self.capital += profit
         
         # Actualizar estadísticas globales

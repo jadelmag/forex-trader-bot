@@ -358,31 +358,40 @@ class StrategyHandler:
         except Exception:
             capital = float(self.dinero_ficticio)
 
-        total_valor_buys = 0.0
-        total_pnl_sells = 0.0
+        total_pnl_flotante = 0.0
         try:
             for op in getattr(self.risk_manager, 'operaciones_activas', []):
                 if getattr(op, 'estado', 'ACTIVA') != 'ACTIVA':
                     continue
                 if getattr(op, 'tipo', 'BUY') == 'BUY':
-                    # Para BUY, calcular P&L flotante en lugar del valor nocional
+                    # Para BUY: P&L flotante = (precio_actual - precio_entrada) * lote_size
                     pnl_flotante = (float(precio_actual) - float(op.precio_apertura)) * float(op.lote_size)
-                    total_valor_buys += pnl_flotante
+                    total_pnl_flotante += pnl_flotante
                 else:
-                    total_pnl_sells += (op.precio_apertura - float(precio_actual)) * float(op.lote_size)
+                    # Para SELL: P&L flotante = (precio_entrada - precio_actual) * lote_size
+                    pnl_flotante = (float(op.precio_apertura) - float(precio_actual)) * float(op.lote_size)
+                    total_pnl_flotante += pnl_flotante
         except Exception:
             pass
 
-        # Dinero visible = capital + P&L flotante total
-        dinero_visible = capital + total_valor_buys + total_pnl_sells
-        return dinero_visible
+        # EQUIDAD = capital + P&L flotante total
+        equidad_total = capital + total_pnl_flotante
+        return equidad_total
         
     def _actualizar_dinero_visible(self, precio_actual: float):
-        """Actualiza la visualización del dinero en tiempo real"""
+        """Actualiza la visualización del dinero y equidad por separado"""
         try:
-            dinero_visible = self._calcular_dinero_visible(precio_actual)
-            if hasattr(self.main_app, 'status_bar') and hasattr(self.main_app.status_bar, 'label_cash'):
-                self.main_app.status_bar.label_cash.config(text=f"Dinero: ${dinero_visible:,.2f}")
+            # Calcular valores separados
+            capital_disponible = float(self.risk_manager.capital) if hasattr(self, 'risk_manager') and self.risk_manager is not None else float(self.dinero_ficticio)
+            equidad_total = self._calcular_dinero_visible(precio_actual)
+            
+            # Actualizar usando el nuevo sistema separado
+            if hasattr(self.main_app, 'status_bar') and hasattr(self.main_app.status_bar, 'actualizar_dinero_visible'):
+                self.main_app.status_bar.actualizar_dinero_visible(equidad_total, capital_disponible)
+            else:
+                # Fallback para compatibilidad
+                if hasattr(self.main_app, 'status_bar') and hasattr(self.main_app.status_bar, 'label_cash'):
+                    self.main_app.status_bar.label_cash.config(text=f"Dinero: ${capital_disponible:,.2f}")
         except Exception as e:
             self.log(f"Error actualizando dinero visible: {e}", color='red')
             

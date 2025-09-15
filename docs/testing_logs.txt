@@ -1,0 +1,100 @@
+CandleStreamer conectado correctamente
+Símbolo: EURUSDT | Intervalo: 1m | Máx. velas: 500
+📊 Iniciando simulación CSV con 5 velas iniciales
+📥 PASO 1: Descargando datos de Binance...
+🌐 Descargando 500 velas de EURUSDT (1m)...
+📊 PASO 2: Cargando 5 velas iniciales...
+✅ Cargadas 5 velas iniciales
+📈 Rango: 2025-09-15 02:33:00 a 2025-09-15 02:37:00
+⏰ PASO 3: Iniciando procesamiento secuencial (5s por vela)...
+🚀 Simulación iniciada desde vela 6
+📊 Sistema de reports configurado: Capital 1000.0€, 48 estrategias
+Simulación iniciada. Esperando 5 velas antes de operar...
+Esperando 4 velas más antes de operar...
+✅ Apertura forex_support_resistance_strategy (BUY) @ 1.17250 | riesgo 1.00% RR 2.0
+Esperando 3 velas más antes de operar...
+Esperando 2 velas más antes de operar...
+✅ Apertura forex_price_action_patterns (SELL) @ 1.17250 | riesgo 1.00% RR 2.0
+✅ Apertura forex_support_resistance_strategy (SELL) @ 1.17250 | riesgo 1.00% RR 2.0
+Esperando 1 velas más antes de operar...
+Simulación en progreso!!
+🔴 Cierre forex_support_resistance_strategy BUY @ 1.17260 | P&L: +1.00000 | PROFIT_POSITIVO
+🔴 Cierre forex_support_resistance_strategy (BUY) @ 1.17260 | PROFIT_POSITIVO | P&L: +0.00000
+📊 Tipo de mercado detectado: Mercado lateral/rango
+Simulación en progreso - Velas procesadas: 10
+🔴 Cierre forex_price_action_patterns SELL @ 1.17270 | P&L: -2.00000 | STOP_LOSS
+🔴 Cierre forex_support_resistance_strategy SELL @ 1.17270 | P&L: -2.00000 | STOP_LOSS
+🔴 Cierre forex_price_action_patterns (SELL) @ 1.17270 | STOP_LOSS | P&L: +0.00000
+🔴 Cierre forex_support_resistance_strategy (SELL) @ 1.17270 | STOP_LOSS | P&L: +0.00000
+✅ Apertura forex_support_resistance_strategy (BUY) @ 1.17270 | riesgo 1.00% RR 2.0
+🔴 Cierre forex_support_resistance_strategy BUY @ 1.17270 | P&L: -0.02000 | STOP_LOSS
+🔴 Cierre forex_support_resistance_strategy (BUY) @ 1.17260 | STOP_LOSS | P&L: +0.00000
+✅ Apertura forex_bollinger_bands_strategy (SELL) @ 1.17260 | riesgo 1.00% RR 2.0
+✅ Apertura forex_range_trading_strategy (SELL) @ 1.17260 | riesgo 1.00% RR 2.0
+🔴 Cierre forex_bollinger_bands_strategy SELL @ 1.17250 | P&L: +1.00000 | PROFIT_POSITIVO
+🔴 Cierre forex_range_trading_strategy SELL @ 1.17250 | P&L: +1.00000 | PROFIT_POSITIVO
+🔴 Cierre forex_bollinger_bands_strategy (SELL) @ 1.17250 | PROFIT_POSITIVO | P&L: +0.00000
+🔴 Cierre forex_range_trading_strategy (SELL) @ 1.17250 | PROFIT_POSITIVO | P&L: +0.00000
+✅ Apertura forex_support_resistance_strategy (SELL) @ 1.17250 | riesgo 1.00% RR 2.0
+🔴 Cierre forex_support_resistance_strategy SELL @ 1.17240 | P&L: +1.00000 | PROFIT_POSITIVO
+🔴 Cierre forex_support_resistance_strategy (SELL) @ 1.17240 | PROFIT_POSITIVO | P&L: +0.00000
+Simulación en progreso - Velas procesadas: 20
+✅ Apertura forex_support_resistance_strategy (BUY) @ 1.17270 | riesgo 1.00% RR 2.0
+✅ Apertura forex_support_resistance_strategy (SELL) @ 1.17260 | riesgo 1.00% RR 2.0
+🔴 Cierre forex_support_resistance_strategy SELL @ 1.17250 | P&L: +1.00000 | PROFIT_POSITIVO
+🔴 Cierre forex_support_resistance_strategy (SELL) @ 1.17250 | PROFIT_POSITIVO | P&L: +0.00000
+Simulación en progreso - Velas procesadas: 30
+Simulación en progreso - Velas procesadas: 40
+✅ Apertura forex_support_resistance_strategy (SELL) @ 1.17260 | riesgo 1.00% RR 2.0
+🔴 Cierre forex_support_resistance_strategy BUY @ 1.17290 | P&L: +2.00000 | PROFIT_POSITIVO
+🔴 Cierre forex_support_resistance_strategy SELL @ 1.17260 | P&L: -0.02000 | STOP_LOSS
+🔴 Cierre forex_support_resistance_strategy (BUY) @ 1.17290 | PROFIT_POSITIVO | P&L: +0.00000
+🔴 Cierre forex_support_resistance_strategy (SELL) @ 1.17290 | STOP_LOSS | P&L: +0.00000
+✅ Apertura forex_bollinger_bands_strategy (SELL) @ 1.17280 | riesgo 1.00% RR 2.0
+✅ Apertura forex_range_trading_strategy (SELL) @ 1.17280 | riesgo 1.00% RR 2.0
+✅ Apertura forex_support_resistance_strategy (BUY) @ 1.17280 | riesgo 1.00% RR 2.0
+✅ Apertura forex_rsi_strategy (SELL) @ 1.17280 | riesgo 1.00% RR 2.0
+✅ Apertura forex_support_resistance_strategy (SELL) @ 1.17280 | riesgo 1.00% RR 2.0
+✅ Apertura forex_rsi_strategy (SELL) @ 1.17280 | riesgo 1.00% RR 2.0
+🔴 Cierre forex_support_resistance_strategy BUY @ 1.17290 | P&L: +1.00000 | PROFIT_POSITIVO
+🔴 Cierre forex_support_resistance_strategy (BUY) @ 1.17290 | PROFIT_POSITIVO | P&L: +0.00000
+✅ Apertura forex_rsi_strategy (SELL) @ 1.17290 | riesgo 1.00% RR 2.0
+🔴 Cierre forex_rsi_strategy SELL @ 1.17280 | P&L: +1.00000 | PROFIT_POSITIVO
+🔴 Cierre forex_rsi_strategy (SELL) @ 1.17280 | PROFIT_POSITIVO | P&L: +0.00000
+✅ Apertura forex_rsi_strategy (SELL) @ 1.17280 | riesgo 1.00% RR 2.0
+Simulación en progreso - Velas procesadas: 50
+✅ Apertura forex_support_resistance_strategy (SELL) @ 1.17280 | riesgo 1.00% RR 2.0
+✅ Apertura forex_support_resistance_strategy (BUY) @ 1.17290 | riesgo 1.00% RR 2.0
+Simulación en progreso - Velas procesadas: 60
+🔴 Cierre forex_bollinger_bands_strategy SELL @ 1.17300 | P&L: -2.00000 | STOP_LOSS
+🔴 Cierre forex_range_trading_strategy SELL @ 1.17300 | P&L: -2.00000 | STOP_LOSS
+🔴 Cierre forex_rsi_strategy SELL @ 1.17300 | P&L: -2.00000 | STOP_LOSS
+🔴 Cierre forex_support_resistance_strategy SELL @ 1.17300 | P&L: -2.00000 | STOP_LOSS
+🔴 Cierre forex_rsi_strategy SELL @ 1.17297 | P&L: -1.71429 | STOP_LOSS
+🔴 Cierre forex_rsi_strategy SELL @ 1.17300 | P&L: -2.00000 | STOP_LOSS
+🔴 Cierre forex_support_resistance_strategy SELL @ 1.17300 | P&L: -2.00000 | STOP_LOSS
+🔴 Cierre forex_support_resistance_strategy BUY @ 1.17300 | P&L: +1.00000 | PROFIT_POSITIVO
+🔴 Cierre forex_bollinger_bands_strategy (SELL) @ 1.17300 | STOP_LOSS | P&L: +0.00000
+🔴 Cierre forex_range_trading_strategy (SELL) @ 1.17300 | STOP_LOSS | P&L: +0.00000
+🔴 Cierre forex_rsi_strategy (SELL) @ 1.17300 | STOP_LOSS | P&L: +0.00000
+🔴 Cierre forex_support_resistance_strategy (SELL) @ 1.17300 | STOP_LOSS | P&L: +0.00000
+🔴 Cierre forex_rsi_strategy (SELL) @ 1.17300 | STOP_LOSS | P&L: +0.00000
+🔴 Cierre forex_rsi_strategy (SELL) @ 1.17300 | STOP_LOSS | P&L: +0.00000
+🔴 Cierre forex_support_resistance_strategy (SELL) @ 1.17300 | STOP_LOSS | P&L: +0.00000
+🔴 Cierre forex_support_resistance_strategy (BUY) @ 1.17300 | PROFIT_POSITIVO | P&L: +0.00000
+✅ Apertura forex_bollinger_bands_strategy (SELL) @ 1.17280 | riesgo 1.00% RR 2.0
+✅ Apertura forex_range_trading_strategy (SELL) @ 1.17280 | riesgo 1.00% RR 2.0
+✅ Apertura forex_rsi_strategy (SELL) @ 1.17280 | riesgo 1.00% RR 2.0
+✅ Apertura forex_price_action_patterns (SELL) @ 1.17300 | riesgo 1.00% RR 2.0
+✅ Apertura forex_bollinger_bands_strategy (SELL) @ 1.17300 | riesgo 1.00% RR 2.0
+✅ Apertura forex_range_trading_strategy (SELL) @ 1.17300 | riesgo 1.00% RR 2.0
+✅ Apertura forex_support_resistance_strategy (BUY) @ 1.17300 | riesgo 1.00% RR 2.0
+🔴 Cierre forex_price_action_patterns SELL @ 1.17290 | P&L: +1.00000 | PROFIT_POSITIVO
+🔴 Cierre forex_bollinger_bands_strategy SELL @ 1.17290 | P&L: +1.00000 | PROFIT_POSITIVO
+🔴 Cierre forex_range_trading_strategy SELL @ 1.17290 | P&L: +1.00000 | PROFIT_POSITIVO
+🔴 Cierre forex_price_action_patterns (SELL) @ 1.17290 | PROFIT_POSITIVO | P&L: +0.00000
+🔴 Cierre forex_bollinger_bands_strategy (SELL) @ 1.17290 | PROFIT_POSITIVO | P&L: +0.00000
+🔴 Cierre forex_range_trading_strategy (SELL) @ 1.17290 | PROFIT_POSITIVO | P&L: +0.00000
+✅ Apertura forex_bollinger_bands_strategy (SELL) @ 1.17290 | riesgo 1.00% RR 2.0
+✅ Apertura forex_range_trading_strategy (SELL) @ 1.17290 | riesgo 1.00% RR 2.0
+

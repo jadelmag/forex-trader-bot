@@ -6,8 +6,9 @@ class StatusBar:
     def __init__(self, parent_frame):
         self.parent_frame = parent_frame
         
-        # Variables de estado financiero
-        self.dinero_ficticio = 0
+        # Variables de estado financiero SEPARADAS
+        self.dinero_disponible = 0  # Capital disponible (sin riesgo reservado)
+        self.equidad_total = 0      # Capital + P&L flotante de operaciones abiertas
         self.beneficios = 0
         self.perdidas = 0
         
@@ -15,19 +16,19 @@ class StatusBar:
         
     def _create_status_labels(self):
         """Crea las etiquetas de estado financiero"""
-        # Equity (dinero visible: capital - riesgo reservado + PnL flotante)
+        # Equity (capital + P&L flotante de operaciones abiertas)
         self.label_dinero = tk.Label(
             self.parent_frame, 
-            text=f"Equidad: ${self.dinero_ficticio:,.2f}", 
+            text=f"Equidad: ${self.equidad_total:,.2f}", 
             fg="black", 
             bg=COLORS['BACKGROUND']
         )
         self.label_dinero.pack(side="left", padx=10)
 
-        # Cash (capital - riesgo reservado)
+        # Cash (capital disponible - riesgo reservado)
         self.label_cash = tk.Label(
             self.parent_frame, 
-            text=f"Dinero: ${self.dinero_ficticio:,.2f}", 
+            text=f"Dinero: ${self.dinero_disponible:,.2f}", 
             fg="black", 
             bg=COLORS['BACKGROUND']
         )
@@ -59,11 +60,13 @@ class StatusBar:
         self.label_sim_status.pack(side="left", padx=12)
         
     def actualizar_labels(self, dinero_ficticio=None, beneficios=None, perdidas=None):
-        """Actualiza las etiquetas de estado financiero"""
+        """DEPRECATED: Usar actualizar_dinero_visible() en su lugar"""
+        # Mantener compatibilidad hacia atrás
         if dinero_ficticio is not None:
-            self.dinero_ficticio = dinero_ficticio
-            self.label_dinero.config(text=f"Equidad: ${self.dinero_ficticio:,.2f}")
-            self.label_cash.config(text=f"Dinero: ${self.dinero_ficticio:,.2f}")
+            self.dinero_disponible = dinero_ficticio
+            self.equidad_total = dinero_ficticio  # Fallback temporal
+            self.label_dinero.config(text=f"Equidad: ${self.equidad_total:,.2f}")
+            self.label_cash.config(text=f"Dinero: ${self.dinero_disponible:,.2f}")
             
         if beneficios is not None:
             self.beneficios = beneficios
@@ -74,8 +77,9 @@ class StatusBar:
             self.label_perdidas.config(text=f"Pérdidas: ${self.perdidas:,.2f}")
             
     def actualizar_dinero_visible(self, equity, cash):
-        """Actualiza el dinero visible en tiempo real"""
-        self.dinero_ficticio = equity
+        """Actualiza dinero y equidad por separado correctamente"""
+        self.equidad_total = equity
+        self.dinero_disponible = cash
         self.label_dinero.config(text=f"Equidad: {equity:,.2f}$")
         self.label_cash.config(text=f"Dinero: {cash:,.2f}$")
         

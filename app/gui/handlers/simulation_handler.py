@@ -835,14 +835,9 @@ class SimulationHandler:
                     trailing_cerradas = self.risk_manager.verificar_trailing_stops(precio_actual, timestamp, self.atr_value)
                     operaciones_cerradas.extend(trailing_cerradas or [])
                 
-                # Log de operaciones cerradas
-                for op in operaciones_cerradas:
-                    motivo = getattr(op, 'motivo_cierre', 'UNKNOWN')
-                    profit = getattr(op, 'profit', 0)
-                    profit_text = f"+{profit:.5f}" if profit >= 0 else f"{profit:.5f}"
-                    color = 'green' if profit > 0 else 'red'
-                    self.log(f"🔴 Cierre {op.estrategia} ({op.tipo}) @ {precio_actual:.5f} | {motivo} | P&L: {profit_text}", color)
-
+                # ELIMINADO: Log duplicado de operaciones cerradas
+                # El logging ya se hace en RiskManager._cerrar_operacion_comun()
+                
             # Procesar señales de compra/venta
             self._procesar_senal_compra(last_candle)
 
