@@ -11,9 +11,9 @@
     "audit_log_enabled": true,
     "audit_log_dir": "logs",
     "default_trailing_enabled": false,
-    "default_trailing_mode": "",
+    "default_trailing_mode": "aggressive",
     "default_trailing_multiplier": 1.5,
     "unlock_forex_scenario": false,
-    "unlock_candle_scenario": false,
-    "last_updated": "2025-09-14 20:29:23.647432"
+    "unlock_candle_scenario": true,
+    "last_updated": "2025-09-15 13:19:49.291697"
 }

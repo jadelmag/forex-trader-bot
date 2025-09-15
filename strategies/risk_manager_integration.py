@@ -380,7 +380,7 @@ class RiskManagerIntegration:
                     stop_loss = precio_actual + (atr_value * atr_sl_multiplier)
                     take_profit = precio_actual - (atr_value * atr_tp_multiplier)
 
-            # Validar niveles calculados
+            # Validar niveles calculados - LÓGICA CORREGIDA
             if tipo == 'BUY' and (stop_loss >= precio_actual or take_profit <= precio_actual):
                 logger.error(f"Niveles inválidos para BUY: Precio={precio_actual}, SL={stop_loss}, TP={take_profit}")
                 self.metrics.errors_count += 1
