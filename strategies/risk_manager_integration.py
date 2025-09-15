@@ -426,10 +426,10 @@ class RiskManagerIntegration:
                 
                 # Validar override values
                 if tipo == 'BUY' and (stop_loss >= precio_actual or take_profit <= precio_actual):
-                    logger.error(f"Override values inválidos para BUY: Precio={precio_actual}, SL={stop_loss}, TP={take_profit}")
+                    logger.error(f"Override values inválidos para BUY: Precio={precio_actual}, estrategia={estrategia_nombre} SL={stop_loss}, TP={take_profit}")
                     return None
                 elif tipo == 'SELL' and (stop_loss <= precio_actual or take_profit >= precio_actual):
-                    logger.error(f"Override values inválidos para SELL: Precio={precio_actual}, SL={stop_loss}, TP={take_profit}")
+                    logger.error(f"Override values inválidos para SELL: Precio={precio_actual}, estrategia={estrategia_nombre} SL={stop_loss}, TP={take_profit}")
                     return None
                     
             else:

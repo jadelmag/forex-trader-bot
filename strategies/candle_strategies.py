@@ -169,14 +169,23 @@ class CandleStrategies:
                 if current_atr <= 0:
                     # Fallback si ATR es 0: usar rango de la vela
                     current_atr = max(current_high - current_low, 1e-6)
-                if position == 1:
+                
+                # CORRECCIÓN: La lógica estaba invertida
+                # Para BUY (position == 1): SL abajo, TP arriba
+                # Para SELL (position == -1): SL arriba, TP abajo
+                if position == 1:  # BUY
                     stop_loss = entry_price - (current_atr * config.atr_sl_multiplier)
                     take_profit = entry_price + (current_atr * config.atr_tp_multiplier)
                     trailing_stop = entry_price - (current_atr * config.atr_trailing_multiplier) if config.use_trailing_stop else np.nan
-                else:
+                elif position == -1:  # SELL - Aquí estaba el error, antes era solo "else"
                     stop_loss = entry_price + (current_atr * config.atr_sl_multiplier)
                     take_profit = entry_price - (current_atr * config.atr_tp_multiplier)
                     trailing_stop = entry_price + (current_atr * config.atr_trailing_multiplier) if config.use_trailing_stop else np.nan
+                else:
+                    # Por seguridad, si position no es 1 ni -1
+                    stop_loss = np.nan
+                    take_profit = np.nan
+                    trailing_stop = np.nan
 
                 df.iloc[i, df.columns.get_loc('StopLoss')] = stop_loss
                 df.iloc[i, df.columns.get_loc('TakeProfit')] = take_profit
