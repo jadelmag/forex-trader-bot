@@ -536,6 +536,11 @@ class ForexStrategies:
         sell = (df['Close'] < df['Res']) & (df['High'] >= df['Res']*0.999)
         df.loc[buy, 'Signal'] = 1
         df.loc[sell, 'Signal'] = -1
+        
+        # Evitar señales consecutivas de la misma dirección
+        df['PrevSignal'] = df['Signal'].shift(1)
+        consecutive_mask = (df['Signal'] != 0) & (df['PrevSignal'] == df['Signal'])
+        df.loc[consecutive_mask, 'Signal'] = 0
 
         df['ExitSignal'] = self._generate_exit_signals(df, exit_config)
         df = self._apply_risk_management(df, **risk_kwargs)

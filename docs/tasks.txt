@@ -4,14 +4,6 @@ TODO
 2. Añadir IA a datos en tiempo real.
 3. Conectar con metatrader [TODO]
 
-
-[TESTEAR]
-quiero que cuando se abra una operacion short o long se actualice el label dinero,
-el dinero se actualizara restando el precio de apertura de la operacion.
-
-y que cuando se cierre la operacion se actualicen los labels:
-- si ha sido con beneficios se actulizara el label de beneficios y se actualizara el label dinero con el dinero actual con el beneficio
-- si ha sido con pérdidas se actulizara el label de pérdidas y se actualizara el label dinero calculando la diferencia entre el precio de apertura y el precio de cierre.
-
 [TODO]
 modificar el verificar_cierre_operaciones de risk_manager para que cierre las operaciones como debe tocar.
+

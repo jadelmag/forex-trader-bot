@@ -402,6 +402,16 @@ class RiskManagerIntegration:
                 logger.info(f"  ATR: {atr_value}")
                 logger.info(f"  Timestamp: {timestamp}")
 
+            # Obtener PositionSize si está disponible en candle_config
+            position_size = None
+            if candle_config and 'position_size' in candle_config:
+                try:
+                    position_size = float(candle_config['position_size'])
+                    if self.debug_mode:
+                        logger.info(f"Usando PositionSize de estrategia: {position_size}")
+                except (ValueError, TypeError):
+                    position_size = None
+
             # Crear operación usando RiskManager
             operacion = self.risk_manager.abrir_operacion(
                 tipo=tipo,
@@ -410,7 +420,8 @@ class RiskManagerIntegration:
                 stop_loss=stop_loss,
                 take_profit=take_profit,
                 riesgo_por_operacion=risk_percent / 100.0,
-                estrategia=estrategia_nombre
+                estrategia=estrategia_nombre,
+                position_size=position_size
             )
 
             if operacion:

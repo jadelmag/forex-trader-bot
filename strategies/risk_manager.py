@@ -63,6 +63,23 @@ class Operacion:
         else:
             return 0.0
 
+        # DEBUG: Log detallado para valores anormales
+        if abs(profit) > 50:  # Si el P&L es mayor a 50€, logear detalles
+            try:
+                import logging
+                logger = logging.getLogger('RiskManager')
+                logger.warning(f"P&L ANORMAL DETECTADO:")
+                logger.warning(f"  Operación ID: {self.id}")
+                logger.warning(f"  Tipo: {self.tipo}")
+                logger.warning(f"  Precio apertura: {self.precio_apertura:.5f}")
+                logger.warning(f"  Precio actual: {precio_actual:.5f}")
+                logger.warning(f"  Diferencia: {abs(precio_actual - self.precio_apertura):.5f}")
+                logger.warning(f"  Lote size: {self.lote_size:.2f}")
+                logger.warning(f"  P&L calculado: {profit:.5f}")
+                logger.warning(f"  Estrategia: {getattr(self, 'estrategia', 'N/A')}")
+            except Exception:
+                pass
+
         # Validar resultado
         if np.isnan(profit) or np.isinf(profit):
             profit = 0.0
@@ -266,8 +283,13 @@ class RiskManager:
 
         return True
 
-    def _calcular_lote_size(self, tipo, precio, stop_loss, riesgo_por_operacion):
+    def _calcular_lote_size(self, tipo, precio, stop_loss, riesgo_por_operacion, position_size=None):
         """Método centralizado para calcular tamaño de lote"""
+        # Si ya tenemos PositionSize calculado por la estrategia, usarlo directamente
+        if position_size is not None and position_size > 0:
+            return float(position_size), None
+        
+        # Fallback: cálculo tradicional con límites para forex
         if tipo == 'BUY':
             riesgo_por_pip = abs(precio - stop_loss)
         elif tipo == 'SELL':
@@ -282,6 +304,13 @@ class RiskManager:
 
         riesgo_dinero = self.capital * riesgo_por_operacion
         lote_size = riesgo_dinero / riesgo_por_pip
+        
+        # LÍMITE MÁXIMO para forex: evitar lotes extremos
+        max_lote_forex = 10000  # Máximo 10,000 unidades para EURUSD
+        if lote_size > max_lote_forex:
+            lote_size = max_lote_forex
+            if self.debug_mode:
+                logger.warning(f"Lote size limitado a {max_lote_forex} para evitar valores extremos")
         
         if lote_size <= 0:
             if self.debug_mode:
@@ -325,7 +354,7 @@ class RiskManager:
             self.operaciones_perdidas += 1
             self.perdida_perdedoras_total += abs(profit)
 
-        # Actualizar GUI con sistema de beneficios/pérdidas acumuladas
+        # Actualizar GUI con sistema de beneficios/pérdidas acumuladas (SIN LOG DUPLICADO)
         try:
             from app.gui.handlers.simulation_handler import SimulationHandler
             if hasattr(SimulationHandler, '_current_instance') and SimulationHandler._current_instance:
@@ -348,7 +377,7 @@ class RiskManager:
                             strategy_handler.perdidas = 0.0
                         strategy_handler.perdidas += abs(profit)
                     
-                    # Actualizar labels en tiempo real
+                    # Actualizar labels en tiempo real SIN logging adicional
                     strategy_handler.actualizar_labels()
         except Exception:
             pass
@@ -438,7 +467,7 @@ class RiskManager:
         return self.get_estadisticas()
 
     def abrir_operacion(self, tipo, precio, timestamp, stop_loss, take_profit, 
-                       riesgo_por_operacion=0.01, estrategia=None):
+                       riesgo_por_operacion=0.01, estrategia=None, position_size=None):
         """
         Abre una nueva operación BUY o SELL
         
@@ -454,11 +483,21 @@ class RiskManager:
                 if not self._validar_parametros_operacion(tipo, precio, stop_loss, (timestamp, estrategia)):
                     return None
                 
-                # Calcular lote size
-                lote_size, error = self._calcular_lote_size(tipo, precio, stop_loss, riesgo_por_operacion)
+                # Calcular lote size (usar position_size si está disponible)
+                lote_size, error = self._calcular_lote_size(tipo, precio, stop_loss, riesgo_por_operacion, position_size)
                 if error:
                     self.last_error = error
                     return None
+                
+                # DEBUG: Log lote_size para verificar valores
+                if self.debug_mode or lote_size > 15000:  # Log si es muy alto
+                    logger.info(f"APERTURA - Lote size calculado: {lote_size:.2f}")
+                    if position_size:
+                        logger.info(f"  Usando PositionSize de estrategia: {position_size}")
+                    else:
+                        logger.info(f"  Calculado con fallback: riesgo={riesgo_por_operacion*self.capital:.2f} / pip_risk={abs(precio-stop_loss):.5f}")
+                    if lote_size > 15000:
+                        logger.warning(f"  ⚠️ LOTE_SIZE MUY ALTO: {lote_size:.2f} - Puede causar P&L extremo")
                 
                 # Reservar capital según tipo
                 riesgo_dinero = self.capital * riesgo_por_operacion
@@ -676,6 +715,26 @@ class RiskManager:
             print(f"❌ Error verificando trailing stops: {e}")
         
         return operaciones_cerradas
+
+    def corregir_lote_sizes_activos(self):
+        """Corrige lote_sizes extremos en operaciones activas existentes"""
+        operaciones_corregidas = 0
+        
+        with self._main_lock:
+            for operacion in self.operaciones_activas:
+                if operacion.estado == 'ACTIVA' and operacion.lote_size > 15000:
+                    lote_size_original = operacion.lote_size
+                    
+                    # Aplicar límite máximo
+                    operacion.lote_size = min(operacion.lote_size, 10000)
+                    
+                    operaciones_corregidas += 1
+                    logger.warning(f"CORRECCIÓN: Operación {operacion.id} - Lote size {lote_size_original:.2f} → {operacion.lote_size:.2f}")
+        
+        if operaciones_corregidas > 0:
+            logger.info(f"✅ Corregidas {operaciones_corregidas} operaciones con lote_size extremo")
+        
+        return operaciones_corregidas
 
     def get_performance_metrics(self) -> dict:
         """Obtiene métricas de rendimiento del RiskManager"""

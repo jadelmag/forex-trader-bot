@@ -33,14 +33,15 @@ class StrategyHandler:
                 self.risk_manager.capital_inicial = float(self.dinero_ficticio)
                 self.risk_manager.capital = float(self.dinero_ficticio)
                 
-            self.actualizar_labels()
+            self.actualizar_labels(silent=True)
             self.main_app.menu_bar.update_buttons_state()
             
         except ValueError:
             messagebox.showerror("Error", "Ingrese un número válido")
             
-    def actualizar_labels(self):
+    def actualizar_labels(self, silent=False):
         """Actualiza las etiquetas de dinero, beneficios y pérdidas"""
+        # Solo actualizar GUI, sin logging adicional
         self.main_app.status_bar.actualizar_labels(
             self.dinero_ficticio, 
             self.beneficios, 
