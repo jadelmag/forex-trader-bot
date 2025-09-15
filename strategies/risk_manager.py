@@ -617,10 +617,18 @@ class RiskManager:
                     # LÓGICA INTELIGENTE: Calcular profit actual
                     profit_actual = operacion.calcular_profit(precio_actual)
                     
-                    # CONDICIÓN 1: Cerrar inmediatamente si hay profit positivo
+                    # CONDICIÓN 1: Cerrar si alcanzamos 50% del objetivo TP
                     if profit_actual > 0:
-                        cierre_requerido = True
-                        motivo_cierre = "PROFIT_POSITIVO"
+                        # Calcular profit objetivo
+                        if operacion.tipo == 'BUY':
+                            profit_objetivo = (operacion.take_profit - operacion.precio_apertura) * operacion.lote_size
+                        else:  # SELL
+                            profit_objetivo = (operacion.precio_apertura - operacion.take_profit) * operacion.lote_size
+                        
+                        # Solo cerrar si alcanzamos al menos 50% del objetivo
+                        if profit_actual >= profit_objetivo * 0.5:
+                            cierre_requerido = True
+                            motivo_cierre = "PROFIT_PARCIAL_50%"
                     
                     # CONDICIÓN 2: Cerrar si pérdida está muy cerca de 0 (breakeven)
                     elif profit_actual < 0:

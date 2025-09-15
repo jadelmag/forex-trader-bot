@@ -375,10 +375,12 @@ class RiskManagerIntegration:
             else:
                 if tipo == 'BUY':
                     stop_loss = precio_actual - (atr_value * atr_sl_multiplier)
-                    take_profit = precio_actual + (atr_value * atr_tp_multiplier)
+                    distancia_sl = precio_actual - stop_loss                    # NUEVA
+                    take_profit = precio_actual + (distancia_sl * rr_ratio)     # MODIFICADA
                 elif tipo == 'SELL':
                     stop_loss = precio_actual + (atr_value * atr_sl_multiplier)
-                    take_profit = precio_actual - (atr_value * atr_tp_multiplier)
+                    distancia_sl = stop_loss - precio_actual                    # NUEVA
+                    take_profit = precio_actual - (distancia_sl * rr_ratio)     # MODIFICADA
 
             # Validar niveles calculados - LÓGICA CORREGIDA
             if tipo == 'BUY' and (stop_loss >= precio_actual or take_profit <= precio_actual):

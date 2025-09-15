@@ -1,0 +1,77 @@
+risk_manager.py
+----------------------------------------------------------------
+
+    def verificar_cierre_operaciones(self, precio_actual, timestamp):
+        """
+        Verifica y cierra operaciones con lógica inteligente:
+        1. Cierre inmediato si profit > 0 (cualquier ganancia)
+        2. Cierre si pérdida está muy cerca de 0 (breakeven)
+        3. Cierre tradicional por SL/TP
+        """
+        operaciones_cerradas = []
+        
+        with self._main_lock:
+            try:
+                # Usar copia de la lista para modificación segura
+                for operacion in self.operaciones_activas[:]:
+                    if operacion.estado != 'ACTIVA':
+                        continue
+                    
+                    cierre_requerido = False
+                    motivo_cierre = None
+                    precio_cierre = precio_actual
+                    
+                    # LÓGICA INTELIGENTE: Calcular profit actual
+                    profit_actual = operacion.calcular_profit(precio_actual)
+                    
+                    # CONDICIÓN 1: Cerrar inmediatamente si hay profit positivo
+                    if profit_actual > 0:
+                        cierre_requerido = True
+                        motivo_cierre = "PROFIT_POSITIVO"
+                    
+                    # CONDICIÓN 2: Cerrar si pérdida está muy cerca de 0 (breakeven)
+                    elif profit_actual < 0:
+                        # Umbral de breakeven: 0.1% del capital o 0.0001 mínimo
+                        umbral_breakeven = max(self.capital * 0.001, 0.0001)
+                        
+                        if abs(profit_actual) <= umbral_breakeven:
+                            cierre_requerido = True
+                            motivo_cierre = "BREAKEVEN"
+                    
+                    # CONDICIÓN 3: Lógica tradicional de SL/TP (solo si no se activaron las anteriores)
+                    if not cierre_requerido:
+                        if operacion.tipo == 'BUY':
+                            if precio_actual >= operacion.take_profit:
+                                cierre_requerido = True
+                                motivo_cierre = "TAKE_PROFIT"
+                                precio_cierre = operacion.take_profit
+                            elif precio_actual <= operacion.stop_loss:
+                                cierre_requerido = True
+                                motivo_cierre = "STOP_LOSS"
+                                precio_cierre = operacion.stop_loss
+                        
+                        elif operacion.tipo == 'SELL':
+                            if precio_actual <= operacion.take_profit:
+                                cierre_requerido = True
+                                motivo_cierre = "TAKE_PROFIT"
+                                precio_cierre = operacion.take_profit
+                            elif precio_actual >= operacion.stop_loss:
+                                cierre_requerido = True
+                                motivo_cierre = "STOP_LOSS"
+                                precio_cierre = operacion.stop_loss
+                    
+                    # Ejecutar cierre si es necesario
+                    if cierre_requerido:
+                        # Usar método centralizado para evitar duplicación
+                        self._cerrar_operacion_comun(operacion, precio_cierre, timestamp, motivo_cierre)
+                        operaciones_cerradas.append(operacion)
+                        self.operaciones_cerradas.append(operacion)
+                        self.operaciones_activas.remove(operacion)  # Eliminación correcta
+                        self._invalidar_cache()
+                
+                return operaciones_cerradas
+                
+            except Exception as e:
+                self.performance_metrics['errores_thread_safety'] += 1
+                logger.error(f"Error en verificar_cierre_operaciones: {e}")
+                return []
