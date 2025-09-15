@@ -1,170 +1,31 @@
-CandleStreamer conectado correctamente
-Símbolo: EURUSDT | Intervalo: 1m | Máx. velas: 500
-📊 Iniciando simulación CSV con 5 velas iniciales
-📥 PASO 1: Descargando datos de Binance...
-🌐 Descargando 500 velas de EURUSDT (1m)...
-📊 PASO 2: Cargando 5 velas iniciales...
-✅ Cargadas 5 velas iniciales
-📈 Rango: 2025-09-15 02:53:00 a 2025-09-15 02:57:00
-⏰ PASO 3: Iniciando procesamiento secuencial (5s por vela)...
-🚀 Simulación iniciada desde vela 6
-📊 Sistema de reports configurado: Capital 1000.0€, 48 estrategias
-Simulación iniciada. Esperando 5 velas antes de operar...
-Esperando 4 velas más antes de operar...
-Esperando 3 velas más antes de operar...
-Esperando 2 velas más antes de operar...
-Esperando 1 velas más antes de operar...
-✅ Apertura forex_macd_strategy (BUY) @ 1.17260 | riesgo 1.00% RR 2.0
-Simulación en progreso!!
-🔴 Cierre forex_macd_strategy BUY @ 1.17260 | P&L: -0.02000 | STOP_LOSS
-✅ Apertura forex_support_resistance_strategy (BUY) @ 1.17270 | riesgo 1.00% RR 2.0
-Simulación en progreso - Velas procesadas: 10
-✅ Apertura forex_support_resistance_strategy (SELL) @ 1.17260 | riesgo 1.00% RR 2.0
-🔴 Cierre forex_support_resistance_strategy SELL @ 1.17250 | P&L: +1.00000 | PROFIT_POSITIVO
-✅ Apertura forex_macd_strategy (SELL) @ 1.17260 | riesgo 1.00% RR 2.0
-🔴 Cierre forex_macd_strategy SELL @ 1.17250 | P&L: +1.00000 | PROFIT_POSITIVO
-📊 Tipo de mercado detectado: Mercado lateral/rango
-Simulación en progreso - Velas procesadas: 20
-✅ Apertura forex_support_resistance_strategy (SELL) @ 1.17260 | riesgo 1.00% RR 2.0
-🔴 Cierre forex_support_resistance_strategy BUY @ 1.17290 | P&L: +2.00000 | PROFIT_POSITIVO
-🔴 Cierre forex_support_resistance_strategy SELL @ 1.17260 | P&L: -0.02000 | STOP_LOSS
-✅ Apertura forex_bollinger_bands_strategy (SELL) @ 1.17280 | riesgo 1.00% RR 2.0
-✅ Apertura forex_range_trading_strategy (SELL) @ 1.17280 | riesgo 1.00% RR 2.0
-✅ Apertura forex_support_resistance_strategy (BUY) @ 1.17280 | riesgo 1.00% RR 2.0
-✅ Apertura forex_rsi_strategy (SELL) @ 1.17280 | riesgo 1.00% RR 2.0
-✅ Apertura forex_support_resistance_strategy (SELL) @ 1.17280 | riesgo 1.00% RR 2.0
-✅ Apertura forex_rsi_strategy (SELL) @ 1.17280 | riesgo 1.00% RR 2.0
-Simulación en progreso - Velas procesadas: 30
-🔴 Cierre forex_support_resistance_strategy BUY @ 1.17290 | P&L: +1.00000 | PROFIT_POSITIVO
-✅ Apertura forex_rsi_strategy (SELL) @ 1.17290 | riesgo 1.00% RR 2.0
-🔴 Cierre forex_rsi_strategy SELL @ 1.17280 | P&L: +1.00000 | PROFIT_POSITIVO
-✅ Apertura forex_rsi_strategy (SELL) @ 1.17280 | riesgo 1.00% RR 2.0
-✅ Apertura forex_support_resistance_strategy (SELL) @ 1.17280 | riesgo 1.00% RR 2.0
-Simulación en progreso - Velas procesadas: 40
-✅ Apertura forex_support_resistance_strategy (BUY) @ 1.17290 | riesgo 1.00% RR 2.0
-🔴 Cierre forex_bollinger_bands_strategy SELL @ 1.17300 | P&L: -2.00000 | STOP_LOSS
-🔴 Cierre forex_range_trading_strategy SELL @ 1.17300 | P&L: -2.00000 | STOP_LOSS
-🔴 Cierre forex_rsi_strategy SELL @ 1.17300 | P&L: -2.00000 | STOP_LOSS
-🔴 Cierre forex_support_resistance_strategy SELL @ 1.17300 | P&L: -2.00000 | STOP_LOSS
-🔴 Cierre forex_rsi_strategy SELL @ 1.17297 | P&L: -1.71429 | STOP_LOSS
-🔴 Cierre forex_rsi_strategy SELL @ 1.17300 | P&L: -2.00000 | STOP_LOSS
-🔴 Cierre forex_support_resistance_strategy SELL @ 1.17300 | P&L: -2.00000 | STOP_LOSS
-🔴 Cierre forex_support_resistance_strategy BUY @ 1.17300 | P&L: +1.00000 | PROFIT_POSITIVO
-✅ Apertura forex_bollinger_bands_strategy (SELL) @ 1.17280 | riesgo 1.00% RR 2.0
-✅ Apertura forex_range_trading_strategy (SELL) @ 1.17280 | riesgo 1.00% RR 2.0
-✅ Apertura forex_rsi_strategy (SELL) @ 1.17280 | riesgo 1.00% RR 2.0
-✅ Apertura forex_price_action_patterns (SELL) @ 1.17300 | riesgo 1.00% RR 2.0
-✅ Apertura forex_bollinger_bands_strategy (SELL) @ 1.17300 | riesgo 1.00% RR 2.0
-✅ Apertura forex_range_trading_strategy (SELL) @ 1.17300 | riesgo 1.00% RR 2.0
-✅ Apertura forex_support_resistance_strategy (BUY) @ 1.17300 | riesgo 1.00% RR 2.0
-🔴 Cierre forex_price_action_patterns SELL @ 1.17290 | P&L: +1.00000 | PROFIT_POSITIVO
-🔴 Cierre forex_bollinger_bands_strategy SELL @ 1.17290 | P&L: +1.00000 | PROFIT_POSITIVO
-🔴 Cierre forex_range_trading_strategy SELL @ 1.17290 | P&L: +1.00000 | PROFIT_POSITIVO
-✅ Apertura forex_bollinger_bands_strategy (SELL) @ 1.17290 | riesgo 1.00% RR 2.0
-✅ Apertura forex_range_trading_strategy (SELL) @ 1.17290 | riesgo 1.00% RR 2.0
-✅ Apertura forex_support_resistance_strategy (SELL) @ 1.17290 | riesgo 1.00% RR 2.0
-Simulación en progreso - Velas procesadas: 50
-🔴 Cierre forex_bollinger_bands_strategy SELL @ 1.17320 | P&L: -4.00000 | STOP_LOSS
-🔴 Cierre forex_range_trading_strategy SELL @ 1.17320 | P&L: -4.00000 | STOP_LOSS
-🔴 Cierre forex_rsi_strategy SELL @ 1.17320 | P&L: -4.00000 | STOP_LOSS
-🔴 Cierre forex_support_resistance_strategy BUY @ 1.17320 | P&L: +2.00000 | PROFIT_POSITIVO
-🔴 Cierre forex_support_resistance_strategy SELL @ 1.17310 | P&L: -2.00000 | STOP_LOSS
-✅ Apertura forex_bollinger_bands_strategy (SELL) @ 1.17310 | riesgo 1.00% RR 2.0
-✅ Apertura forex_range_trading_strategy (SELL) @ 1.17310 | riesgo 1.00% RR 2.0
-✅ Apertura forex_support_resistance_strategy (BUY) @ 1.17310 | riesgo 1.00% RR 2.0
-✅ Apertura forex_price_action_patterns (BUY) @ 1.17310 | riesgo 1.00% RR 2.0
-🔴 Cierre forex_bollinger_bands_strategy SELL @ 1.17290 | P&L: +2.00000 | PROFIT_POSITIVO
-🔴 Cierre forex_range_trading_strategy SELL @ 1.17290 | P&L: +2.00000 | PROFIT_POSITIVO
-✅ Apertura forex_support_resistance_strategy (SELL) @ 1.17290 | riesgo 1.00% RR 2.0
-📊 Tipo de mercado detectado: Baja volatilidad/contracción
-🔴 Cierre forex_bollinger_bands_strategy SELL @ 1.17280 | P&L: +1.00000 | PROFIT_POSITIVO
-🔴 Cierre forex_range_trading_strategy SELL @ 1.17280 | P&L: +1.00000 | PROFIT_POSITIVO
-🔴 Cierre forex_support_resistance_strategy SELL @ 1.17280 | P&L: +1.00000 | PROFIT_POSITIVO
-Simulación en progreso - Velas procesadas: 60
-📊 Tipo de mercado detectado: Mercado lateral/rango
-✅ Apertura forex_ichimoku_cloud_strategy (BUY) @ 1.17300 | riesgo 1.00% RR 2.0
-Simulación en progreso - Velas procesadas: 70
-✅ Apertura candle_marubozu_trend (SELL) @ 1.17290
-✅ Apertura forex_scalping_1m_strategy (SELL) @ 1.17290 | riesgo 1.00% RR 2.0
-✅ Apertura forex_scalping_1m_strategy (SELL) @ 1.17290 | riesgo 1.00% RR 2.0
-🔴 Cierre candle_marubozu_trend SELL @ 1.17300 | P&L: -0.06339 | BREAKEVEN
-🔴 Cierre forex_scalping_1m_strategy SELL @ 1.17299 | P&L: -0.85714 | STOP_LOSS
-✅ Apertura candle_marubozu_trend (BUY) @ 1.17300
-✅ Apertura forex_rsi_strategy (BUY) @ 1.17300 | riesgo 1.00% RR 2.0
-✅ Apertura forex_scalping_1m_strategy (SELL) @ 1.17300 | riesgo 1.00% RR 2.0
-✅ Apertura forex_trendline_strategy (BUY) @ 1.17300 | riesgo 1.00% RR 2.0
-✅ Apertura forex_scalping_1m_strategy (BUY) @ 1.17300 | riesgo 1.00% RR 2.0
-✅ Apertura forex_adx_strategy (BUY) @ 1.17300 | riesgo 1.00% RR 2.0
-🔴 Cierre forex_ichimoku_cloud_strategy BUY @ 1.17310 | P&L: +1.00000 | PROFIT_POSITIVO
-🔴 Cierre forex_scalping_1m_strategy SELL @ 1.17301 | P&L: -1.07143 | STOP_LOSS
-🔴 Cierre candle_marubozu_trend BUY @ 1.17310 | P&L: +0.09024 | PROFIT_POSITIVO
-🔴 Cierre forex_rsi_strategy BUY @ 1.17310 | P&L: +1.00000 | PROFIT_POSITIVO
-🔴 Cierre forex_trendline_strategy BUY @ 1.17310 | P&L: +1.00000 | PROFIT_POSITIVO
-🔴 Cierre forex_scalping_1m_strategy BUY @ 1.17310 | P&L: +1.00000 | PROFIT_POSITIVO
-🔴 Cierre forex_adx_strategy BUY @ 1.17310 | P&L: +1.00000 | PROFIT_POSITIVO
-Simulación en progreso - Velas procesadas: 80
-🔴 Cierre forex_support_resistance_strategy BUY @ 1.17320 | P&L: +1.00000 | PROFIT_POSITIVO
-🔴 Cierre forex_price_action_patterns BUY @ 1.17320 | P&L: +1.00000 | PROFIT_POSITIVO
-🔴 Cierre forex_scalping_1m_strategy SELL @ 1.17311 | P&L: -1.07143 | STOP_LOSS
-✅ Apertura candle_doji_reversal_strategy (SELL) @ 1.17320
-✅ Apertura candle_doji_indecision (SELL) @ 1.17320
-✅ Apertura candle_marubozu_trend (SELL) @ 1.17320
-✅ Apertura forex_bollinger_bands_strategy (SELL) @ 1.17320 | riesgo 1.00% RR 2.0
-✅ Apertura forex_range_trading_strategy (SELL) @ 1.17320 | riesgo 1.00% RR 2.0
-✅ Apertura forex_rsi_strategy (SELL) @ 1.17320 | riesgo 1.00% RR 2.0
-✅ Apertura forex_bollinger_bands_strategy (SELL) @ 1.17320 | riesgo 1.00% RR 2.0
-✅ Apertura forex_range_trading_strategy (SELL) @ 1.17320 | riesgo 1.00% RR 2.0
-✅ Apertura forex_rsi_strategy (SELL) @ 1.17320 | riesgo 1.00% RR 2.0
-🔴 Cierre candle_doji_reversal_strategy SELL @ 1.17340 | P&L: -0.14913 | BREAKEVEN
-🔴 Cierre candle_doji_indecision SELL @ 1.17340 | P&L: -0.14910 | BREAKEVEN
-🔴 Cierre candle_marubozu_trend SELL @ 1.17340 | P&L: -0.11180 | BREAKEVEN
-✅ Apertura candle_doji_reversal_strategy (BUY) @ 1.17340
-✅ Apertura candle_doji_indecision (BUY) @ 1.17340
-✅ Apertura candle_marubozu_trend (BUY) @ 1.17340
-✅ Apertura forex_rsi_strategy (SELL) @ 1.17340 | riesgo 1.00% RR 2.0
-📊 Tipo de mercado detectado: Baja volatilidad/contracción
-✅ Apertura forex_bollinger_bands_strategy (SELL) @ 1.17340 | riesgo 1.00% RR 2.0
-✅ Apertura forex_range_trading_strategy (SELL) @ 1.17340 | riesgo 1.00% RR 2.0
-🔴 Cierre candle_doji_reversal_strategy BUY @ 1.17330 | P&L: -0.06273 | BREAKEVEN
-🔴 Cierre candle_doji_indecision BUY @ 1.17330 | P&L: -0.06272 | BREAKEVEN
-🔴 Cierre candle_marubozu_trend BUY @ 1.17330 | P&L: -0.04703 | BREAKEVEN
-🔴 Cierre forex_rsi_strategy SELL @ 1.17330 | P&L: +1.00000 | PROFIT_POSITIVO
-🔴 Cierre forex_bollinger_bands_strategy SELL @ 1.17330 | P&L: +1.00000 | PROFIT_POSITIVO
-🔴 Cierre forex_range_trading_strategy SELL @ 1.17330 | P&L: +1.00000 | PROFIT_POSITIVO
-✅ Apertura candle_stop_loss_take_profit (SELL) @ 1.17330
-✅ Apertura forex_bollinger_bands_strategy (SELL) @ 1.17330 | riesgo 1.00% RR 2.0
-✅ Apertura forex_range_trading_strategy (SELL) @ 1.17330 | riesgo 1.00% RR 2.0
-🔴 Cierre candle_stop_loss_take_profit SELL @ 1.17320 | P&L: +0.06111 | PROFIT_POSITIVO
-🔴 Cierre forex_bollinger_bands_strategy SELL @ 1.17320 | P&L: +1.00000 | PROFIT_POSITIVO
-🔴 Cierre forex_range_trading_strategy SELL @ 1.17320 | P&L: +1.00000 | PROFIT_POSITIVO
-✅ Apertura forex_rsi_strategy (SELL) @ 1.17320 | riesgo 1.00% RR 2.0
-✅ Apertura candle_doji_reversal_strategy (SELL) @ 1.17320
-✅ Apertura candle_doji_indecision (SELL) @ 1.17320
-✅ Apertura candle_filter_with_trend (BUY) @ 1.17320
-✅ Apertura candle_marubozu_trend (SELL) @ 1.17320
-✅ Apertura candle_stop_loss_take_profit (BUY) @ 1.17320
-✅ Apertura forex_rsi_strategy (SELL) @ 1.17320 | riesgo 1.00% RR 2.0
-🔴 Cierre forex_bollinger_bands_strategy SELL @ 1.17310 | P&L: +1.00000 | PROFIT_POSITIVO
-🔴 Cierre forex_range_trading_strategy SELL @ 1.17310 | P&L: +1.00000 | PROFIT_POSITIVO
-🔴 Cierre forex_rsi_strategy SELL @ 1.17310 | P&L: +1.00000 | PROFIT_POSITIVO
-🔴 Cierre forex_bollinger_bands_strategy SELL @ 1.17310 | P&L: +1.00000 | PROFIT_POSITIVO
-🔴 Cierre forex_range_trading_strategy SELL @ 1.17310 | P&L: +1.00000 | PROFIT_POSITIVO
-🔴 Cierre forex_rsi_strategy SELL @ 1.17310 | P&L: +1.00000 | PROFIT_POSITIVO
-🔴 Cierre forex_rsi_strategy SELL @ 1.17310 | P&L: +1.00000 | PROFIT_POSITIVO
-🔴 Cierre candle_doji_reversal_strategy SELL @ 1.17310 | P&L: +0.04914 | PROFIT_POSITIVO
-🔴 Cierre candle_doji_indecision SELL @ 1.17310 | P&L: +0.04913 | PROFIT_POSITIVO
-🔴 Cierre candle_filter_with_trend BUY @ 1.17310 | P&L: -0.03684 | BREAKEVEN
-🔴 Cierre candle_marubozu_trend SELL @ 1.17310 | P&L: +0.03683 | PROFIT_POSITIVO
-🔴 Cierre candle_stop_loss_take_profit BUY @ 1.17310 | P&L: -0.04910 | BREAKEVEN
-🔴 Cierre forex_rsi_strategy SELL @ 1.17310 | P&L: +1.00000 | PROFIT_POSITIVO
-✅ Apertura forex_rsi_strategy (SELL) @ 1.17310 | riesgo 1.00% RR 2.0
-Simulación en progreso - Velas procesadas: 90
-🔴 Cierre forex_rsi_strategy SELL @ 1.17300 | P&L: +1.00000 | PROFIT_POSITIVO
-✅ Apertura candle_marubozu_trend (SELL) @ 1.17300
-🔴 Cierre candle_marubozu_trend SELL @ 1.17320 | P&L: -0.07021 | BREAKEVEN
-✅ Apertura candle_marubozu_trend (BUY) @ 1.17320
-🔴 Cierre candle_marubozu_trend BUY @ 1.17310 | P&L: -0.03662 | BREAKEVEN
-✅ Apertura candle_stop_loss_take_profit (SELL) @ 1.17310
-🔴 Cierre candle_stop_loss_take_profit SELL @ 1.17320 | P&L: -0.04881 | BREAKEVEN
-✅ Apertura candle_marubozu_trend (SELL) @ 1.17300
-
+Iniciando simulación Binance
+Cargar configuraciones: 30 estrategia(s) actualizada(s).
+2025-09-15 16:20:37,886 - RiskManagerIntegration - INFO - RiskManagerIntegration mejorado iniciado con config: RiskConfig(atr_period=14, default_risk_percent=0.02, default_rr_ratio=2.0, atr_sl_multiplier=2.0, atr_tp_multiplier=2.0, atr_trailing_multiplier=1.5, max_strategies_per_candle=3, enable_trailing_stop=False, enable_sell_operations=True, worker_timeout=0.5, queue_maxsize=2000, force_open_operations=True)
+2025-09-15 16:21:06,236 - RiskManagerIntegration - ERROR - Niveles inválidos para BUY: Precio=1.1722, SL=1.1725714285714286, TP=1.1714571428571428
+2025-09-15 16:21:28,848 - RiskManager - WARNING - P&L ANORMAL DETECTADO:
+2025-09-15 16:21:28,848 - RiskManager - WARNING -   Operación ID: 2
+2025-09-15 16:21:28,848 - RiskManager - WARNING -   Tipo: BUY
+2025-09-15 16:21:28,848 - RiskManager - WARNING -   Precio apertura: 1.17220
+2025-09-15 16:21:28,848 - RiskManager - WARNING -   Precio actual: 1.00000
+2025-09-15 16:21:28,848 - RiskManager - WARNING -   Diferencia: 0.17220
+2025-09-15 16:21:28,848 - RiskManager - WARNING -   Lote size: 10000.00
+2025-09-15 16:21:28,848 - RiskManager - WARNING -   P&L calculado: -1722.00000
+2025-09-15 16:21:28,848 - RiskManager - WARNING -   Estrategia: forex_price_action_patterns
+2025-09-15 16:21:28,848 - RiskManager - WARNING - P&L ANORMAL DETECTADO:
+2025-09-15 16:21:28,848 - RiskManager - WARNING -   Operación ID: 3
+2025-09-15 16:21:28,848 - RiskManager - WARNING -   Tipo: SELL
+2025-09-15 16:21:28,848 - RiskManager - WARNING -   Precio apertura: 1.17210
+2025-09-15 16:21:28,848 - RiskManager - WARNING -   Precio actual: 1.00000
+2025-09-15 16:21:28,848 - RiskManager - WARNING -   Diferencia: 0.17210
+2025-09-15 16:21:28,848 - RiskManager - WARNING -   Lote size: 10000.00
+2025-09-15 16:21:28,848 - RiskManager - WARNING -   P&L calculado: 1721.00000
+2025-09-15 16:21:28,848 - RiskManager - WARNING -   Estrategia: forex_support_resistance_strategy
+2025-09-15 16:21:28,848 - RiskManager - WARNING - P&L ANORMAL DETECTADO:
+2025-09-15 16:21:28,848 - RiskManager - WARNING -   Operación ID: 5
+2025-09-15 16:21:28,848 - RiskManager - WARNING -   Tipo: BUY
+2025-09-15 16:21:28,848 - RiskManager - WARNING -   Precio apertura: 1.17180
+2025-09-15 16:21:28,848 - RiskManager - WARNING -   Precio actual: 1.00000
+2025-09-15 16:21:28,848 - RiskManager - WARNING -   Diferencia: 0.17180
+2025-09-15 16:21:28,848 - RiskManager - WARNING -   Lote size: 10000.00
+2025-09-15 16:21:28,848 - RiskManager - WARNING -   P&L calculado: -1718.00000
+2025-09-15 16:21:28,848 - RiskManager - WARNING -   Estrategia: forex_stochastic_strategy
