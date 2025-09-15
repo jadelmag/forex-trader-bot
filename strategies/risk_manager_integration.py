@@ -522,10 +522,11 @@ class RiskManagerIntegration:
                     except Exception:
                         operacion.trailing_multiplier = float(self.config.atr_trailing_multiplier)
                     if self.debug_mode:
-                        logger.info(f"Trailing stop configurado para operación {operacion.id_operacion} (mult={operacion.trailing_multiplier})")
+                        logger.info(f"Trailing stop configurado para operación {operacion}")
 
                 self.metrics.signals_processed += 1
-                logger.info(f"✅ OPERACIÓN ABIERTA: {estrategia_nombre} - {tipo} - ID: {operacion.id_operacion}")
+                if self.debug_mode:
+                    logger.info(f"✅ OPERACIÓN ABIERTA: {estrategia_nombre} - {tipo} - ID: {operacion}")
                 
             else:
                 self.metrics.errors_count += 1
