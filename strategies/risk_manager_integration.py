@@ -247,10 +247,35 @@ class RiskManagerIntegration:
         if not self._running:
             return None
 
+        # Validaciones iniciales de parámetros críticos
+        if senal is None or precio_actual is None or timestamp is None:
+            logger.warning(f"Parámetros críticos faltantes: senal={senal}, precio={precio_actual}, timestamp={timestamp}")
+            return None
+
+        # Validación de precio (CORRECTO)
+        try:
+            precio_actual = float(precio_actual)
+            if precio_actual <= 0:
+                logger.error(f"Precio actual inválido: {precio_actual}")
+                return None
+        except (ValueError, TypeError):
+            logger.error(f"Precio actual no convertible a float: {precio_actual}")
+            return None
+
         # Usar configuraciones personalizadas o defaults
         final_rr_ratio = rr_ratio or self.config.default_rr_ratio
         final_risk_percent = risk_percent or self.config.default_risk_percent
-        
+
+        # Validación de RR ratio (CORRECTO)
+        if final_rr_ratio <= 0:
+            logger.warning(f"RR ratio inválido: {final_rr_ratio}, usando default: {self.config.default_rr_ratio}")
+            final_rr_ratio = self.config.default_rr_ratio
+
+        # Validación de risk percent (CORRECTO)
+        if final_risk_percent <= 0:
+            logger.warning(f"Risk percent inválido: {final_risk_percent}, usando default: {self.config.default_risk_percent}")
+            final_risk_percent = self.config.default_risk_percent
+
         # Aplicar configuración de candle strategy si está disponible
         atr_sl_mult = self.config.atr_sl_multiplier
         atr_tp_mult = self.config.atr_tp_multiplier
@@ -258,6 +283,23 @@ class RiskManagerIntegration:
         if candle_config:
             atr_sl_mult = candle_config.get('atr_sl_multiplier', atr_sl_mult)
             atr_tp_mult = candle_config.get('atr_tp_multiplier', atr_tp_mult)
+
+        # Validar multiplicadores
+        if atr_sl_mult <= 0:
+            logger.warning(f"Multiplicador SL inválido: {atr_sl_mult}, usando default: {self.config.atr_sl_multiplier}")
+            atr_sl_mult = self.config.atr_sl_multiplier
+
+        # Validación de ATR (CORRECTO)
+        final_atr_value = 0.0001  # valor mínimo seguro
+        if atr_value is not None:
+            try:
+                final_atr_value = float(atr_value)
+                if final_atr_value <= 0:
+                    logger.warning(f"ATR value inválido: {atr_value}, usando valor mínimo: 0.0001")
+                    final_atr_value = 0.0001
+            except (ValueError, TypeError):
+                logger.warning(f"ATR value no convertible: {atr_value}, usando valor mínimo: 0.0001")
+                final_atr_value = 0.0001
 
         # Validar parámetros críticos antes de crear signal_data
         if senal is None or precio_actual is None or timestamp is None:
@@ -298,7 +340,7 @@ class RiskManagerIntegration:
             return None
 
     def _process_single_signal(self, signal_data: Dict):
-        """Procesa una señal individual con configuraciones personalizadas y soporte completo BUY/SELL"""
+        """Procesa una señal de trading con configuraciones personalizables - CON VALIDACIÓN MEJORADA"""
         try:
             # Validar que signal_data no sea None
             if signal_data is None:
@@ -312,8 +354,8 @@ class RiskManagerIntegration:
             
             # Validar que contiene las claves requeridas
             required_keys = ['senal', 'precio_actual', 'timestamp', 'atr_value', 'rr_ratio', 
-                           'risk_percent', 'estrategia_nombre', 'stop_loss_override', 
-                           'take_profit_override', 'atr_sl_multiplier', 'atr_tp_multiplier']
+                        'risk_percent', 'estrategia_nombre', 'stop_loss_override', 
+                        'take_profit_override', 'atr_sl_multiplier', 'atr_tp_multiplier']
             
             for key in required_keys:
                 if key not in signal_data:
@@ -339,10 +381,19 @@ class RiskManagerIntegration:
                 logger.warning("Valores críticos faltantes en signal_data")
                 return None
             
-            # Validar que atr_value no sea None para cálculos
+            # Validar que atr_value sea positivo y válido
             if atr_value is None or atr_value <= 0:
-                logger.warning(f"ATR inválido: {atr_value}, usando valor por defecto")
+                logger.warning(f"ATR inválido: {atr_value}, usando valor mínimo seguro")
                 atr_value = 0.0001  # Valor mínimo por defecto
+            
+            # Validar multiplicadores
+            if atr_sl_multiplier <= 0:
+                logger.warning(f"Multiplicador SL inválido: {atr_sl_multiplier}, usando valor por defecto 2.0")
+                atr_sl_multiplier = 2.0
+            
+            if rr_ratio <= 0:
+                logger.warning(f"Ratio RR inválido: {rr_ratio}, usando valor por defecto 2.0")
+                rr_ratio = 2.0
 
             # Determinar tipo de operación basado en la señal - FORZAR APERTURA DE OPERACIONES
             if senal == 1:
@@ -368,29 +419,48 @@ class RiskManagerIntegration:
             else:
                 return None
 
-            # Calcular SL y TP
+            # Calcular SL y TP - FÓRMULAS CORREGIDAS
             if stop_loss_override is not None and take_profit_override is not None:
                 stop_loss = stop_loss_override
                 take_profit = take_profit_override
+                
+                # Validar override values
+                if tipo == 'BUY' and (stop_loss >= precio_actual or take_profit <= precio_actual):
+                    logger.error(f"Override values inválidos para BUY: Precio={precio_actual}, SL={stop_loss}, TP={take_profit}")
+                    return None
+                elif tipo == 'SELL' and (stop_loss <= precio_actual or take_profit >= precio_actual):
+                    logger.error(f"Override values inválidos para SELL: Precio={precio_actual}, SL={stop_loss}, TP={take_profit}")
+                    return None
+                    
             else:
+                # FÓRMULAS CORREGIDAS - asegurar dirección correcta
                 if tipo == 'BUY':
-                    stop_loss = precio_actual - (atr_value * atr_sl_multiplier)
-                    distancia_sl = precio_actual - stop_loss                    # NUEVA
-                    take_profit = precio_actual + (distancia_sl * rr_ratio)     # MODIFICADA
+                    stop_loss = precio_actual - (atr_value * atr_sl_multiplier)                 # SL debajo del precio
+                    take_profit = precio_actual + (atr_value * atr_sl_multiplier * rr_ratio)    # TP arriba del precio
                 elif tipo == 'SELL':
-                    stop_loss = precio_actual + (atr_value * atr_sl_multiplier)
-                    distancia_sl = stop_loss - precio_actual                    # NUEVA
-                    take_profit = precio_actual - (distancia_sl * rr_ratio)     # MODIFICADA
+                    stop_loss = precio_actual + (atr_value * atr_sl_multiplier)                 # SL arriba del precio
+                    take_profit = precio_actual - (atr_value * atr_sl_multiplier * rr_ratio)    # TP debajo del precio
 
-            # Validar niveles calculados - LÓGICA CORREGIDA
-            if tipo == 'BUY' and (stop_loss >= precio_actual or take_profit <= precio_actual):
-                logger.error(f"Niveles inválidos para BUY: Precio={precio_actual}, SL={stop_loss}, TP={take_profit}")
-                self.metrics.errors_count += 1
-                return None
-            elif tipo == 'SELL' and (stop_loss <= precio_actual or take_profit >= precio_actual):
-                logger.error(f"Niveles inválidos para SELL: Precio={precio_actual}, SL={stop_loss}, TP={take_profit}")
-                self.metrics.errors_count += 1
-                return None
+            # Validación EXTRA de niveles calculados
+            if tipo == 'BUY':
+                if stop_loss >= precio_actual:
+                    logger.error(f"SL inválido para BUY: debe ser MENOR que precio. Precio={precio_actual}, SL={stop_loss}")
+                    logger.error(f"Debug: ATR={atr_value}, SL_mult={atr_sl_multiplier}")
+                    return None
+                if take_profit <= precio_actual:
+                    logger.error(f"TP inválido para BUY: debe ser MAYOR que precio. Precio={precio_actual}, TP={take_profit}")
+                    logger.error(f"Debug: ATR={atr_value}, RR={rr_ratio}")
+                    return None
+                    
+            elif tipo == 'SELL':
+                if stop_loss <= precio_actual:
+                    logger.error(f"SL inválido para SELL: debe ser MAYOR que precio. Precio={precio_actual}, SL={stop_loss}")
+                    logger.error(f"Debug: ATR={atr_value}, SL_mult={atr_sl_multiplier}")
+                    return None
+                if take_profit >= precio_actual:
+                    logger.error(f"TP inválido para SELL: debe ser MENOR que precio. Precio={precio_actual}, TP={take_profit}")
+                    logger.error(f"Debug: ATR={atr_value}, RR={rr_ratio}")
+                    return None
 
             # LOGGING DETALLADO PARA DEBUG
             if self.debug_mode:
@@ -402,6 +472,8 @@ class RiskManagerIntegration:
                 logger.info(f"  Take Profit: {take_profit:.5f}")
                 logger.info(f"  Riesgo %: {risk_percent}")
                 logger.info(f"  ATR: {atr_value}")
+                logger.info(f"  ATR SL Multiplier: {atr_sl_multiplier}")
+                logger.info(f"  RR Ratio: {rr_ratio}")
                 logger.info(f"  Timestamp: {timestamp}")
 
             # Obtener PositionSize si está disponible en candle_config
@@ -427,11 +499,10 @@ class RiskManagerIntegration:
             )
 
             if operacion:
-                # Aplicar trailing stop si está configurado (aceptar distintas claves de config)
+                # Aplicar trailing stop si está configurado
                 trailing_enabled = False
                 trailing_mult = None
                 try:
-                    # Claves compatibles
                     trailing_enabled = bool(
                         candle_config.get('trailing_stop_enabled', False) or
                         candle_config.get('use_trailing_stop', False)
@@ -441,21 +512,11 @@ class RiskManagerIntegration:
                         candle_config.get('atr_trailing_multiplier') or
                         self.config.atr_trailing_multiplier
                     )
-                    # Modo de trailing (si se definió)
-                    mode = str(candle_config.get('trailing_mode', '') or '').lower()
-                    if mode in ('aggressive', 'conservative', 'hybrid'):
-                        if mode == 'aggressive':
-                            trailing_mult = 1.0
-                        elif mode == 'conservative':
-                            trailing_mult = 2.0
-                        else:  # hybrid
-                            trailing_mult = 1.5
                 except Exception:
                     pass
 
                 if trailing_enabled:
                     operacion.trailing_stop_enabled = True
-                    # Guardar multiplier para verificaciones dinámicas en _check_trailing_stops
                     try:
                         operacion.trailing_multiplier = float(trailing_mult)
                     except Exception:
@@ -464,23 +525,18 @@ class RiskManagerIntegration:
                         logger.info(f"Trailing stop configurado para operación {operacion.id_operacion} (mult={operacion.trailing_multiplier})")
 
                 self.metrics.signals_processed += 1
-                # logger.info(f"✅ OPERACIÓN ABIERTA: {estrategia_nombre} - ID: {operacion.id} - Precio: {precio_actual}, SL: {stop_loss:.5f}, TP: {take_profit:.5f}")
+                logger.info(f"✅ OPERACIÓN ABIERTA: {estrategia_nombre} - {tipo} - ID: {operacion.id_operacion}")
+                
             else:
                 self.metrics.errors_count += 1
-                error_msg = self.risk_manager.last_error or "Error desconocido"
-                # logger.error(f"❌ FALLÓ ABRIR OPERACIÓN: {estrategia_nombre} -> {error_msg}")
-                
-                # LOGGING ADICIONAL PARA DEBUG
-                if self.debug_mode:
-                    logger.error(f"  Capital disponible: {self.risk_manager.capital}")
-                    logger.error(f"  Operaciones activas: {self.risk_manager.get_operaciones_activas_count()}")
-                    logger.error(f"  Max operaciones: {self.risk_manager.max_operaciones_activas}")
+                error_msg = getattr(self.risk_manager, 'last_error', 'Error desconocido')
+                logger.error(f"❌ FALLÓ ABRIR OPERACIÓN: {estrategia_nombre} -> {error_msg}")
 
             return operacion
 
         except Exception as e:
             self.metrics.errors_count += 1
-            logger.error(f"Error en _process_single_signal: {str(e)}")
+            logger.error(f"Error en _process_single_signal: {str(e)}", exc_info=True)
             return None
 
     def procesar_dataframe(self, df: pd.DataFrame, atr_period=None, rr_ratio=None, 
@@ -624,7 +680,6 @@ class RiskManagerIntegration:
         except Exception as e:
             logger.error(f"Error procesando dataframe: {e}")
             return []
-
 
     def get_metrics(self) -> Dict:
         """Obtiene métricas de rendimiento"""
