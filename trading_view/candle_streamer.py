@@ -49,7 +49,7 @@ class CandleStreamer:
             
         # Configurar velas visibles
         self.visible_candles = max(1, min(visible_candles, max_plot))
-        self.load_all_candles = True  # Flag para cargar todas las velas al aceptar config
+        self.load_all_candles = False  # Flag para NO cargar todas las velas de golpe
         self.progressive_reveal = True  # Revelado progresivo siempre activado
 
         self.url = URL
@@ -126,6 +126,12 @@ class CandleStreamer:
         self._opacity_reveal_enabled = False
         self._opacity_reveal_timer_id = None
         self._opacity_reveal_interval_ms = DEFAULT_CANDLE_REVEAL_INTERVAL
+        # Timers gestionados cuando no hay parent_frame (threading.Timer)
+        self._opacity_timer_thread = None
+
+        # Timers para simulación CSV
+        self._simulation_timer = None            # threading.Timer cuando no hay parent_frame
+        self._simulation_after_id = None         # ID devuelto por Tkinter after() cuando hay parent_frame
         
         # Si se proporciona un frame padre, usamos FigureCanvasTkAgg
         if self.parent_frame:
@@ -148,9 +154,10 @@ class CandleStreamer:
             self.canvas.draw()
             self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
         else:
-            # Comportamiento original si no hay frame padre
+            # Comportamiento cuando no hay frame padre: evitar fallar con DF vacío
+            df_to_plot = self.df if self.df is not None and not self.df.empty else self._get_dummy_df_for_plot()
             self.fig, self.axlist = mpf.plot(
-                self.df,
+                df_to_plot,
                 type='candle',
                 style='charles',
                 volume=True,
@@ -165,8 +172,8 @@ class CandleStreamer:
         self._last_df = pd.DataFrame()
         self._last_x = None  # posiciones x (mdates float) del último DF
         self._hover_annot = None
+        self.debug_hover = False  # Debug desactivado - tooltip funcionando
         self._hover_cid = None
-        self.debug_hover = False  # activar para logs de eventos de hover
         self._hover_marker = None  # marcador visual en la vela
         # Zoom con scroll
         self._scroll_cid = None
@@ -182,6 +189,144 @@ class CandleStreamer:
         self._rect_start = None  # (x0, y0) en coords de datos
         self._rect_patch = None
         self._init_hover()
+        
+        # Overlays de texto en la gráfica (tipo de mercado y slots)
+        self._overlay_market_text = None
+        self._overlay_slots_text = None
+
+        # Encabezado superior (fuera del área de velas)
+        self._header_ax = None
+        self._header_market_text = None
+        self._header_slots_text = None
+        self._header_layout_done = False
+        self._ensure_header_ax()
+
+    def set_overlay_texts(self, market_text: str, slots_text: str):
+        """Dibuja/actualiza etiquetas centradas dentro del gráfico de precios.
+        - market_text: "Tipo de mercado: ..."
+        - slots_text:  "Slots: total/max | Candle: x/y | Forex: a/b"
+        """
+        try:
+            ax = getattr(self, 'ax_price', None)
+            if ax is None:
+                return
+            # Texto de tipo de mercado (centro)
+            if self._overlay_market_text is None:
+                self._overlay_market_text = ax.text(
+                    0.5, 0.52, market_text,
+                    transform=ax.transAxes, ha='center', va='center', fontsize=11,
+                    color='white', bbox=dict(facecolor='black', alpha=0.35, boxstyle='round,pad=0.3')
+                )
+            else:
+                self._overlay_market_text.set_text(market_text)
+            # Texto de slots (ligeramente debajo)
+            if self._overlay_slots_text is None:
+                self._overlay_slots_text = ax.text(
+                    0.5, 0.44, slots_text,
+                    transform=ax.transAxes, ha='center', va='center', fontsize=10,
+                    color='white', bbox=dict(facecolor='black', alpha=0.35, boxstyle='round,pad=0.3')
+                )
+            else:
+                self._overlay_slots_text.set_text(slots_text)
+
+            # Solicitar redibujo ligero
+            if hasattr(self, 'canvas') and self.canvas is not None:
+                try:
+                    self.canvas.draw_idle()
+                except Exception:
+                    self.canvas.draw()
+            elif hasattr(self, 'fig') and self.fig is not None:
+                try:
+                    self.fig.canvas.draw_idle()
+                except Exception:
+                    self.fig.canvas.draw()
+        except Exception:
+            # No romper el flujo si falla el overlay
+            pass
+
+    def _ensure_header_ax(self):
+        """Crea (si no existe) un eje de encabezado en la parte superior de la figura
+        y ajusta el margen superior para no invadir el área de velas."""
+        try:
+            if not hasattr(self, 'fig') or self.fig is None:
+                return
+            # Ajustar margen superior una única vez para dejar espacio al encabezado
+            if not getattr(self, '_header_layout_done', False):
+                try:
+                    self.fig.subplots_adjust(top=0.90)
+                except Exception:
+                    pass
+                self._header_layout_done = True
+            # Crear eje de encabezado si no existe
+            if self._header_ax is None:
+                # [left, bottom, width, height] en coords de figura
+                self._header_ax = self.fig.add_axes([0.05, 0.92, 0.90, 0.07])
+                try:
+                    self._header_ax.set_facecolor('#f8f9fa')
+                except Exception:
+                    pass
+                self._header_ax.set_axis_off()
+        except Exception:
+            pass
+
+    def set_header_labels(self, market_text: str, slots_text: str):
+        """Actualiza/crea las etiquetas de encabezado superior (fuera del área de velas)."""
+        try:
+            self._ensure_header_ax()
+            if self._header_ax is None:
+                return
+            # Texto de tipo de mercado (arriba, centrado)
+            if self._header_market_text is None:
+                self._header_market_text = self._header_ax.text(
+                    0.5, 0.70, market_text,
+                    transform=self._header_ax.transAxes, ha='center', va='center', fontsize=11,
+                    color='black'
+                )
+            else:
+                self._header_market_text.set_text(market_text)
+            # Texto de slots (debajo, centrado)
+            if self._header_slots_text is None:
+                self._header_slots_text = self._header_ax.text(
+                    0.5, 0.30, slots_text,
+                    transform=self._header_ax.transAxes, ha='center', va='center', fontsize=10,
+                    color='black'
+                )
+            else:
+                self._header_slots_text.set_text(slots_text)
+
+            # Redibujar suavemente
+            if hasattr(self, 'canvas') and self.canvas is not None:
+                try:
+                    self.canvas.draw_idle()
+                except Exception:
+                    self.canvas.draw()
+            elif hasattr(self, 'fig') and self.fig is not None:
+                try:
+                    self.fig.canvas.draw_idle()
+                except Exception:
+                    self.fig.canvas.draw()
+        except Exception:
+            pass
+
+    def _get_dummy_df_for_plot(self):
+        """Devuelve un DataFrame mínimo para inicializar el gráfico cuando aún no hay datos.
+        Evita errores de mplfinance con DataFrame vacío.
+        """
+        try:
+            now = pd.Timestamp.now().floor('s')
+        except Exception:
+            now = pd.Timestamp.now()
+        idx = pd.date_range(end=now, periods=2, freq='S')
+        base = 1.0
+        df = pd.DataFrame({
+            'Open':   [base, base],
+            'High':   [base, base],
+            'Low':    [base, base],
+            'Close':  [base, base],
+            'Volume': [0.0, 0.0]
+        }, index=idx)
+        df.index.name = 'Date'
+        return df
 
     def set_debug_mode(self, debug: bool):
         """Activa o desactiva el modo debug"""
@@ -243,47 +388,223 @@ class CandleStreamer:
                     pass
             
             # Iniciar simulación con datos descargados
-            self._start_csv_simulation()
+            self.start_csv_simulation()
             
         except Exception as e:
-            self._log(f"Error durante la desconexión: {e}", 'red')
+            self._log(f"Error en desconexión automática: {e}", 'red')
+
+    def start_csv_simulation(self, visible_candles=None):
+        """Método público para iniciar simulación CSV siguiendo el flujo correcto"""
+        try:
+            # PASO 1: Descargar datos de Binance y guardar en CSV
+            self._log("📥 PASO 1: Descargando datos de Binance...", 'blue')
+            success = self._download_binance_data_to_csv()
+            if not success:
+                self._log("❌ Error descargando datos de Binance", 'red')
+                return False
+            
+            # PASO 2: Cargar velas iniciales desde config
+            initial_candles = visible_candles or getattr(self, 'visible_candles', 20)
+            self._log(f"📊 PASO 2: Cargando {initial_candles} velas iniciales...", 'blue')
+            self._load_initial_candles_from_csv(initial_candles)
+            
+            # PASO 3: Iniciar procesamiento secuencial cada 5 segundos
+            self._log("⏰ PASO 3: Iniciando procesamiento secuencial (5s por vela)...", 'blue')
+            return self._start_csv_simulation()
+            
+        except Exception as e:
+            self._log(f"Error en simulación CSV: {e}", 'red')
+            return False
+    
+    def _download_binance_data_to_csv(self):
+        """Descarga datos de Binance y los guarda en CSV"""
+        try:
+            import requests
+            
+            if not self.symbol:
+                self._log("❌ No hay símbolo configurado", 'red')
+                return False
+            
+            # Construir URL de Binance API
+            base_url = "https://api.binance.com/api/v3/klines"
+            params = {
+                'symbol': self.symbol,
+                'interval': self.interval,
+                'limit': self.max_plot
+            }
+            
+            self._log(f"🌐 Descargando {self.max_plot} velas de {self.symbol} ({self.interval})...", 'white')
+            response = requests.get(base_url, params=params, timeout=10)
+            
+            if response.status_code != 200:
+                self._log(f"❌ Error API Binance: {response.status_code}", 'red')
+                return False
+            
+            data = response.json()
+            if not data:
+                self._log("❌ No se recibieron datos de Binance", 'red')
+                return False
+            
+            # Convertir a DataFrame
+            df = pd.DataFrame(data, columns=[
+                'timestamp', 'Open', 'High', 'Low', 'Close', 'Volume',
+                'close_time', 'quote_asset_volume', 'number_of_trades',
+                'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore'
+            ])
+            
+            # Procesar datos
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            df = df[['timestamp', 'Open', 'High', 'Low', 'Close', 'Volume']]
+            df[['Open', 'High', 'Low', 'Close', 'Volume']] = df[['Open', 'High', 'Low', 'Close', 'Volume']].astype(float)
+            df.set_index('timestamp', inplace=True)
+            df.index.name = 'Date'
+            
+            # Guardar en CSV
+            os.makedirs(self.csv_folder, exist_ok=True)
+            df.to_csv(self.csv_file)
+            if self.debug_mode:
+                self._log(f"✅ Datos guardados en: {self.csv_file}", 'green')
+                self._log(f"📊 {len(df)} velas descargadas correctamente", 'green')
+            
+            return True
+            
+        except Exception as e:
+            self._log(f"❌ Error descargando datos: {e}", 'red')
+            return False
+    
+    def _load_initial_candles_from_csv(self, initial_candles):
+        """Carga las velas iniciales desde el CSV y las visualiza"""
+        try:
+            if not os.path.exists(self.csv_file):
+                self._log(f"❌ Archivo CSV no encontrado: {self.csv_file}", 'red')
+                return False
+            
+            # Cargar CSV completo
+            full_df = pd.read_csv(self.csv_file, index_col='Date', parse_dates=True)
+            
+            if full_df.empty:
+                self._log("❌ CSV está vacío", 'red')
+                return False
+            
+            # Tomar solo las velas iniciales
+            self.df = full_df.head(initial_candles).copy()
+            self.full_csv_data = full_df  # Guardar datos completos para procesamiento secuencial
+            self.simulation_index = initial_candles + 1  # Empezar desde la siguiente vela
+            
+            self._log(f"✅ Cargadas {len(self.df)} velas iniciales", 'green')
+            self._log(f"📈 Rango: {self.df.index[0]} a {self.df.index[-1]}", 'white')
+            
+            # Visualizar velas iniciales
+            self._plot_candles()
+            
+            return True
+            
+        except Exception as e:
+            self._log(f"❌ Error cargando velas iniciales: {e}", 'red')
+            return False
+    
+    def _plot_candles(self):
+        """Método wrapper para dibujar velas usando el sistema de opacidad"""
+        try:
+            if hasattr(self, 'df') and self.df is not None and not self.df.empty:
+                self._plot_candles_with_opacity(self.df)
+            else:
+                self._log("⚠️ No hay datos para dibujar", 'yellow')
+        except Exception as e:
+            self._log(f"❌ Error dibujando velas: {e}", 'red')
     
     def _start_csv_simulation(self):
-        """Inicia simulación progresiva con los datos CSV descargados"""
+        """Inicia simulación progresiva con procesamiento secuencial cada 5 segundos"""
         try:
-            if self.df is None or self.df.empty:
-                self._log("No hay datos para simular", 'red')
-                return
+            if not hasattr(self, 'full_csv_data') or self.full_csv_data is None or self.full_csv_data.empty:
+                self._log("❌ No hay datos CSV para simular", 'red')
+                return False
             
             # Cambiar a modo simulación
             self.running = False  # WebSocket desconectado
             self.simulation_mode = True
-            self.simulation_index = 0
             
-            # Iniciar simulación progresiva
+            if not hasattr(self, 'simulation_index'):
+                self.simulation_index = len(self.df)  # Empezar después de las velas iniciales
+            
+            self._log(f"🚀 Simulación iniciada desde vela {self.simulation_index}", 'green')
+            
+            # Iniciar procesamiento secuencial
             self._schedule_next_simulation_step()
             
+            return True
+            
         except Exception as e:
-            self._log(f"Error iniciando simulación CSV: {e}", 'red')
-    
+            self._log(f"❌ Error iniciando simulación: {e}", 'red')
+            return False
+
     def _schedule_next_simulation_step(self):
-        """Programa el siguiente paso de la simulación"""
-        if not hasattr(self, 'simulation_mode') or not self.simulation_mode:
-            return
-        
-        if not hasattr(self, 'simulation_index'):
-            self.simulation_index = 0
-        
-        # Verificar si hay más datos para simular
-        if self.simulation_index >= len(self.df):
-            self._log("Simulación completada", 'green')
-            return
-        
-        # Programar siguiente paso
-        if hasattr(self, 'parent_frame') and self.parent_frame:
-            self.parent_frame.after(1000, self._execute_simulation_step)  # 1 segundo por vela
-        else:
-            threading.Timer(1.0, self._execute_simulation_step).start()
+        """Programa el siguiente paso de simulación"""
+        try:
+            if not hasattr(self, 'simulation_mode') or not self.simulation_mode:
+                return
+            
+            if not hasattr(self, 'simulation_index'):
+                self.simulation_index = 0
+            
+            # Verificar si hay más datos para simular
+            if self.simulation_index >= len(self.full_csv_data):
+                # Finalizar de forma ordenada y anunciar al terminar
+                try:
+                    self.simulation_mode = False
+                    # Cancelar after() si existe
+                    try:
+                        if hasattr(self, 'parent_frame') and self.parent_frame and getattr(self, '_simulation_after_id', None):
+                            try:
+                                self.parent_frame.after_cancel(self._simulation_after_id)
+                            except Exception:
+                                pass
+                            self._simulation_after_id = None
+                    except Exception:
+                        pass
+                    # Cancelar Timer si existe
+                    try:
+                        if getattr(self, '_simulation_timer', None) is not None:
+                            try:
+                                self._simulation_timer.cancel()
+                            except Exception:
+                                pass
+                        self._simulation_timer = None
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+                finally:
+                    # Notificar que la SIMULACIÓN ha terminado (se procesaron todas las velas del CSV)
+                    self._log("📊 Simulación completada - Se procesaron todas las velas del archivo", 'green')
+                return
+            
+            # Programar siguiente paso - 5 segundos entre velas para simular tiempo real
+            INTERVALO_VELAS_MS = 5000  # 5 segundos en milisegundos
+            INTERVALO_VELAS_SEC = 5.0  # 5 segundos
+            
+            if hasattr(self, 'parent_frame') and self.parent_frame:
+                # Guardar el ID para poder cancelar al detener
+                try:
+                    self._simulation_after_id = self.parent_frame.after(INTERVALO_VELAS_MS, self._execute_simulation_step)
+                except Exception:
+                    self._simulation_after_id = None
+            else:
+                # Usar Timer daemon y conservar referencia para cancelarlo en stop()
+                try:
+                    if self._simulation_timer is not None:
+                        try:
+                            self._simulation_timer.cancel()
+                        except Exception:
+                            pass
+                    self._simulation_timer = threading.Timer(INTERVALO_VELAS_SEC, self._execute_simulation_step)
+                    self._simulation_timer.daemon = True
+                    self._simulation_timer.start()
+                except Exception:
+                    self._simulation_timer = None
+                
+        except Exception as e:
+            self._log(f"Error programando siguiente paso: {e}", 'red')
     
     def _execute_simulation_step(self):
         """Ejecuta un paso de la simulación (procesa una vela)"""
@@ -291,37 +612,191 @@ class CandleStreamer:
             if not hasattr(self, 'simulation_mode') or not self.simulation_mode:
                 return
             
-            if self.simulation_index >= len(self.df):
+            if self.simulation_index >= len(self.full_csv_data):
                 return
             
-            # Obtener la vela actual
-            current_row = self.df.iloc[self.simulation_index]
-            current_timestamp = self.df.index[self.simulation_index]
+            # Obtener la vela actual del CSV completo
+            current_row = self.full_csv_data.iloc[self.simulation_index]
+            current_timestamp = self.full_csv_data.index[self.simulation_index]
+            
+            # Agregar la nueva vela al DataFrame actual
+            new_row_df = pd.DataFrame([current_row], index=[current_timestamp])
+            self.df = pd.concat([self.df, new_row_df])
+            
+            # Incrementar velas visibles para mostrar la nueva vela
+            if len(self.df) > self.visible_candles:
+                self.visible_candles = len(self.df)
             
             # Crear DataFrame hasta la vela actual (simulando progreso temporal)
-            df_current = self.df.iloc[:self.simulation_index + 1].copy()
+            df_current = self.df.copy()
             
-            # Notificar a los callbacks (esto activa la detección de patrones y trading)
-            for cb in list(self._candle_update_callbacks):
-                try:
-                    cb(df_current)
-                except Exception as e:
-                    if self.debug_mode:
-                        self._log(f"Error en callback de simulación: {e}", 'red')
+            # PASO 1: Actualizar el gráfico visual (no bloqueante)
+            self._update_simulation_chart(df_current)
+            
+            # PASO 2: Ejecutar callbacks INMEDIATAMENTE para detección + operaciones
+            # Sin delays artificiales - las estrategias deben ejecutarse tan pronto la vela esté lista
+            import threading
+            callback_thread = threading.Thread(
+                target=self._execute_pattern_detection_and_trading,
+                args=(df_current,),
+                daemon=True
+            )
+            callback_thread.start()
+            
+            # Log de progreso
+            if self.debug_mode:
+                self._log(f"⏰ Procesada vela {len(self.df)}/{len(self.full_csv_data)} - {current_timestamp}", 'cyan')
             
             # Incrementar índice para siguiente vela
             self.simulation_index += 1
             
-            # Programar siguiente paso
+            # Programar siguiente vela en 5 segundos (simulando tiempo real del mercado)
             self._schedule_next_simulation_step()
             
         except Exception as e:
             self._log(f"Error en paso de simulación: {e}", 'red')
     
+    def _execute_pattern_detection_and_trading(self, df_current):
+        """Ejecuta detección de patrones y operaciones de trading en thread separado"""
+        try:
+            # Log de inicio si debug está activo
+            if self.debug_mode:
+                self._log(f"Ejecutando detección de patrones para vela {self.simulation_index}", 'blue')
+            
+            # Ejecutar todos los callbacks registrados (detección + trading)
+            # Esto incluye estrategias forex y candle patterns
+            for callback in self._candle_update_callbacks:
+                try:
+                    if callable(callback):
+                        callback(df_current)
+                except Exception as e:
+                    if self.debug_mode:
+                        self._log(f"Error en callback: {e}", 'red')
+            
+            if self.debug_mode:
+                self._log(f"Detección completada para vela {self.simulation_index}", 'green')
+                
+        except Exception as e:
+            self._log(f"Error en detección de patrones: {e}", 'red')
+    
+    def _update_simulation_chart(self, df_current):
+        """Actualiza el gráfico con la nueva vela (no bloqueante)"""
+        try:
+            # Actualizar datos internos de forma thread-safe
+            with self._data_lock:
+                self._last_df = df_current.copy()
+                # Actualizar también self.df para que el gráfico use los datos más recientes
+                self.df = df_current.copy()
+            
+            # Forzar redibujado inmediato del gráfico
+            self._plot_candles()
+            
+            if self.debug_mode:
+                self._log(f"Vela {self.simulation_index} dibujada en gráfico ({len(df_current)} velas totales)", 'cyan')
+            
+        except Exception as e:
+            if self.debug_mode:
+                self._log(f"Error actualizando gráfico en simulación: {e}", 'red')
+    
+    def _run_callbacks_safe(self, df_current):
+        """Wrapper thread-safe para ejecutar callbacks"""
+        try:
+            # Ejecutar callbacks directamente sin delays adicionales
+            for callback in self._candle_update_callbacks:
+                try:
+                    if callable(callback):
+                        callback(df_current)
+                except Exception as e:
+                    if self.debug_mode:
+                        self._log(f"Error ejecutando callback: {e}", 'red')
+                        
+        except Exception as e:
+            if self.debug_mode:
+                self._log(f"Error en ejecución de callbacks: {e}", 'red')
+
+    def verify_timing_performance(self):
+        """Verifica que el sistema de timing no cause retrasos críticos"""
+        try:
+            import time
+            
+            # Medir tiempo de detección de contexto
+            start_time = time.perf_counter()
+            delay = self._get_adaptive_callback_delay()
+            context_time = (time.perf_counter() - start_time) * 1000
+            
+            # Determinar contexto actual
+            if hasattr(self, 'simulation_mode') and self.simulation_mode:
+                context = "simulación"
+                expected_delay = 150
+            elif self.running and hasattr(self, 'ws') and self.ws:
+                context = "tiempo real"
+                expected_delay = 10
+            else:
+                context = "CSV"
+                expected_delay = 50
+            
+            # Verificaciones de rendimiento
+            performance_ok = True
+            issues = []
+            
+            # 1. Verificar que el delay sea el esperado
+            if delay != expected_delay:
+                issues.append(f"Delay incorrecto: {delay}ms (esperado: {expected_delay}ms)")
+                performance_ok = False
+            
+            # 2. Verificar que la detección de contexto sea rápida (<1ms)
+            if context_time > 1.0:
+                issues.append(f"Detección de contexto lenta: {context_time:.2f}ms")
+                performance_ok = False
+            
+            # 3. Verificar que el delay para tiempo real sea mínimo
+            if context == "tiempo real" and delay > 20:
+                issues.append(f"Delay demasiado alto para tiempo real: {delay}ms")
+                performance_ok = False
+            
+            # 4. Verificar que tengamos acceso a parent_frame para scheduling
+            if not hasattr(self, 'parent_frame') or self.parent_frame is None:
+                issues.append("Sin acceso a parent_frame - usando threading.Timer")
+            
+            # Reportar resultados
+            if performance_ok:
+                self._log(f"✅ Timing optimizado - Contexto: {context}, Delay: {delay}ms, Detección: {context_time:.2f}ms", 'green')
+                return True
+            else:
+                self._log(f"⚠️ Problemas de timing detectados:", 'yellow')
+                for issue in issues:
+                    self._log(f"  - {issue}", 'yellow')
+                return False
+        except Exception as e:
+            self._log(f"Error verificando timing: {e}", 'red')
+            return False
+
     def test_tooltip_visibility(self):
         """Método de prueba para verificar si el tooltip está funcionando"""
+        self._log("=== DIAGNÓSTICO DE TOOLTIP ===", 'cyan')
+        
+        # Verificar si existe la anotación
         if not hasattr(self, '_hover_annot') or self._hover_annot is None:
             self._log("ERROR: Tooltip annotation no existe", 'red')
+            return False
+        
+        # Verificar si los eventos están conectados
+        if not hasattr(self, '_hover_cid') or self._hover_cid is None:
+            self._log("ERROR: Eventos de hover no conectados", 'red')
+            return False
+        
+        # Verificar si hay datos
+        if self._last_df is None or self._last_df.empty:
+            self._log("ERROR: No hay datos para mostrar tooltip", 'red')
+            return False
+        
+        # Verificar canvas
+        if hasattr(self, 'canvas') and self.canvas:
+            self._log("✅ Canvas Tkinter disponible", 'green')
+        elif hasattr(self, 'fig') and self.fig:
+            self._log("✅ Figura matplotlib disponible", 'green')
+        else:
+            self._log("ERROR: No hay canvas disponible", 'red')
             return False
         
         if not hasattr(self, 'ax_price') or self.ax_price is None:
@@ -352,6 +827,8 @@ class CandleStreamer:
     def force_show_tooltip_test(self):
         """Fuerza mostrar el tooltip en el centro del gráfico para pruebas"""
         try:
+            self._log("=== FORZANDO TOOLTIP DE PRUEBA ===", 'cyan')
+            
             if self._last_df is None or self._last_df.empty:
                 self._log("No hay datos para mostrar tooltip de prueba", 'red')
                 return
@@ -374,6 +851,8 @@ class CandleStreamer:
             # Crear texto de prueba
             txt = f"TOOLTIP TEST\n{ts}\nOpen: {float(row['Open']):.5f}\nClose: {float(row['Close']):.5f}"
             
+            self._log(f"Configurando tooltip en posición ({x:.2f}, {y:.2f})", 'blue')
+            
             # Mostrar tooltip
             self._hover_annot.xy = (x, y)
             self._hover_annot.set_position((20, 20))
@@ -385,11 +864,45 @@ class CandleStreamer:
             self._hover_marker.set_markerfacecolor('red')
             self._hover_marker.set_visible(True)
             
-            self._log(f"Tooltip de prueba mostrado en ({x:.2f}, {y:.2f})", 'green')
-            self._force_canvas_draw()
+            self._log(f"Tooltip configurado - Visible: {self._hover_annot.get_visible()}", 'green')
+            self._log(f"Marcador configurado - Visible: {self._hover_marker.get_visible()}", 'green')
+            
+            # Forzar redibujado inmediato
+            if hasattr(self, 'canvas') and self.canvas:
+                self.canvas.draw()
+                self._log("Canvas redibujado con draw()", 'green')
+            elif hasattr(self, 'fig') and self.fig:
+                self.fig.canvas.draw()
+                self._log("Fig canvas redibujado con draw()", 'green')
+            
+            # Verificar después del redibujado
+            self._log(f"POST-DRAW - Tooltip visible: {self._hover_annot.get_visible()}", 'yellow')
             
         except Exception as e:
             self._log(f"Error en tooltip de prueba: {e}", 'red')
+    
+    def debug_tooltip_events(self):
+        """Método para debuggear eventos de tooltip"""
+        self._log("=== DEBUG DE EVENTOS DE TOOLTIP ===", 'cyan')
+        
+        # Verificar conexiones de eventos
+        if hasattr(self, 'fig') and self.fig:
+            callbacks = self.fig.canvas.callbacks.callbacks
+            motion_callbacks = callbacks.get('motion_notify_event', {})
+            self._log(f"Callbacks de motion_notify_event: {len(motion_callbacks)}", 'blue')
+            
+            # Verificar si nuestro callback está registrado
+            if self._hover_cid in motion_callbacks:
+                self._log("✅ Nuestro callback de hover está registrado", 'green')
+            else:
+                self._log("❌ Nuestro callback de hover NO está registrado", 'red')
+        
+        # Verificar estado de debug
+        self._log(f"Debug hover activado: {self.debug_hover}", 'blue')
+        
+        # Verificar datos
+        self._log(f"Datos disponibles: {len(self._last_df) if self._last_df is not None else 0} velas", 'blue')
+        self._log(f"Coordenadas X disponibles: {len(self._last_x) if self._last_x is not None else 0}", 'blue')
 
     # =====================
     # Opacity reveal (alpha)
@@ -421,7 +934,6 @@ class CandleStreamer:
 
     def enable_incremental_reveal(self, enable=True):
         """Activa o desactiva el modo de revelado incremental de velas.
-        
         Args:
             enable (bool): True para activar revelado incremental, False para mostrar todas las velas
         """
@@ -455,7 +967,18 @@ class CandleStreamer:
             if hasattr(self, 'parent_frame') and self.parent_frame:
                 self._opacity_reveal_timer_id = self.parent_frame.after(self._opacity_reveal_interval_ms, self._opacity_reveal_step)
             else:
-                threading.Timer(self._opacity_reveal_interval_ms / 1000.0, self._opacity_reveal_step).start()
+                # Usar Timer daemon y conservar referencia para cancelarlo en stop()
+                try:
+                    if self._opacity_timer_thread is not None:
+                        try:
+                            self._opacity_timer_thread.cancel()
+                        except Exception:
+                            pass
+                    self._opacity_timer_thread = threading.Timer(self._opacity_reveal_interval_ms / 1000.0, self._opacity_reveal_step)
+                    self._opacity_timer_thread.daemon = True
+                    self._opacity_timer_thread.start()
+                except Exception:
+                    self._opacity_timer_thread = None
         except Exception as e:
             self._log(f"Error programando opacity reveal: {e}", 'red')
 
@@ -484,27 +1007,39 @@ class CandleStreamer:
                 # Redibujar para que la nueva vela tenga alpha=1 y permita hover
                 # Usar render síncrono para no depender de flags de refresco
                 self._plot_last_candles()
+                
+                # CRÍTICO: Ejecutar callbacks para que detecten patrones en la nueva vela visible
+                # Notificar solo hasta las velas visibles
+                if hasattr(self, 'df') and not self.df.empty:
+                    df_visible = self.df.iloc[:self.visible_candles].copy()
+                    for callback in self._candle_update_callbacks:
+                        try:
+                            if callable(callback):
+                                callback(df_visible)
+                        except Exception as e:
+                            if self.debug_mode:
+                                self._log(f"Error en callback durante revelado: {e}", 'red')
+                
                 # Continuar si aún quedan velas por revelar
                 if self.visible_candles < min(total, self.max_plot):
                     self._schedule_opacity_reveal_step()
                 else:
-                    # Todas reveladas
+                    # Todas las velas han sido DIBUJADAS visualmente
                     self.stop_opacity_reveal()
                     try:
-                        self._log("Analizadas todas las velas", 'green')
+                        self._log(f"✅ Velas visibles: {self.visible_candles}/{min(total, self.max_plot)}", 'green')
                     except Exception:
                         pass
             else:
-                # Nada que revelar (ya estamos al máximo)
+                # Ya se alcanzó el máximo de velas visibles
                 self.stop_opacity_reveal()
                 try:
-                    self._log("Analizadas todas las velas", 'green')
+                    self._log(f"✅ Máximo alcanzado: {self.visible_candles} velas visibles", 'green')
                 except Exception:
                     pass
         except Exception as e:
             self._log(f"Error en opacity reveal step: {e}", 'red')
             self.stop_opacity_reveal()
-
     def on_candle_update(self, callback):
         """Permite registrar un callback que será llamado con el DataFrame
         de velas cada vez que haya una actualización (incluye la vela en curso).
@@ -570,89 +1105,11 @@ class CandleStreamer:
             if self.debug_mode:
                 self._log(f"Error en callback de actualización: {e}", 'red')
 
-    def setup_pattern_detection(self, risk_manager=None, candle_strategies=None):
-        """Configura automáticamente la detección de patrones y estrategias"""
-        try:
-            if self.debug_mode:
-                self._log("🔧 Configurando detección de patrones...", 'cyan')
-            
-            # Importar las clases necesarias
-            from patterns.candlestickpatterns import CandlestickPatterns
-            from strategies.candle_strategies import CandleStrategies
-            
-            # Crear detector de patrones si no se proporciona
-            if candle_strategies is None and hasattr(self, 'df') and not self.df.empty:
-                candle_strategies = CandleStrategies(self.df)
-                if self.debug_mode:
-                    self._log("📊 CandleStrategies inicializado", 'green')
-            
-            # Registrar callback para detección de patrones
-            if candle_strategies:
-                def pattern_detector_callback(df):
-                    try:
-                        if df.empty or len(df) < 5:
-                            return
-                        
-                        # Actualizar datos en CandleStrategies
-                        candle_strategies.data = df
-                        
-                        # Detectar patrón marubozu_trend
-                        result = candle_strategies.marubozu_trend()
-                        if not result.empty and 'Signal' in result.columns:
-                            last_signal = result['Signal'].iloc[-1]
-                            if last_signal != 0:
-                                timestamp = df.index[-1]
-                                price = df['Close'].iloc[-1]
-                                
-                                # Explicar el significado de la señal
-                                if last_signal == 1:
-                                    self._log(f"🟢 SEÑAL COMPRA: marubozu_trend = {last_signal} (Patrón indica subida)", 'green')
-                                elif last_signal == -1:
-                                    self._log(f"🔴 SEÑAL VENTA: marubozu_trend = {last_signal} (Patrón indica bajada - cerrar posiciones)", 'red')
-                                else:
-                                    self._log(f"⚪ SEÑAL NEUTRA: marubozu_trend = {last_signal}", 'yellow')
-                                
-                                # Abrir operación si hay risk_manager
-                                if risk_manager and last_signal > 0:  # Señal de compra
-                                    stop_loss = price * 0.99  # 1% stop loss
-                                    take_profit = price * 1.02  # 2% take profit
-                                    
-                                    operacion = risk_manager.abrir_operacion(
-                                        tipo='BUY',
-                                        precio=price,
-                                        timestamp=timestamp,
-                                        stop_loss=stop_loss,
-                                        take_profit=take_profit,
-                                        estrategia='candle_marubozu_trend'
-                                    )
-                                    
-                                    if operacion:
-                                        self._log(f"💰 COMPRA marubozu_trend: Operación {operacion.id} [BUY] @ {price:.5f}", 'green')
-                                        self._log(f"📊 Capital restante: ${risk_manager.capital:,.2f}", 'blue')
-                                        self._log(f"🎯 Stop Loss: {stop_loss:.5f} | Take Profit: {take_profit:.5f}", 'blue')
-                                    else:
-                                        error_msg = risk_manager.last_error or "Error desconocido"
-                                        self._log(f"❌ OPEN BUY FALLÓ (candle_marubozu_trend) -> {error_msg}", 'red')
-                                        
-                    except Exception as e:
-                        if self.debug_mode:
-                            self._log(f"Error en detector de patrones: {e}", 'red')
-                
-                self.on_candle_update(pattern_detector_callback)
-            
-            # Activar modo debug automáticamente
-            self.set_debug_mode(True)
-            
-            if self.debug_mode:
-                self._log("✅ Detección de patrones configurada correctamente", 'green')
-                
-        except Exception as e:
-            self._log(f"❌ Error configurando detección de patrones: {e}", 'red')
-
     @classmethod
     def _load_or_fetch_symbols(cls):
         symbols_folder = 'symbols'
         os.makedirs(symbols_folder, exist_ok=True)
+
         symbols_file = os.path.join(symbols_folder, 'symbols.csv')
 
         # Intentar cargar desde CSV
@@ -850,7 +1307,88 @@ class CandleStreamer:
         except Exception as e:
             if self.debug_mode:
                 self._log(f"Error verificando datos del gráfico: {e}", 'red')
+
+    def _schedule_plot_update(self):
+        """Programa actualización de gráfico usando thread pool"""
+        if not self.running:
+            return
+        
+        # Enviar tarea de preparación de datos al thread pool
+        future = self._thread_pool.submit(self._prepare_plot_data)
+        
+        # Programar verificación del resultado en el hilo principal
+        if self.parent_frame:
+            self.parent_frame.after(10, lambda: self._check_plot_ready(future))
+        else:
+            # Si no hay parent_frame, ejecutar directamente
+            try:
+                plot_data = future.result(timeout=0.1)
+                if plot_data:
+                    self._update_plot_with_data(plot_data)
+            except:
+                pass
     
+    def _prepare_plot_data(self):
+        """Prepara datos para el gráfico en hilo separado"""
+        try:
+            with self._data_lock:
+                # Construir DataFrame a plotear
+                if self.load_all_candles:
+                    last_df = self.df.copy()  # Cargar todas las velas
+                else:
+                    last_df = self.df.tail(self.max_plot).copy()
+                    
+                if self.current_candle is not None:
+                    temp = pd.DataFrame([self.current_candle]).set_index('Date')
+                    last_df = pd.concat([last_df, temp])
+                    
+                # Asegurar orden por fecha
+                if not last_df.empty:
+                    last_df.sort_index(inplace=True)
+            
+            # Si solo hay 1 fila, añadir punto ficticio
+            if len(last_df) == 1:
+                try:
+                    idx = last_df.index[0]
+                    secs = int(self.interval[:-1]) if self.interval[-1] == 's' else int(self.interval[:-1]) * 60
+                    idx2 = idx + timedelta(seconds=secs)
+                    row = last_df.iloc[0]
+                    dummy = pd.DataFrame({
+                        'Open': [row['Close']],
+                        'High': [row['Close']],
+                        'Low': [row['Close']],
+                        'Close': [row['Close']],
+                        'Volume': [0.0]
+                    }, index=[idx2])
+                    last_df = pd.concat([last_df, dummy])
+                except Exception:
+                    pass
+            
+            if self.debug_mode:
+                self._log(f"Preparando datos: {len(last_df)} filas (visible: {self.visible_candles})", 'gray')
+            
+            return last_df if not last_df.empty else None
+            
+        except Exception as e:
+            if self.debug_mode:
+                self._log(f"Error preparando datos del gráfico: {e}", 'red')
+            return None
+
+    def _check_plot_ready(self, future):
+        """Verifica si los datos del gráfico están listos"""
+        try:
+            if future.done():
+                plot_data = future.result()
+                if plot_data is not None:
+                    self._update_plot_with_data(plot_data)
+            else:
+                # Si no está listo, verificar de nuevo en 10ms
+                if self.parent_frame and self.running:
+                    self.parent_frame.after(10, lambda: self._check_plot_ready(future))
+        except Exception as e:
+            if self.debug_hover:
+                self._log(f"Error verificando datos del gráfico: {e}", 'red')
+
     def _update_plot_with_data(self, last_df):
         """Actualiza el gráfico con datos preparados (ejecuta en hilo principal)"""
         try:
@@ -859,9 +1397,120 @@ class CandleStreamer:
             # Cachear posiciones X en coordenadas de Matplotlib
             try:
                 self._last_x = mdates.date2num(self._last_df.index.to_pydatetime()) if not self._last_df.empty else None
-            except Exception:
+                if self.debug_hover:
+                    self._log(f"_update_plot_with_data: Actualizando _last_x con {len(self._last_x) if self._last_x is not None else 0} elementos", 'cyan')
+            except Exception as e:
                 self._last_x = None
+                if self.debug_hover:
+                    self._log(f"_update_plot_with_data: Error actualizando _last_x: {e}", 'red')
             
+            # Limpiar los ejes
+            if hasattr(self, 'ax_price'):
+                self.ax_price.clear()
+            if hasattr(self, 'ax_volume'):
+                self.ax_volume.clear()
+            
+            # Limpiar listas de patches
+            self._candle_patches.clear()
+            self._volume_patches.clear()
+            
+            # Dibujar el gráfico con opacidad personalizada
+            self._plot_candles_with_opacity(last_df)
+            
+            # Asegurar que la anotación de hover existe tras limpiar/redibujar
+            self._ensure_hover_annotation()
+
+            # Restaurar límites de zoom del usuario si existen
+            if self._user_xlim is not None:
+                try:
+                    self.ax_price.set_xlim(self._user_xlim)
+                    if hasattr(self, 'ax_volume') and self.ax_volume:
+                        self.ax_volume.set_xlim(self._user_xlim)
+                except Exception:
+                    pass
+
+            # Actualizar el canvas si está en modo embebido
+            if hasattr(self, 'canvas'):
+                self.canvas.draw_idle()  # Usar draw_idle para mejor rendimiento
+            else:
+                plt.pause(0.01)
+                
+            self._pending_refresh = False
+            self._last_refresh_time = time.time()
+            
+        except Exception as e:
+            self._log(f"Error actualizando el gráfico: {e}", 'red')
+            self._pending_refresh = False
+
+    def _refresh_plot(self):
+        """Refresca el gráfico y reinicia el temporizador (thread-safe)"""
+        if self._pending_refresh and self.running:
+            try:
+                # Usar thread pool para procesamiento de datos y after() para UI
+                self._schedule_plot_update()
+            except Exception as e:
+                if self.debug_hover:
+                    self._log(f"Error refrescando gráfico: {e}", 'red')
+            finally:
+                self._pending_refresh = False
+                self._last_refresh_time = time.time()
+
+    def _plot_last_candles(self):
+        # Construir DataFrame a plotear - cargar todas las velas si load_all_candles está activo
+        if self.load_all_candles:
+            last_df = self.df.copy()  # Cargar todas las velas
+        else:
+            last_df = self.df.tail(self.max_plot).copy()
+            
+        if self.current_candle is not None:
+            temp = pd.DataFrame([self.current_candle]).set_index('Date')
+            last_df = pd.concat([last_df, temp])
+        # Asegurar orden por fecha
+        if not last_df.empty:
+            last_df.sort_index(inplace=True)
+
+        # Si solo hay 1 fila, mplfinance puede no dibujar nada (ancho cero). Añadimos un punto ficticio.
+        if len(last_df) == 1:
+            try:
+                idx = last_df.index[0]
+                # Calcular delta temporal desde el intervalo
+                secs = int(self.interval[:-1]) if self.interval[-1] == 's' else int(self.interval[:-1]) * 60
+                idx2 = idx + timedelta(seconds=secs)
+                row = last_df.iloc[0]
+                dummy = pd.DataFrame({
+                    'Open': [row['Close']],
+                    'High': [row['Close']],
+                    'Low': [row['Close']],
+                    'Close': [row['Close']],
+                    'Volume': [0.0]
+                }, index=[idx2])
+                last_df = pd.concat([last_df, dummy])
+                if self.debug_mode:
+                    self._log("Añadido punto ficticio para visualizar la primera vela", 'gray')
+            except Exception as e:
+                if self.debug_mode:
+                    self._log(f"No se pudo añadir punto ficticio: {e}", 'red')
+
+        if self.debug_mode:
+            self._log(f"Plotting {len(last_df)} filas (visible: {self.visible_candles})", 'gray')
+
+        # Guardar el último DF para el manejo de hover
+        self._last_df = last_df
+        # Cachear posiciones X en coordenadas de Matplotlib para evitar problemas de zona horaria
+        try:
+            self._last_x = mdates.date2num(self._last_df.index.to_pydatetime()) if not self._last_df.empty else None
+            if self.debug_hover:
+                self._log(f"_plot_last_candles: Actualizando _last_x con {len(self._last_x) if self._last_x is not None else 0} elementos", 'cyan')
+        except Exception as e:
+            self._last_x = None
+            if self.debug_hover:
+                self._log(f"_plot_last_candles: Error actualizando _last_x: {e}", 'red')
+        
+        if last_df.empty:
+            return
+
+    def _update_plot():
+        try:
             # Limpiar los ejes
             if hasattr(self, 'ax_price'):
                 self.ax_price.clear()
@@ -1056,14 +1705,13 @@ class CandleStreamer:
                 
                 # Control de opacidad: solo las primeras visible_candles son completamente visibles
                 # El resto comienzan con opacidad 0 si progressive_reveal está activado
-                if self.progressive_reveal and i >= self.visible_candles:
-                    alpha = 0.0  # Velas ocultas inicialmente
+                if self.progressive_reveal and not self.load_all_candles and i >= self.visible_candles:
+                    alpha = 0.0  # Velas ocultas inicialmente (NO permiten hover)
                 else:
-                    alpha = 1.0  # Velas visibles
+                    alpha = 1.0  # Velas visibles (permiten hover)
                 
                 # Color de la vela
-                is_bullish = close_price >= open_price
-                candle_color = '#2ca02c' if is_bullish else '#d62728'  # Verde/Rojo
+                candle_color = '#28a745' if close_price >= open_price else '#dc3545'
                 
                 # Dibujar línea de sombra (high-low)
                 shadow_line = self.ax_price.plot([date_num, date_num], [low_price, high_price], 
@@ -1190,7 +1838,7 @@ class CandleStreamer:
                         connectionstyle="arc3,rad=0.3"
                     ),
                     fontsize=10,
-                    zorder=1000,
+                    zorder=10000,  # Aumentar z-order para asegurar que esté encima
                     ha='left',
                     va='bottom',
                     linespacing=1.4
@@ -1353,39 +2001,44 @@ class CandleStreamer:
 
             # Buscar índice de vela más cercano usando coordenadas x numéricas (evita problemas de tz)
             if self._last_x is None or len(self._last_x) == 0:
-                if self.debug_hover:
-                    self._log("No _last_x data available", 'gray')
-                return
-            
-            # Verificar si event.xdata está en el rango de _last_x
-            x_min, x_max = min(self._last_x), max(self._last_x)
-            if event.xdata < x_min or event.xdata > x_max:
-                if self.debug_hover:
-                    self._log(f"event.xdata {event.xdata:.2f} fuera del rango [{x_min:.2f}, {x_max:.2f}]", 'yellow')
-                # Intentar mapear a coordenadas del eje
-                xlim = self.ax_price.get_xlim()
-                if xlim[0] <= event.xdata <= xlim[1]:
-                    # Mapear desde coordenadas del eje a índice de datos
-                    ratio = (event.xdata - xlim[0]) / (xlim[1] - xlim[0])
-                    loc = int(ratio * (len(self._last_x) - 1))
+                # Intentar recalcular _last_x si tenemos datos pero _last_x está vacío
+                if self._last_df is not None and not self._last_df.empty:
+                    try:
+                        self._last_x = mdates.date2num(self._last_df.index.to_pydatetime())
+                        if self.debug_hover:
+                            self._log(f"Recalculando _last_x en hover: {len(self._last_x)} elementos", 'yellow')
+                    except Exception as e:
+                        if self.debug_hover:
+                            self._log(f"Error recalculando _last_x: {e}", 'red')
+                        return
                 else:
-                    return
-            else:
-                loc = int(np.argmin(np.abs(self._last_x - event.xdata)))
-                loc = max(0, min(loc, len(self._last_df) - 1))
-
-            # Verificar si la vela está dentro del rango visible (solo hover en velas con opacidad = 1)
-            if loc >= self.visible_candles:
-                # Ocultar tooltip si estaba visible
-                if self._hover_annot is not None and self._hover_annot.get_visible():
                     if self.debug_hover:
-                        self._log(f"Hiding tooltip - candle {loc} is not visible (>= {self.visible_candles})", 'gray')
-                    self._hover_annot.set_visible(False)
-                    if self._hover_marker is not None and self._hover_marker.get_visible():
-                        self._hover_marker.set_visible(False)
-                    self._force_canvas_draw()
-                return
-
+                        self._log("No _last_x data available y no se puede recalcular", 'gray')
+                    return
+            # Buscar vela más cercana SOLO dentro del rango de datos visibles
+            loc = int(np.argmin(np.abs(self._last_x - event.xdata)))
+            loc = max(0, min(loc, len(self._last_df) - 1))
+            
+            # PRIMERA VERIFICACIÓN: Verificar que el mouse esté realmente cerca de una vela
+            if loc < len(self._last_x):
+                closest_x = self._last_x[loc]
+                # Calcular distancia en coordenadas del gráfico
+                xlim = self.ax_price.get_xlim()
+                graph_width = xlim[1] - xlim[0]
+                tolerance = graph_width * 0.02  # 2% del ancho del gráfico
+                
+                if abs(event.xdata - closest_x) > tolerance:
+                    # Mouse demasiado lejos de cualquier vela - ocultar tooltip
+                    if self._hover_annot is not None and self._hover_annot.get_visible():
+                        if self.debug_hover:
+                            self._log(f"Hiding tooltip - mouse too far from candles", 'gray')
+                        self._hover_annot.set_visible(False)
+                        if self._hover_marker is not None and self._hover_marker.get_visible():
+                            self._hover_marker.set_visible(False)
+                        self._force_canvas_draw()
+                    return
+            
+            # SEGUNDA VERIFICACIÓN: Permitir hover en todas las velas visibles en el gráfico
             ts = self._last_df.index[loc]
             row = self._last_df.iloc[loc]
             
@@ -1477,7 +2130,18 @@ class CandleStreamer:
             
             # Buscar índice de vela más cercano usando coordenadas x numéricas
             if self._last_x is None or len(self._last_x) == 0:
-                return
+                # Intentar recalcular _last_x si tenemos datos pero _last_x está vacío
+                if self._last_df is not None and not self._last_df.empty:
+                    try:
+                        self._last_x = mdates.date2num(self._last_df.index.to_pydatetime())
+                        if self.debug_hover:
+                            self._log(f"Recalculando _last_x en force_show_tooltip_test: {len(self._last_x)} elementos", 'yellow')
+                    except Exception as e:
+                        if self.debug_hover:
+                            self._log(f"Error recalculando _last_x en force_show_tooltip_test: {e}", 'red')
+                        return
+                else:
+                    return
             
             # Verificar si event.xdata está en el rango de _last_x
             x_min, x_max = min(self._last_x), max(self._last_x)
@@ -1493,14 +2157,18 @@ class CandleStreamer:
                 loc = int(np.argmin(np.abs(self._last_x - event.xdata)))
                 loc = max(0, min(loc, len(self._last_df) - 1))
 
-            # Verificar si la vela está dentro del rango visible
-            if loc >= self.visible_candles:
-                if self._hover_annot is not None and self._hover_annot.get_visible():
-                    self._hover_annot.set_visible(False)
-                    if self._hover_marker is not None and self._hover_marker.get_visible():
-                        self._hover_marker.set_visible(False)
-                    self._force_canvas_draw()
-                return
+            # CRÍTICO: Solo permitir hover en velas realmente visibles (con alpha=1.0)
+            # En modo revelado progresivo, solo las primeras visible_candles tienen alpha=1.0
+            if self.progressive_reveal and not self.load_all_candles:
+                # En modo progresivo, verificar si la vela está dentro del rango visible
+                if loc >= self.visible_candles:
+                    # Ocultar tooltip si estaba visible
+                    if self._hover_annot is not None and self._hover_annot.get_visible():
+                        self._hover_annot.set_visible(False)
+                        if self._hover_marker is not None and self._hover_marker.get_visible():
+                            self._hover_marker.set_visible(False)
+                        self._force_canvas_draw()
+                    return
 
             ts = self._last_df.index[loc]
             row = self._last_df.iloc[loc]
@@ -1510,7 +2178,7 @@ class CandleStreamer:
             close_price = float(row['Close'])
             change = close_price - open_price
             change_pct = (change / open_price) * 100 if open_price != 0 else 0
-            color = '#28a745' if close_price >= open_price else '#dc3545'
+            color = '#28a745' if close_price >= open_price else '#dc3545'  # Verde si sube, rojo si baja
             
             # Formatear fecha y valores
             ts_str = ts.strftime('%Y-%m-%d %H:%M:%S') if hasattr(ts, 'strftime') else str(ts)
@@ -1771,8 +2439,10 @@ class CandleStreamer:
                 if self.debug_mode:
                     self._log(f"Precargadas {len(hist_df)} velas históricas para {self.symbol} ({self.interval}).", 'green')
                 
-                # Programar actualización de gráfico en hilo principal
-                self._schedule_plot_update()
+                # IMPORTANTE: NO mostrar todas las velas de golpe
+                # Solo dibujar las velas iniciales (visible_candles)
+                # El resto se revelarán progresivamente cada 5 segundos
+                self._plot_last_candles()  # Esto respetará visible_candles
                 
                 # Actualizar CSV en background
                 self._thread_pool.submit(self._update_csv_threaded)
@@ -1969,6 +2639,12 @@ class CandleStreamer:
         self.running = False
         self._pending_refresh = False
         
+        # Detener modo simulación para evitar reprogramaciones
+        try:
+            self.simulation_mode = False
+        except Exception:
+            pass
+        
         # Detener opacity reveal
         self.stop_opacity_reveal()
         
@@ -1990,13 +2666,46 @@ class CandleStreamer:
             except Exception:
                 pass
         
+        # Cancelar timers de simulación/opacity creados sin parent_frame
+        try:
+            if self._simulation_timer is not None:
+                try:
+                    self._simulation_timer.cancel()
+                except Exception:
+                    pass
+                self._simulation_timer = None
+        except Exception:
+            pass
+        try:
+            if self._opacity_timer_thread is not None:
+                try:
+                    self._opacity_timer_thread.cancel()
+                except Exception:
+                    pass
+                self._opacity_timer_thread = None
+        except Exception:
+            pass
+        
+        # Cancelar callbacks programados con Tkinter after
+        try:
+            if hasattr(self, 'parent_frame') and self.parent_frame and self._simulation_after_id is not None:
+                try:
+                    self.parent_frame.after_cancel(self._simulation_after_id)
+                except Exception:
+                    pass
+                self._simulation_after_id = None
+        except Exception:
+            pass
+
+        
         # Cerrar thread pool y esperar a que terminen las tareas
         if hasattr(self, '_thread_pool'):
             try:
                 self._thread_pool.shutdown(wait=False, cancel_futures=True)
             except Exception:
                 pass
-            
+			
+			
         # Cerrar la figura de matplotlib
         if hasattr(self, 'fig') and self.fig:
             try:

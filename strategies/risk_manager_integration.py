@@ -31,9 +31,10 @@ class RiskConfig:
     atr_trailing_multiplier: float = 1.5
     max_strategies_per_candle: int = 3
     enable_trailing_stop: bool = False
-    enable_sell_operations: bool = True
+    enable_sell_operations: bool = True  # SIEMPRE habilitado para SHORT/LONG
     worker_timeout: float = 0.5
     queue_maxsize: int = 2000
+    force_open_operations: bool = True  # Forzar apertura de operaciones
     
     def to_dict(self) -> dict:
         return asdict(self)
@@ -343,13 +344,26 @@ class RiskManagerIntegration:
                 logger.warning(f"ATR inválido: {atr_value}, usando valor por defecto")
                 atr_value = 0.0001  # Valor mínimo por defecto
 
-            # Determinar tipo de operación basado en la señal
+            # Determinar tipo de operación basado en la señal - FORZAR APERTURA DE OPERACIONES
             if senal == 1:
                 tipo = 'BUY'
             elif senal == -1:
-                # Cerrar operaciones existentes por señal de salida
+                # Señal -1: SIEMPRE intentar abrir SELL si está habilitado
+                if getattr(self.config, 'enable_sell_operations', True):  # Default True
+                    tipo = 'SELL'
+                else:
+                    # Solo si está explícitamente deshabilitado, intentar cierre
+                    cerradas = self.risk_manager.cerrar_operacion_por_estrategia(
+                        estrategia_nombre, precio_actual, timestamp, "EXIT_SIGNAL"
+                    )
+                    return cerradas if cerradas else []
+            elif senal == -2:
+                # Señal -2: FORZAR apertura SELL (ignorar flag enable_sell_operations)
+                tipo = 'SELL'
+            elif senal == 2:
+                # Compatibilidad: 2 = Cierre explícito por señal
                 return self.risk_manager.cerrar_operacion_por_estrategia(
-                    estrategia_nombre, precio_actual, timestamp, "EXIT_SIGNAL"
+                    estrategia_nombre, precio_actual, timestamp, "EXIT_SIGNAL_EXPLICIT"
                 )
             else:
                 return None
@@ -361,12 +375,14 @@ class RiskManagerIntegration:
             else:
                 if tipo == 'BUY':
                     stop_loss = precio_actual - (atr_value * atr_sl_multiplier)
-                    take_profit = precio_actual + (atr_value * atr_tp_multiplier)
+                    distancia_sl = precio_actual - stop_loss                    # NUEVA
+                    take_profit = precio_actual + (distancia_sl * rr_ratio)     # MODIFICADA
                 elif tipo == 'SELL':
                     stop_loss = precio_actual + (atr_value * atr_sl_multiplier)
-                    take_profit = precio_actual - (atr_value * atr_tp_multiplier)
+                    distancia_sl = stop_loss - precio_actual                    # NUEVA
+                    take_profit = precio_actual - (distancia_sl * rr_ratio)     # MODIFICADA
 
-            # Validar niveles calculados
+            # Validar niveles calculados - LÓGICA CORREGIDA
             if tipo == 'BUY' and (stop_loss >= precio_actual or take_profit <= precio_actual):
                 logger.error(f"Niveles inválidos para BUY: Precio={precio_actual}, SL={stop_loss}, TP={take_profit}")
                 self.metrics.errors_count += 1
@@ -388,6 +404,16 @@ class RiskManagerIntegration:
                 logger.info(f"  ATR: {atr_value}")
                 logger.info(f"  Timestamp: {timestamp}")
 
+            # Obtener PositionSize si está disponible en candle_config
+            position_size = None
+            if candle_config and 'position_size' in candle_config:
+                try:
+                    position_size = float(candle_config['position_size'])
+                    if self.debug_mode:
+                        logger.info(f"Usando PositionSize de estrategia: {position_size}")
+                except (ValueError, TypeError):
+                    position_size = None
+
             # Crear operación usando RiskManager
             operacion = self.risk_manager.abrir_operacion(
                 tipo=tipo,
@@ -396,17 +422,46 @@ class RiskManagerIntegration:
                 stop_loss=stop_loss,
                 take_profit=take_profit,
                 riesgo_por_operacion=risk_percent / 100.0,
-                estrategia=estrategia_nombre
+                estrategia=estrategia_nombre,
+                position_size=position_size
             )
 
             if operacion:
-                # Aplicar trailing stop si está configurado
-                trailing_enabled = candle_config.get('trailing_stop_enabled', False)
+                # Aplicar trailing stop si está configurado (aceptar distintas claves de config)
+                trailing_enabled = False
+                trailing_mult = None
+                try:
+                    # Claves compatibles
+                    trailing_enabled = bool(
+                        candle_config.get('trailing_stop_enabled', False) or
+                        candle_config.get('use_trailing_stop', False)
+                    )
+                    trailing_mult = (
+                        candle_config.get('trailing_stop_atr_multiplier') or
+                        candle_config.get('atr_trailing_multiplier') or
+                        self.config.atr_trailing_multiplier
+                    )
+                    # Modo de trailing (si se definió)
+                    mode = str(candle_config.get('trailing_mode', '') or '').lower()
+                    if mode in ('aggressive', 'conservative', 'hybrid'):
+                        if mode == 'aggressive':
+                            trailing_mult = 1.0
+                        elif mode == 'conservative':
+                            trailing_mult = 2.0
+                        else:  # hybrid
+                            trailing_mult = 1.5
+                except Exception:
+                    pass
+
                 if trailing_enabled:
                     operacion.trailing_stop_enabled = True
-                    operacion.trailing_stop_distance = atr_value * candle_config.get('trailing_stop_atr_multiplier', 2.0)
+                    # Guardar multiplier para verificaciones dinámicas en _check_trailing_stops
+                    try:
+                        operacion.trailing_multiplier = float(trailing_mult)
+                    except Exception:
+                        operacion.trailing_multiplier = float(self.config.atr_trailing_multiplier)
                     if self.debug_mode:
-                        logger.info(f"Trailing stop configurado para operación {operacion.id_operacion}")
+                        logger.info(f"Trailing stop configurado para operación {operacion.id_operacion} (mult={operacion.trailing_multiplier})")
 
                 self.metrics.signals_processed += 1
                 # logger.info(f"✅ OPERACIÓN ABIERTA: {estrategia_nombre} - ID: {operacion.id} - Precio: {precio_actual}, SL: {stop_loss:.5f}, TP: {take_profit:.5f}")
@@ -489,9 +544,10 @@ class RiskManagerIntegration:
                 # Verificar cierre por SL/TP
                 operaciones_cerradas = self.risk_manager.verificar_cierre_operaciones(row['Close'], idx)
                 
-                # Verificar trailing stops
+                # Verificar trailing stops usando el método consolidado del RiskManager
                 if self.config.enable_trailing_stop:
-                    trailing_cerradas = self._check_trailing_stops(row['Close'], idx)
+                    atr_value = row.get('ATR', max(row['High'] - row['Low'], 0.0001))
+                    trailing_cerradas = self.risk_manager.verificar_trailing_stops(row['Close'], idx, atr_value)
                     operaciones_cerradas.extend(trailing_cerradas)
                 
                 for op in operaciones_cerradas:
@@ -543,14 +599,24 @@ class RiskManagerIntegration:
                                 'operacion': resultado_senal, 
                                 'precio': row['Close']
                             })
-                        elif signal_value == -1 and isinstance(resultado_senal, list):
-                            for op in resultado_senal:
+                        elif signal_value == -1:
+                            # Puede ser lista de cierres o una operación SELL abierta
+                            if isinstance(resultado_senal, list):
+                                for op in resultado_senal:
+                                    resultados.append({
+                                        'timestamp': idx, 
+                                        'tipo': 'CIERRE_ESTRATEGIA', 
+                                        'operacion': op, 
+                                        'precio': row['Close'], 
+                                        'resultado': op.resultado
+                                    })
+                            elif hasattr(resultado_senal, 'id'):
+                                # Apertura SELL
                                 resultados.append({
                                     'timestamp': idx, 
-                                    'tipo': 'CIERRE_ESTRATEGIA', 
-                                    'operacion': op, 
-                                    'precio': row['Close'], 
-                                    'resultado': op.resultado
+                                    'tipo': 'APERTURA', 
+                                    'operacion': resultado_senal, 
+                                    'precio': row['Close']
                                 })
 
             return resultados
@@ -559,51 +625,6 @@ class RiskManagerIntegration:
             logger.error(f"Error procesando dataframe: {e}")
             return []
 
-    def _check_trailing_stops(self, precio_actual, timestamp):
-        """Verifica y ejecuta trailing stops"""
-        operaciones_cerradas = []
-        
-        try:
-            with self._state_lock:
-                for operacion in self.risk_manager.operaciones_activas[:]:
-                    if not hasattr(operacion, 'trailing_stop_enabled') or not operacion.trailing_stop_enabled:
-                        continue
-                    
-                    if operacion.estado != 'ACTIVA':
-                        continue
-                    
-                    if operacion.tipo == 'BUY':
-                        # Actualizar precio más alto
-                        if precio_actual > operacion.highest_price:
-                            operacion.highest_price = precio_actual
-                            # Actualizar stop loss
-                            atr_value = (operacion.highest_price - operacion.precio_apertura) * 0.1  # Estimación
-                            new_stop = operacion.highest_price - (atr_value * operacion.trailing_multiplier)
-                            operacion.stop_loss = max(operacion.stop_loss, new_stop)
-                        
-                        # Verificar si se debe cerrar
-                        if precio_actual <= operacion.stop_loss:
-                            profit = operacion.cerrar(operacion.stop_loss, timestamp)
-                            self.risk_manager.capital += operacion.riesgo_reservado + profit
-                            self.risk_manager.beneficio_total += profit
-                            
-                            if profit >= 0:
-                                self.risk_manager.operaciones_ganadas += 1
-                                self.risk_manager.ganancia_ganadoras_total += profit
-                            else:
-                                self.risk_manager.operaciones_perdidas += 1
-                                self.risk_manager.perdida_perdedoras_total += profit
-                            
-                            operaciones_cerradas.append(operacion)
-                            self.risk_manager.operaciones_cerradas.append(operacion)
-                            self.risk_manager.operaciones_activas.remove(operacion)
-                    
-                    # Lógica similar para SELL (cuando se implemente completamente)
-                    
-        except Exception as e:
-            logger.error(f"Error verificando trailing stops: {e}")
-        
-        return operaciones_cerradas
 
     def get_metrics(self) -> Dict:
         """Obtiene métricas de rendimiento"""

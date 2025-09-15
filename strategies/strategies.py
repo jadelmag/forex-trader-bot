@@ -43,10 +43,29 @@ class ForexStrategies:
     """
 
     def __init__(self, data: pd.DataFrame):
+        # Crear copia para evitar modificar el DataFrame original
+        df = data.copy()
+        
+        # Mapeo de columnas lowercase a uppercase para compatibilidad
+        column_mapping = {
+            'open': 'Open',
+            'high': 'High', 
+            'low': 'Low',
+            'close': 'Close',
+            'volume': 'Volume'
+        }
+        
+        # Renombrar columnas si están en lowercase
+        columns_to_rename = {col: column_mapping[col] for col in df.columns if col in column_mapping}
+        if columns_to_rename:
+            df.rename(columns=columns_to_rename, inplace=True)
+        
+        # Verificar que las columnas requeridas estén presentes
         required = {'Open', 'High', 'Low', 'Close'}
-        if not required.issubset(data.columns):
-            raise ValueError(f"Faltan columnas: {sorted(required - set(data.columns))}")
-        self.data = data.sort_index().copy()
+        if not required.issubset(df.columns):
+            raise ValueError(f"Faltan columnas: {sorted(required - set(df.columns))}")
+        
+        self.data = df.sort_index().copy()
 
     # ------- helpers -------
     @staticmethod
@@ -517,10 +536,15 @@ class ForexStrategies:
         sell = (df['Close'] < df['Res']) & (df['High'] >= df['Res']*0.999)
         df.loc[buy, 'Signal'] = 1
         df.loc[sell, 'Signal'] = -1
+        
+        # Evitar señales consecutivas de la misma dirección
+        df['PrevSignal'] = df['Signal'].shift(1)
+        consecutive_mask = (df['Signal'] != 0) & (df['PrevSignal'] == df['Signal'])
+        df.loc[consecutive_mask, 'Signal'] = 0
 
         df['ExitSignal'] = self._generate_exit_signals(df, exit_config)
         df = self._apply_risk_management(df, **risk_kwargs)
-        return self._attach_execution(df[['Close','Sup','Res','Signal','ExitSignal',
+        return self._attach_execution(df[['Open','High','Low','Close','Sup','Res','Signal','ExitSignal',
                                          'StopLoss','TakeProfit','PositionSize']], exec_lag)
 
     # 7) Price Action Patterns (engulfing)

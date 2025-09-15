@@ -63,6 +63,23 @@ class Operacion:
         else:
             return 0.0
 
+        # DEBUG: Log detallado para valores anormales
+        if abs(profit) > 50:  # Si el P&L es mayor a 50€, logear detalles
+            try:
+                import logging
+                logger = logging.getLogger('RiskManager')
+                logger.warning(f"P&L ANORMAL DETECTADO:")
+                logger.warning(f"  Operación ID: {self.id}")
+                logger.warning(f"  Tipo: {self.tipo}")
+                logger.warning(f"  Precio apertura: {self.precio_apertura:.5f}")
+                logger.warning(f"  Precio actual: {precio_actual:.5f}")
+                logger.warning(f"  Diferencia: {abs(precio_actual - self.precio_apertura):.5f}")
+                logger.warning(f"  Lote size: {self.lote_size:.2f}")
+                logger.warning(f"  P&L calculado: {profit:.5f}")
+                logger.warning(f"  Estrategia: {getattr(self, 'estrategia', 'N/A')}")
+            except Exception:
+                pass
+
         # Validar resultado
         if np.isnan(profit) or np.isinf(profit):
             profit = 0.0
@@ -266,8 +283,13 @@ class RiskManager:
 
         return True
 
-    def _calcular_lote_size(self, tipo, precio, stop_loss, riesgo_por_operacion):
+    def _calcular_lote_size(self, tipo, precio, stop_loss, riesgo_por_operacion, position_size=None):
         """Método centralizado para calcular tamaño de lote"""
+        # Si ya tenemos PositionSize calculado por la estrategia, usarlo directamente
+        if position_size is not None and position_size > 0:
+            return float(position_size), None
+        
+        # Fallback: cálculo tradicional con límites para forex
         if tipo == 'BUY':
             riesgo_por_pip = abs(precio - stop_loss)
         elif tipo == 'SELL':
@@ -283,145 +305,113 @@ class RiskManager:
         riesgo_dinero = self.capital * riesgo_por_operacion
         lote_size = riesgo_dinero / riesgo_por_pip
         
+        # LÍMITE MÁXIMO para forex: evitar lotes extremos
+        max_lote_forex = 10000  # Máximo 10,000 unidades para EURUSD
+        if lote_size > max_lote_forex:
+            lote_size = max_lote_forex
+            if self.debug_mode:
+                logger.warning(f"Lote size limitado a {max_lote_forex} para evitar valores extremos")
+        
         if lote_size <= 0:
             if self.debug_mode:
-                return None, "Tamaño de lote inválido"
+                return None, "Lote size calculado <= 0"
             return None, "Lote size inválido"
 
-        return lote_size, riesgo_dinero
-
-    def abrir_operacion(self, tipo, precio, timestamp, stop_loss, take_profit, riesgo_por_operacion=0.01, estrategia: Optional[str] = None):
-        """Optimizado con thread safety y métricas"""
-        inicio_tiempo = time.time()
-        
-        with self._main_lock:
-            try:
-                # Validar parámetros usando método centralizado
-                if not self._validar_parametros_operacion(tipo, precio, stop_loss, (estrategia, timestamp) if estrategia else None):
-                    return None
-
-                # Calcular lote usando método centralizado
-                lote_size, riesgo_dinero = self._calcular_lote_size(tipo, precio, stop_loss, riesgo_por_operacion)
-                if lote_size is None:
-                    self.last_error = riesgo_dinero  # riesgo_dinero contiene el mensaje de error
-                    return None
-
-                # Crear operación con soporte completo BUY/SELL
-                self.contador_operaciones += 1
-                operacion = Operacion(
-                    id_operacion=self.contador_operaciones,
-                    tipo=tipo,
-                    precio_apertura=precio,
-                    timestamp=timestamp,
-                    stop_loss=stop_loss,
-                    take_profit=take_profit,
-                    lote_size=lote_size,
-                    estrategia=estrategia
-                )
-                operacion.riesgo_reservado = float(riesgo_dinero)
-
-                # Gestión de capital para ambos tipos de operación
-                if tipo == 'BUY':
-                    operacion.valor_posicion = float(precio) * float(lote_size)
-                    self.capital -= riesgo_dinero
-                    self.ultima_vela_buy = timestamp
-                elif tipo == 'SELL':
-                    operacion.valor_posicion = float(precio) * float(lote_size)
-                    self.capital -= riesgo_dinero  # También reservar capital para SELL
-
-                self.operaciones_activas.append(operacion)
-                self._invalidar_cache()  # Invalidar cache después de agregar operación
-                self.last_error = None
-                
-                # CORRECCIÓN: Registrar la estrategia SOLO después de confirmar éxito
-                # Esto evita que se marque como "aplicada" si la operación falla
-                self._registrar_estrategia_en_vela(timestamp, estrategia)
-                
-                # Métricas de rendimiento
-                tiempo_operacion = time.time() - inicio_tiempo
-                self._tiempos_operacion.append(tiempo_operacion)
-                self.performance_metrics['operaciones_abiertas'] += 1
-                
-                # Mantener solo los últimos 100 tiempos para el promedio
-                if len(self._tiempos_operacion) > 100:
-                    self._tiempos_operacion = self._tiempos_operacion[-100:]
-                
-                self.performance_metrics['tiempo_promedio_apertura'] = sum(self._tiempos_operacion) / len(self._tiempos_operacion)
-                
-                return operacion
-                
-            except Exception as e:
-                self.performance_metrics['errores_thread_safety'] += 1
-                logger.error(f"Error en abrir_operacion: {e}")
-                self.last_error = f"Error interno: {str(e)}"
-                return None
-
-    def verificar_cierre_operaciones(self, precio_actual, timestamp):
-        """Mismo método que original"""
-        operaciones_cerradas = []
-        for operacion in self.operaciones_activas:
-            if operacion.estado != 'ACTIVA':
-                continue
-
-            precio_cierre = None
-            if operacion.tipo == 'BUY':
-                if precio_actual >= operacion.take_profit:
-                    precio_cierre = operacion.take_profit
-                elif precio_actual <= operacion.stop_loss:
-                    precio_cierre = operacion.stop_loss
-            else:
-                if precio_actual <= operacion.take_profit:
-                    precio_cierre = operacion.take_profit
-                elif precio_actual >= operacion.stop_loss:
-                    precio_cierre = operacion.stop_loss
-
-            if precio_cierre is not None:
-                profit = operacion.cerrar(precio_cierre, timestamp)
-                if operacion.tipo == 'BUY':
-                    self.capital += operacion.riesgo_reservado + profit
-                elif operacion.tipo == 'SELL':
-                    self.capital += operacion.riesgo_reservado + profit
-                else:
-                    self.capital += profit
-                self.beneficio_total += profit
-
-                if profit >= 0:
-                    self.operaciones_ganadas += 1
-                    self.ganancia_ganadoras_total += profit
-                else:
-                    self.operaciones_perdidas += 1
-                    self.perdida_perdedoras_total += profit
-
-                if operacion.estrategia:
-                    self.estrategias_buy_activa_notificadas.discard(operacion.estrategia)
-
-                operaciones_cerradas.append(operacion)
-                self.operaciones_cerradas.append(operacion)
-
-        self.operaciones_activas = [op for op in self.operaciones_activas if op.estado == 'ACTIVA']
-        self._invalidar_cache()
-        return operaciones_cerradas
+        return float(lote_size), None
 
     def _cerrar_operacion_comun(self, operacion, precio_cierre, timestamp, motivo="AUTO_CLOSE"):
-        """Método centralizado para cerrar operaciones - elimina duplicación"""
+        """Método centralizado para cerrar operaciones - Sistema Forex completo"""
         inicio_tiempo = time.time()
         
         profit = operacion.cerrar(precio_cierre, timestamp)
         
-        # Gestión de capital unificada
-        if operacion.tipo in ['BUY', 'SELL']:
-            self.capital += operacion.riesgo_reservado + profit
-        else:
-            self.capital += profit
+        # AUDITORÍA: Registrar evento de cierre
+        try:
+            import json
+            import time as time_module
+            audit_entry = {
+                "ts": time_module.time(),
+                "iso": timestamp.isoformat() + "Z" if hasattr(timestamp, 'isoformat') else f"{timestamp}Z",
+                "type": "forex" if not operacion.estrategia.startswith('candle_') else "candle",
+                "event": "closed",
+                "strategy": operacion.estrategia.replace('forex_', '').replace('candle_', ''),
+                "signal": 1 if operacion.tipo == "BUY" else -1,
+                "entry_price": float(operacion.precio_apertura),
+                "exit_price": float(precio_cierre),
+                "profit": float(profit),
+                "reason": motivo,
+                "risk_percent": 1.0,
+                "scenario": getattr(self, 'current_scenario', None)
+            }
+            
+            # Escribir a archivo de auditoría
+            from datetime import datetime
+            audit_file = f"app/logs/audit_{datetime.now().strftime('%Y%m%d')}.jsonl"
+            with open(audit_file, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(audit_entry) + '\n')
+        except Exception:
+            pass
         
-        # Actualizar estadísticas
+        # Log de cierre de operación
+        profit_text = f"+{profit:.5f}" if profit >= 0 else f"{profit:.5f}"
+        color = "green" if profit >= 0 else "red"
+        
+        # Importar logger si está disponible
+        try:
+            from app.gui.handlers.simulation_handler import SimulationHandler
+            if hasattr(SimulationHandler, '_current_instance') and SimulationHandler._current_instance:
+                handler = SimulationHandler._current_instance
+                handler.log(f"🔴 Cierre {operacion.estrategia} {operacion.tipo} @ {precio_cierre:.5f} | P&L: {profit_text} | {motivo}", color)
+        except Exception:
+            pass
+        
+        # SISTEMA FOREX CORREGIDO: Gestión precisa de capital
+        # El capital ya incluye el riesgo reservado cuando se abre la operación
+        # Solo necesitamos aplicar el P&L real de la operación
+        
+        # ANTES: self.capital += operacion.riesgo_reservado  # INCORRECTO - doble contabilidad
+        # ANTES: self.capital += profit                      # INCORRECTO - doble modificación
+        
+        # CORREGIDO: Solo aplicar el P&L neto al capital
+        # El riesgo_reservado ya está incluido en el cálculo del profit de la operación
+        self.capital += profit
+        
+        # Actualizar estadísticas globales
         self.beneficio_total += profit
         if profit >= 0:
             self.operaciones_ganadas += 1
             self.ganancia_ganadoras_total += profit
         else:
             self.operaciones_perdidas += 1
-            self.perdida_perdedoras_total += profit
+            self.perdida_perdedoras_total += abs(profit)
+
+        # Actualizar GUI con sistema de beneficios/pérdidas acumuladas (SIN LOG DUPLICADO)
+        try:
+            from app.gui.handlers.simulation_handler import SimulationHandler
+            if hasattr(SimulationHandler, '_current_instance') and SimulationHandler._current_instance:
+                handler = SimulationHandler._current_instance
+                if hasattr(handler.main_app, 'strategy_handler'):
+                    strategy_handler = handler.main_app.strategy_handler
+                    
+                    # Actualizar dinero ficticio con el nuevo balance
+                    strategy_handler.dinero_ficticio = self.capital
+                    
+                    # Actualizar beneficios y pérdidas ACUMULADAS
+                    if profit >= 0:
+                        # Sumar a beneficios acumulados
+                        if not hasattr(strategy_handler, 'beneficios'):
+                            strategy_handler.beneficios = 0.0
+                        strategy_handler.beneficios += profit
+                    else:
+                        # Sumar a pérdidas acumuladas (valor absoluto)
+                        if not hasattr(strategy_handler, 'perdidas'):
+                            strategy_handler.perdidas = 0.0
+                        strategy_handler.perdidas += abs(profit)
+                    
+                    # Actualizar labels en tiempo real SIN logging adicional
+                    strategy_handler.actualizar_labels()
+        except Exception:
+            pass
 
         # Limpiar notificaciones de estrategia
         if operacion.estrategia:
@@ -507,15 +497,302 @@ class RiskManager:
         """Mismo método que original"""
         return self.get_estadisticas()
 
-    def get_performance_metrics(self):
+    def abrir_operacion(self, tipo, precio, timestamp, stop_loss, take_profit, 
+                       riesgo_por_operacion=0.01, estrategia=None, position_size=None):
+        """
+        Abre una nueva operación BUY o SELL
+        
+        NOTA: Este método es usado SOLO para BACKTESTING con datos PKL/CSV.
+        Para trading en tiempo real con Binance, las operaciones se manejan
+        a través de risk_manager_integration.py usando el método process_signal().
+        """
+        with self._main_lock:
+            try:
+                inicio_tiempo = time.time()
+                
+                # Validar parámetros
+                if not self._validar_parametros_operacion(tipo, precio, stop_loss, (timestamp, estrategia)):
+                    return None
+                
+                # Calcular lote size (usar position_size si está disponible)
+                lote_size, error = self._calcular_lote_size(tipo, precio, stop_loss, riesgo_por_operacion, position_size)
+                if error:
+                    self.last_error = error
+                    return None
+                
+                # DEBUG: Log lote_size para verificar valores
+                if self.debug_mode or lote_size > 15000:  # Log si es muy alto
+                    logger.info(f"APERTURA - Lote size calculado: {lote_size:.2f}")
+                    if position_size:
+                        logger.info(f"  Usando PositionSize de estrategia: {position_size}")
+                    else:
+                        logger.info(f"  Calculado con fallback: riesgo={riesgo_por_operacion*self.capital:.2f} / pip_risk={abs(precio-stop_loss):.5f}")
+                    if lote_size > 15000:
+                        logger.warning(f"  ⚠️ LOTE_SIZE MUY ALTO: {lote_size:.2f} - Puede causar P&L extremo")
+                
+                # Reservar capital según tipo
+                riesgo_dinero = self.capital * riesgo_por_operacion
+                self.capital -= riesgo_dinero
+                
+                # Crear operación
+                self.contador_operaciones += 1
+                operacion = Operacion(
+                    id_operacion=self.contador_operaciones,
+                    tipo=tipo,
+                    precio_apertura=precio,
+                    timestamp=timestamp,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                    lote_size=lote_size,
+                    estrategia=estrategia
+                )
+                
+                # Guardar riesgo reservado
+                operacion.riesgo_reservado = riesgo_dinero
+                
+                # Añadir a operaciones activas
+                self.operaciones_activas.append(operacion)
+                self._invalidar_cache()
+                
+                # Actualizar labels de dinero cuando se abre operación
+                try:
+                    from app.gui.handlers.simulation_handler import SimulationHandler
+                    if hasattr(SimulationHandler, '_current_instance') and SimulationHandler._current_instance:
+                        handler = SimulationHandler._current_instance
+                        if hasattr(handler.main_app, 'strategy_handler'):
+                            strategy_handler = handler.main_app.strategy_handler
+                            
+                            # Actualizar dinero ficticio con el capital después de reservar riesgo
+                            strategy_handler.dinero_ficticio = self.capital
+                            
+                            # Actualizar labels
+                            strategy_handler.actualizar_labels()
+                except Exception:
+                    pass
+                
+                # Registrar estrategia si aplica
+                if estrategia:
+                    self._registrar_estrategia_en_vela(timestamp, estrategia)
+                
+                # Métricas de rendimiento
+                tiempo_apertura = time.time() - inicio_tiempo
+                self.performance_metrics['operaciones_abiertas'] += 1
+                
+                if hasattr(self, '_tiempos_operacion'):
+                    self._tiempos_operacion.append(tiempo_apertura)
+                    if len(self._tiempos_operacion) > 100:
+                        self._tiempos_operacion = self._tiempos_operacion[-100:]
+                    self.performance_metrics['tiempo_promedio_apertura'] = sum(self._tiempos_operacion) / len(self._tiempos_operacion)
+                else:
+                    self._tiempos_operacion = [tiempo_apertura]
+                    self.performance_metrics['tiempo_promedio_apertura'] = tiempo_apertura
+                
+                return operacion
+                
+            except Exception as e:
+                self.performance_metrics['errores_thread_safety'] += 1
+                logger.error(f"Error abriendo operación: {e}")
+                return None
+
+    def verificar_cierre_operaciones(self, precio_actual, timestamp):
+        """
+        Verifica y cierra operaciones con lógica inteligente:
+        1. Cierre inmediato si profit > 0 (cualquier ganancia)
+        2. Cierre si pérdida está muy cerca de 0 (breakeven)
+        3. Cierre tradicional por SL/TP
+        """
+        operaciones_cerradas = []
+        
+        with self._main_lock:
+            try:
+                # Usar copia de la lista para modificación segura
+                for operacion in self.operaciones_activas[:]:
+                    if operacion.estado != 'ACTIVA':
+                        continue
+                    
+                    cierre_requerido = False
+                    motivo_cierre = None
+                    precio_cierre = precio_actual
+                    
+                    # LÓGICA INTELIGENTE: Calcular profit actual
+                    profit_actual = operacion.calcular_profit(precio_actual)
+                    
+                    # CONDICIÓN 1: Cerrar si alcanzamos 50% del objetivo TP
+                    if profit_actual > 0:
+                        # Calcular profit objetivo
+                        if operacion.tipo == 'BUY':
+                            profit_objetivo = (operacion.take_profit - operacion.precio_apertura) * operacion.lote_size
+                        else:  # SELL
+                            profit_objetivo = (operacion.precio_apertura - operacion.take_profit) * operacion.lote_size
+                        
+                        # Solo cerrar si alcanzamos al menos 50% del objetivo
+                        if profit_actual >= profit_objetivo * 0.5:
+                            cierre_requerido = True
+                            motivo_cierre = "PROFIT_PARCIAL_50%"
+                    
+                    # CONDICIÓN 2: Cerrar si pérdida está muy cerca de 0 (breakeven)
+                    elif profit_actual < 0:
+                        # Umbral de breakeven: 0.1% del capital o 0.0001 mínimo
+                        umbral_breakeven = max(self.capital * 0.001, 0.0001)
+                        
+                        if abs(profit_actual) <= umbral_breakeven:
+                            cierre_requerido = True
+                            motivo_cierre = "BREAKEVEN"
+                    
+                    # CONDICIÓN 3: Lógica tradicional de SL/TP (solo si no se activaron las anteriores)
+                    if not cierre_requerido:
+                        if operacion.tipo == 'BUY':
+                            if precio_actual >= operacion.take_profit:
+                                cierre_requerido = True
+                                motivo_cierre = "TAKE_PROFIT"
+                                precio_cierre = operacion.take_profit
+                            elif precio_actual <= operacion.stop_loss:
+                                cierre_requerido = True
+                                motivo_cierre = "STOP_LOSS"
+                                precio_cierre = operacion.stop_loss
+                        
+                        elif operacion.tipo == 'SELL':
+                            if precio_actual <= operacion.take_profit:
+                                cierre_requerido = True
+                                motivo_cierre = "TAKE_PROFIT"
+                                precio_cierre = operacion.take_profit
+                            elif precio_actual >= operacion.stop_loss:
+                                cierre_requerido = True
+                                motivo_cierre = "STOP_LOSS"
+                                precio_cierre = operacion.stop_loss
+                    
+                    # Ejecutar cierre si es necesario
+                    if cierre_requerido:
+                        # Usar método centralizado para evitar duplicación
+                        self._cerrar_operacion_comun(operacion, precio_cierre, timestamp, motivo_cierre)
+                        operaciones_cerradas.append(operacion)
+                        self.operaciones_cerradas.append(operacion)
+                        self.operaciones_activas.remove(operacion)  # Eliminación correcta
+                        self._invalidar_cache()
+                
+                return operaciones_cerradas
+                
+            except Exception as e:
+                self.performance_metrics['errores_thread_safety'] += 1
+                logger.error(f"Error en verificar_cierre_operaciones: {e}")
+                return []
+
+    def verificar_trailing_stops(self, precio_actual, timestamp, atr_value=None):
+        """Verifica y ejecuta trailing stops para operaciones BUY y SELL"""
+        operaciones_cerradas = []
+        
+        try:
+            with self._main_lock:
+                for operacion in self.operaciones_activas[:]:
+                    if not hasattr(operacion, 'trailing_stop_enabled') or not operacion.trailing_stop_enabled:
+                        continue
+                    
+                    if operacion.estado != 'ACTIVA':
+                        continue
+                    
+                    # Obtener multiplicador de trailing (por defecto 1.5)
+                    trailing_mult = getattr(operacion, 'trailing_multiplier', 1.5)
+                    
+                    if operacion.tipo == 'BUY':
+                        # Actualizar precio más alto alcanzado
+                        if not hasattr(operacion, 'highest_price'):
+                            operacion.highest_price = operacion.precio_apertura
+                        
+                        if precio_actual > operacion.highest_price:
+                            operacion.highest_price = precio_actual
+                            
+                            # Calcular nuevo stop loss usando ATR o estimación
+                            if atr_value and atr_value > 0:
+                                new_stop = operacion.highest_price - (atr_value * trailing_mult)
+                            else:
+                                # Estimación basada en movimiento del precio
+                                price_movement = operacion.highest_price - operacion.precio_apertura
+                                estimated_atr = max(price_movement * 0.1, 0.0001)
+                                new_stop = operacion.highest_price - (estimated_atr * trailing_mult)
+                            
+                            # Solo actualizar si el nuevo stop es mayor (más favorable)
+                            operacion.stop_loss = max(operacion.stop_loss, new_stop)
+                        
+                        # Verificar si se debe cerrar por trailing stop
+                        if precio_actual <= operacion.stop_loss:
+                            operacion_cerrada = self._cerrar_operacion_comun(
+                                operacion, precio_actual, timestamp, "TRAILING_STOP"
+                            )
+                            if operacion_cerrada:
+                                operaciones_cerradas.append(operacion_cerrada)
+                    
+                    elif operacion.tipo == 'SELL':
+                        # Actualizar precio más bajo alcanzado
+                        if not hasattr(operacion, 'lowest_price'):
+                            operacion.lowest_price = operacion.precio_apertura
+                        
+                        if precio_actual < operacion.lowest_price:
+                            operacion.lowest_price = precio_actual
+                            
+                            # Calcular nuevo stop loss usando ATR o estimación
+                            if atr_value and atr_value > 0:
+                                new_stop = operacion.lowest_price + (atr_value * trailing_mult)
+                            else:
+                                # Estimación basada en movimiento del precio
+                                price_movement = operacion.precio_apertura - operacion.lowest_price
+                                estimated_atr = max(price_movement * 0.1, 0.0001)
+                                new_stop = operacion.lowest_price + (estimated_atr * trailing_mult)
+                            
+                            # Solo actualizar si el nuevo stop es menor (más favorable)
+                            operacion.stop_loss = min(operacion.stop_loss, new_stop)
+                        
+                        # Verificar si se debe cerrar por trailing stop
+                        if precio_actual >= operacion.stop_loss:
+                            operacion_cerrada = self._cerrar_operacion_comun(
+                                operacion, precio_actual, timestamp, "TRAILING_STOP"
+                            )
+                            if operacion_cerrada:
+                                operaciones_cerradas.append(operacion_cerrada)
+                    
+        except Exception as e:
+            self._thread_errors += 1
+            print(f"❌ Error verificando trailing stops: {e}")
+        
+        return operaciones_cerradas
+
+    def corregir_lote_sizes_activos(self):
+        """Corrige lote_sizes extremos en operaciones activas existentes"""
+        operaciones_corregidas = 0
+        
+        with self._main_lock:
+            for operacion in self.operaciones_activas:
+                if operacion.estado == 'ACTIVA' and operacion.lote_size > 15000:
+                    lote_size_original = operacion.lote_size
+                    
+                    # Aplicar límite máximo
+                    operacion.lote_size = min(operacion.lote_size, 10000)
+                    
+                    operaciones_corregidas += 1
+                    logger.warning(f"CORRECCIÓN: Operación {operacion.id} - Lote size {lote_size_original:.2f} → {operacion.lote_size:.2f}")
+        
+        if operaciones_corregidas > 0:
+            logger.info(f"✅ Corregidas {operaciones_corregidas} operaciones con lote_size extremo")
+        
+        return operaciones_corregidas
+
+    def get_performance_metrics(self) -> dict:
         """Obtiene métricas de rendimiento del RiskManager"""
-        return {
-            **self.performance_metrics,
-            'operaciones_activas_actuales': self.get_operaciones_activas_count(),
-            'velas_en_historial': len(self.estrategias_por_vela),
-            'cache_hit_rate': (self.performance_metrics['cache_hits'] / 
-                             max(1, self.performance_metrics['cache_hits'] + self.performance_metrics['cache_misses'])) * 100
-        }
+        with self._main_lock:
+            return {
+                'operaciones_totales': len(self.operaciones_cerradas) + len(self.operaciones_activas),
+                'operaciones_activas': len(self.operaciones_activas),
+                'operaciones_cerradas': len(self.operaciones_cerradas),
+                'operaciones_ganadas': self.operaciones_ganadas,
+                'operaciones_perdidas': self.operaciones_perdidas,
+                'beneficio_total': self.beneficio_total,
+                'capital_actual': self.capital,
+                'cache_hits': self._cache_hits,
+                'cache_misses': self._cache_misses,
+                'cleanup_operations': self._cleanup_count,
+                'avg_operation_time': np.mean(self._operation_times) if self._operation_times else 0,
+                'thread_errors': self._thread_errors,
+                'estrategias_por_vela_count': len(self.estrategias_por_vela)
+            }
 
     def reset(self):
         """Optimizado con thread safety y limpieza completa"""

@@ -1,0 +1,8 @@
+TODO
+
+0. No se puede hacer hover sobre las velas se van revelando. [DOING]
+1. Comprobar Error RiskManager. [TODO]
+2. Comprobar por qué no se detecta ningun patrón de vela ni se abre ninguna orden. [TODO]
+3. Añadir IA a datos en tiempo real. [TODO]
+4. Conectar con metatrader [TODO]
+

@@ -7,6 +7,8 @@ import copy
 import os
 import json
 from typing import Callable, Dict, List, Optional
+from concurrent.futures import ThreadPoolExecutor
+import queue
 
 import numpy as np
 import pandas as pd
@@ -108,6 +110,11 @@ class AITrainer:
         self.operaciones_track = []
         self.estadisticas_por_estrategia = {}
         self.mejor_configuracion = None
+        
+        # Thread pool para procesamiento paralelo
+        self._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="AITrainer")
+        self._progress_queue = queue.Queue()
+        self._batch_size = 50  # Procesar en batches para mejor rendimiento
 
     def _count_active_ops_by_type(self) -> Dict[str, int]:
         """Cuenta operaciones activas por tipo usando el prefijo de estrategia.
@@ -174,7 +181,7 @@ class AITrainer:
                 pass
 
     def _entrenar_modelo_rl(self, timesteps=5000):
-        """Entrena el modelo RL con las estrategias actuales"""
+        """Entrena el modelo RL con las estrategias actuales - OPTIMIZADO para no bloquear UI"""
         self._emit_log("🎯 INICIANDO ENTRENAMIENTO RL CON ESTRATEGIAS", 'green')
         self._emit_log(f"📊 Estrategias FX: {list(self._current_fx.keys())}", 'white')
         self._emit_log(f"📊 Estrategias Candle: {self._current_candle}", 'white')
@@ -192,8 +199,22 @@ class AITrainer:
         # Actualizar analizador inteligente
         self.smart_analyzer = SmartOrderAnalyzer(self.df, self._current_fx, self._current_candle)
         
-        # Entrenar modelo
-        success = self.rl_agent.entrenar(timesteps=timesteps, progress_cb=lambda cur, total: self._emit_progress(cur, total))
+        # Entrenar modelo con callbacks no bloqueantes
+        def progress_callback(cur, total):
+            # Usar queue para evitar bloqueo
+            self._progress_queue.put((cur, total))
+            # Procesar queue de forma no bloqueante
+            try:
+                while not self._progress_queue.empty():
+                    c, t = self._progress_queue.get_nowait()
+                    self._emit_progress(c, t)
+                    # Yield al sistema para permitir que UI responda
+                    if c % 100 == 0:
+                        time.sleep(0.001)
+            except queue.Empty:
+                pass
+        
+        success = self.rl_agent.entrenar(timesteps=timesteps, progress_cb=progress_callback)
         if success:
             self._emit_log("✅ ENTRENAMIENTO RL COMPLETADO", 'green')
         else:
@@ -571,12 +592,12 @@ class AITrainer:
                 'Máximo de operaciones simultáneas respetado por RiskManager',
                 'Sin estrategias Forex duplicadas (clave única por estrategia)',
                 'Máximo una apertura por vela (pipeline RL/analizador)'
-            ],
+            ]
         }
 
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-
+    
     def _run(self):
         try:
             attempt = 1
@@ -585,7 +606,7 @@ class AITrainer:
             while not self._stop:
                 # (semilla aleatoria eliminada)
 
-                # 1. ENTRENAR MODELO RL
+                # 1. ENTRENAR MODELO RL - Ya optimizado con callbacks no bloqueantes
                 if not self._entrenar_modelo_rl(timesteps=self.timesteps_per_attempt):
                     self._emit_log("❌ Fallo en entrenamiento RL, saltando intento...", 'red')
                     attempt += 1
@@ -625,9 +646,12 @@ class AITrainer:
                 successful_ops: List[Dict] = []
                 failed_ops: List[Dict] = []
 
-                # 3. EJECUTAR BACKTESTING CON ANÁLISIS INTELIGENTE
+                # 3. EJECUTAR BACKTESTING CON ANÁLISIS INTELIGENTE - OPTIMIZADO
                 # Flag para no spamear el log de stop
                 stop_log_emitted = False
+                
+                # Procesar en batches para mejor rendimiento y no bloquear UI
+                batch_counter = 0
                 for idx, row in df_work.iterrows():
                     if self._stop:
                         if not stop_log_emitted:
@@ -636,7 +660,17 @@ class AITrainer:
                         break
                     
                     processed += 1
-                    self._emit_progress(processed, total_rows)
+                    batch_counter += 1
+                    
+                    # Actualizar progreso y yield al sistema cada N filas
+                    if batch_counter >= self._batch_size:
+                        self._emit_progress(processed, total_rows)
+                        # Yield al thread principal para permitir que UI responda
+                        time.sleep(0.001)
+                        batch_counter = 0
+                    elif processed % 10 == 0:
+                        # Actualización más frecuente pero sin sleep
+                        self._emit_progress(processed, total_rows)
 
                     # Cierre de operaciones
                     operaciones_cerradas = self.risk_manager.verificar_cierre_operaciones(row['Close'], idx)

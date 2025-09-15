@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 
 class ForexBacktester:
-    def __init__(self, data, initial_balance=10000):
+    def __init__(self, data, initial_balance=1000):
         """
         data: DataFrame con columnas ['Open', 'High', 'Low', 'Close']
         initial_balance: saldo inicial para el backtest

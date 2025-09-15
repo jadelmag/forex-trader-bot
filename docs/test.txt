@@ -1,0 +1,11 @@
+# Ejecutar todos los tests
+python app/test_runner.py
+
+# Ejecutar solo tu simulación completa
+python app/test_runner.py --simulation
+
+# Ejecutar tests que contengan "candle"
+python app/test_runner.py --test candle
+
+# Ver lista de todos los tests disponibles
+python app/test_runner.py --list

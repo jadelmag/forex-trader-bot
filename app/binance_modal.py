@@ -11,6 +11,7 @@ import threading
 from strategies.strategy_utils import resolve_strategy_name
 from strategies.candle_strategies import CandleStrategies
 from patterns.candlestickpatterns import CandlestickPatterns
+from patterns.pattern_utils import get_default_pattern_detection_config
 
 class BinanceSimulationModal(tk.Toplevel):
     def __init__(self, parent, estrategias_fx, estrategias_candle, callback, patrones_list=None):
@@ -690,28 +691,7 @@ class BinanceSimulationModal(tk.Toplevel):
 
     def _get_default_pattern_detection_config(self) -> dict:
         """Devuelve configuración por defecto para detección de patrones."""
-        return {
-            # Parámetros de detección de patrones
-            "doji_threshold": 0.15,
-            "tweezer_tolerance": 0.01,
-            "min_confidence": 0.3,
-            "partial_factor": 0.5,
-            "hammer_body_ratio": 1.2,
-            "shooting_star_ratio": 1.5,
-            "spinning_top_ratio": 0.4,
-            "marubozu_ratio": 0.7,
-            
-            # Parámetros de indicadores técnicos
-            "atr_period": 14,
-            "trend_period": 20,
-            "volatility_period": 20,
-            
-            # Parámetros adicionales de patrones
-            "engulfing_min_body_ratio": 1.05,       # 5% más grande (era 1.2)
-            "harami_max_body_ratio": 0.9,           # 90% del tamaño (era 0.8)
-            "star_gap_threshold": 0.005,             # 0.5% gap (era 0.001)
-            "three_methods_trend_strength": 0.5      # 50% fuerza (era 0.7)
-        }
+        return get_default_pattern_detection_config()
 
     def _validate_two_decimals(self, proposed: str) -> bool:
         """Valida float con hasta 2 decimales. Permite vacío."""
@@ -909,6 +889,20 @@ class BinanceSimulationModal(tk.Toplevel):
         """Devuelve preset por tipo de estrategia según recomendaciones."""
         name = resolve_strategy_name(strategy_name, "candle") if strategy_name else ""
 
+        # Obtener configuración global de trailing desde app_config.json
+        global_trailing_enabled = False
+        global_trailing_mode = ""
+        global_trailing_mult = 1.5
+        
+        try:
+            from .config_app_modal import ConfigAppModal
+            app_config = ConfigAppModal.get_config()
+            global_trailing_enabled = app_config.get('default_trailing_enabled', False)
+            global_trailing_mode = str(app_config.get('default_trailing_mode', '') or '')
+            global_trailing_mult = float(app_config.get('default_trailing_multiplier', 1.5))
+        except Exception:
+            pass
+
         # Categorías
         reversal = {
             "hammer_reversal_strategy",
@@ -939,36 +933,51 @@ class BinanceSimulationModal(tk.Toplevel):
         sltp = {"stop_loss_take_profit"}
         combined = {"multi_pattern_strategy", "swing_trading", "swing_trading_strategy"}
 
-        # Presets
-        def cfg(use_ts, sl, tp, ts_mult=None, use_sc=True, use_sl=True, use_tp=True, use_pr=False):
+        # Presets - usar configuración global como base
+        def cfg(use_ts=None, sl=1.5, tp=3.0, ts_mult=None, use_sc=True, use_sl=True, use_tp=True, use_pr=False, ts_mode=None):
+            # Si no se especifica, usar configuración global
+            final_use_ts = use_ts if use_ts is not None else global_trailing_enabled
+            final_ts_mult = ts_mult if ts_mult is not None else global_trailing_mult
+            final_ts_mode = ts_mode if ts_mode is not None else global_trailing_mode
+            
             d = {
                 "use_signal_change": use_sc,
                 "use_stop_loss": use_sl,
                 "use_take_profit": use_tp,
-                "use_trailing_stop": use_ts,
+                "use_trailing_stop": final_use_ts,
                 "use_pattern_reversal": use_pr,
                 "atr_sl_multiplier": sl,
                 "atr_tp_multiplier": tp,
-                "atr_trailing_multiplier": ts_mult if ts_mult is not None else 1.5
+                "atr_trailing_multiplier": final_ts_mult
             }
+            
+            # Añadir modo de trailing si está configurado
+            if final_ts_mode and final_ts_mode in ('aggressive', 'conservative', 'hybrid'):
+                d["trailing_mode"] = final_ts_mode
+                
             return d
 
         if name in reversal:
-            # Reversión: trailing opcional; por defecto desactivado
-            return cfg(use_ts=False, sl=1.5, tp=3.0, ts_mult=1.5)
+            # Reversión: usar configuración global o desactivado por defecto
+            return cfg(sl=1.5, tp=3.0)
         if name in trend:
+            # Tendencia: forzar trailing activo con multiplicadores específicos
             return cfg(use_ts=True, sl=2.0, tp=4.0, ts_mult=2.0)
         if name in scalping:
-            return cfg(use_ts=True, sl=1.0, tp=2.0, ts_mult=1.5)
+            # Scalping: forzar trailing activo con multiplicadores agresivos
+            return cfg(use_ts=True, sl=1.0, tp=2.0, ts_mult=1.5, ts_mode="aggressive")
         if name in swing_cons:
-            return cfg(use_ts=False, sl=2.5, tp=4.0, ts_mult=2.0)
+            # Swing conservativo: usar configuración global
+            return cfg(sl=2.5, tp=4.0, ts_mult=2.0)
         if name in sltp:
-            return cfg(use_ts=False, sl=1.5, tp=3.0, ts_mult=1.5, use_sc=True)
+            # SL/TP: usar configuración global con signal change
+            return cfg(sl=1.5, tp=3.0, use_sc=True)
         if name in combined:
-            return cfg(use_ts=False, sl=1.5, tp=3.0, ts_mult=1.5)
+            # Combinado: usar configuración global
+            return cfg(sl=1.5, tp=3.0)
 
-        # Default fallback
-        return cfg(use_ts=False, sl=1.5, tp=3.0, ts_mult=1.5)
+        # Default fallback: usar configuración global
+        return cfg(sl=1.5, tp=3.0)
 
     def _schedule_strategy_discovery(self):
         """Programa el discovery de estrategias en background."""
@@ -1047,31 +1056,6 @@ class BinanceSimulationModal(tk.Toplevel):
             PatternDetectionModal(self, current_config, on_save, x, y)
         except Exception as e:
             print(f"Error opening pattern detection modal: {e}")
-
-    def _get_default_pattern_detection_config(self) -> dict:
-        """Devuelve configuración por defecto para detección de patrones."""
-        return {
-            # Parámetros de detección de patrones
-            "doji_threshold": 0.05,
-            "tweezer_tolerance": 0.001,
-            "min_confidence": 0.6,
-            "partial_factor": 0.5,
-            "hammer_body_ratio": 1.5,
-            "shooting_star_ratio": 2.0,
-            "spinning_top_ratio": 0.3,
-            "marubozu_ratio": 0.8,
-            
-            # Parámetros de indicadores técnicos
-            "atr_period": 14,           # ✅ Estándar, OK
-            "trend_period": 20,         # ✅ Estándar, OK  
-            "volatility_period": 20,    # ✅ Estándar, OK
-            
-            # Parámetros adicionales de patrones
-            "engulfing_min_body_ratio": 1.05,       # 5% más grande (era 1.2)
-            "harami_max_body_ratio": 0.9,           # 90% del tamaño (era 0.8)
-            "star_gap_threshold": 0.005,             # 0.5% gap (era 0.001)
-            "three_methods_trend_strength": 0.5      # 50% fuerza (era 0.7)
-        }
 
     def _center_window(self, w, h):
         """Centra la ventana sobre el padre."""
@@ -1201,6 +1185,16 @@ class CandleConfigModal(tk.Toplevel):
         add_num("ATR TP multiplier (atr_tp_multiplier)", "atr_tp_multiplier", "Ej.: 3.0")
         add_num("ATR trailing multiplier (atr_trailing_multiplier)", "atr_trailing_multiplier", "Ej.: 1.5")
 
+        # Trailing mode (combobox)
+        mode_frame = tk.Frame(inner_container)
+        mode_frame.pack(fill="x", pady=4)
+        ttk.Label(mode_frame, text="Modo de trailing (trailing_mode)").pack(anchor="w")
+        self.trailing_mode_var = tk.StringVar(value=str(base_config.get('trailing_mode', '') or ''))
+        mode_values = ["", "aggressive", "conservative", "hybrid"]
+        mode_combo = ttk.Combobox(mode_frame, textvariable=self.trailing_mode_var, values=mode_values, state="readonly", width=18)
+        mode_combo.pack(anchor="w")
+        ttk.Label(mode_frame, text="Vacío=sin modo | aggressive=1.0 | conservative=2.0 | hybrid=1.5", foreground="#666", font=("Arial", 8)).pack(anchor="w")
+
         # Fila final: Guardar configuración
         save_row = tk.Frame(inner_container)
         save_row.pack(fill="x", pady=(10, 0))
@@ -1255,6 +1249,17 @@ class CandleConfigModal(tk.Toplevel):
             for key, var in self.num_fields.items():
                 txt = var.get().strip()
                 cfg[key] = float(txt) if txt not in ("", ".") else 0.0
+            # Combobox trailing mode
+            try:
+                mode_val = (self.trailing_mode_var.get() or '').strip()
+                if mode_val in ("aggressive", "conservative", "hybrid"):
+                    cfg['trailing_mode'] = mode_val
+                else:
+                    # Vacío significa sin modo explícito
+                    if 'trailing_mode' in cfg:
+                        del cfg['trailing_mode']
+            except Exception:
+                pass
             if callable(self.on_save):
                 self.on_save(cfg)
             # Guardar en disco si corresponde
@@ -1307,56 +1312,13 @@ class CandleConfigModal(tk.Toplevel):
             for key, var in self.num_fields.items():
                 if key in cfg and cfg.get(key) is not None:
                     var.set(str(cfg.get(key)))
+            # Trailing mode
+            try:
+                self.trailing_mode_var.set(str(cfg.get('trailing_mode', '') or ''))
+            except Exception:
+                pass
         except Exception as e:
             print(f"Error applying config to fields: {e}")
-
-    def _open_pattern_detection_config(self):
-        """Abre modal de configuración global para detección de patrones."""
-        try:
-            # Posicionar a la derecha del modal principal
-            self.update_idletasks()
-            x = self.winfo_rootx() + self.winfo_width() + 10
-            y = self.winfo_rooty()
-
-            # Obtener configuración actual global o usar defaults
-            current_config = getattr(self, 'global_pattern_config', None) or self._get_default_pattern_detection_config()
-
-            def on_save(config_dict):
-                try:
-                    # Guardar configuración global
-                    self.global_pattern_config = config_dict
-                    print(f"Configuración de detección guardada: {len(config_dict)} parámetros")
-                except Exception as e:
-                    print(f"Error guardando configuración: {e}")
-
-            PatternDetectionModal(self, current_config, on_save, x, y)
-        except Exception as e:
-            print(f"Error opening pattern detection modal: {e}")
-
-    def _get_default_pattern_detection_config(self) -> dict:
-        """Devuelve configuración por defecto para detección de patrones."""
-        return {
-            # Parámetros de detección de patrones
-            "doji_threshold": 0.05,
-            "tweezer_tolerance": 0.001,
-            "min_confidence": 0.6,
-            "partial_factor": 0.5,
-            "hammer_body_ratio": 1.5,
-            "shooting_star_ratio": 2.0,
-            "spinning_top_ratio": 0.3,
-            "marubozu_ratio": 0.8,
-            
-            # Parámetros de indicadores técnicos
-            "atr_period": 14,
-            "trend_period": 20,
-            "volatility_period": 20,
-            
-            # Parámetros adicionales de patrones
-            "engulfing_min_body_ratio": 1.2,
-            "harami_max_body_ratio": 0.8,
-            "star_gap_threshold": 0.001,
-            "three_methods_trend_strength": 0.7
-        }
 
 
 class PatternDetectionModal(tk.Toplevel):

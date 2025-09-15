@@ -15,7 +15,7 @@ class ConfigAppModal(tk.Toplevel):
         super().__init__(parent)
         self.parent = parent
         self.title("Configuración Forex Trader Bot")
-        self.geometry("400x450")
+        self.geometry("460x460")
         self.resizable(False, False)
         self.grab_set()  # Modal
         
@@ -35,6 +35,21 @@ class ConfigAppModal(tk.Toplevel):
         self.password_var = tk.StringVar()
         self.hours_var = tk.StringVar(value="0")
         self.password_visible = False
+        # Nuevas variables (app_config.json)
+        self.max_account_risk_var = tk.StringVar(value="5.0")
+        self.analysis_candles_var = tk.StringVar(value="5")
+        self.analysis_seconds_var = tk.StringVar(value="0")
+        self.strategy_cd_var = tk.StringVar(value="0")
+        self.exit_cd_var = tk.StringVar(value="0")
+        self.audit_enabled_var = tk.IntVar(value=1)
+        self.audit_dir_var = tk.StringVar(value="logs")
+        # Trailing global por defecto
+        self.default_trailing_enabled_var = tk.IntVar(value=0)
+        self.default_trailing_mode_var = tk.StringVar(value="")
+        self.default_trailing_mult_var = tk.StringVar(value="1.5")
+        # Checkboxes para desbloquear escenarios
+        self.unlock_forex_scenario_var = tk.IntVar(value=0)
+        self.unlock_candle_scenario_var = tk.IntVar(value=0)
         
         # Cargar configuración existente
         self._cargar_configuracion()
@@ -44,13 +59,52 @@ class ConfigAppModal(tk.Toplevel):
         
     def _crear_interfaz(self):
         """Crear la interfaz del modal"""
-        # Título principal
-        title_label = tk.Label(self, text="Configuración Forex Trader Bot", 
+        # ===== Scrollable container (Canvas + Scrollbar) =====
+        container = tk.Frame(self)
+        container.pack(fill="both", expand=True)
+        canvas = tk.Canvas(container, highlightthickness=0)
+        vscroll = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=vscroll.set)
+        vscroll.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        # Frame desplazable dentro del Canvas
+        scrollable = tk.Frame(canvas)
+        window_id = canvas.create_window((0, 0), window=scrollable, anchor="nw")
+
+        # Ajustar región desplazable al contenido
+        def _on_frame_configure(event):
+            try:
+                canvas.configure(scrollregion=canvas.bbox("all"))
+            except Exception:
+                pass
+        scrollable.bind("<Configure>", _on_frame_configure)
+
+        # Mantener el ancho del frame igual al del Canvas
+        def _on_canvas_resize(event):
+            try:
+                canvas.itemconfig(window_id, width=event.width)
+            except Exception:
+                pass
+        canvas.bind("<Configure>", _on_canvas_resize)
+
+        # Soporte de rueda del ratón
+        def _on_mousewheel(event):
+            try:
+                delta = int(-1 * (event.delta / 120))
+            except Exception:
+                delta = -1 if getattr(event, 'num', 0) == 5 else 1
+            canvas.yview_scroll(delta, "units")
+        scrollable.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", _on_mousewheel))
+        scrollable.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
+
+        # ===== Contenido dentro del área desplazable =====
+        title_label = tk.Label(scrollable, text="Configuración Forex Trader Bot", 
                               font=("Segoe UI", 14, "bold"))
         title_label.pack(pady=20)
         
-        # Frame principal para los campos
-        main_frame = tk.Frame(self)
+        # Frame principal para los campos (dentro del área desplazable)
+        main_frame = tk.Frame(scrollable)
         main_frame.pack(padx=30, pady=10, fill="both", expand=True)
         
         # Campo Límite de dinero para operaciones
@@ -108,7 +162,88 @@ class ConfigAppModal(tk.Toplevel):
         # Configurar expansión de columnas
         main_frame.columnconfigure(0, weight=1)
         
-        # Botones Cancelar y Aceptar
+        # Sección: Motor de simulación y auditoría
+        sep1 = ttk.Separator(main_frame, orient="horizontal")
+        sep1.grid(row=8, column=0, sticky="ew", pady=(8, 8))
+        tk.Label(main_frame, text="Motor de simulación y auditoría:", font=("Segoe UI", 10, "bold")).grid(row=9, column=0, sticky="w", pady=(0,6))
+
+        # Frecuencia de análisis (velas / segundos)
+        row_idx = 10
+        tk.Label(main_frame, text="Análisis de mercado cada N velas (0=ignorar):", font=("Segoe UI", 10)).grid(row=row_idx, column=0, sticky="w")
+        row_idx += 1
+        tk.Entry(main_frame, textvariable=self.analysis_candles_var, width=10).grid(row=row_idx, column=0, sticky="w", pady=(0,6))
+        row_idx += 1
+        tk.Label(main_frame, text="Análisis de mercado cada N segundos (0=desactivado):", font=("Segoe UI", 10)).grid(row=row_idx, column=0, sticky="w")
+        row_idx += 1
+        tk.Entry(main_frame, textvariable=self.analysis_seconds_var, width=10).grid(row=row_idx, column=0, sticky="w", pady=(0,6))
+
+        # Cooldowns
+        row_idx += 1
+        tk.Label(main_frame, text="Cooldown de estrategia (segundos, 0=off):", font=("Segoe UI", 10)).grid(row=row_idx, column=0, sticky="w")
+        row_idx += 1
+        tk.Entry(main_frame, textvariable=self.strategy_cd_var, width=10).grid(row=row_idx, column=0, sticky="w", pady=(0,6))
+        row_idx += 1
+        tk.Label(main_frame, text="Cooldown de cierre (-1) (segundos, 0=off):", font=("Segoe UI", 10)).grid(row=row_idx, column=0, sticky="w")
+        row_idx += 1
+        tk.Entry(main_frame, textvariable=self.exit_cd_var, width=10).grid(row=row_idx, column=0, sticky="w", pady=(0,6))
+
+        # Riesgo global de cuenta
+        row_idx += 1
+        tk.Label(main_frame, text="Riesgo máximo de cuenta (%):", font=("Segoe UI", 10)).grid(row=row_idx, column=0, sticky="w")
+        row_idx += 1
+        tk.Entry(main_frame, textvariable=self.max_account_risk_var, width=10).grid(row=row_idx, column=0, sticky="w", pady=(0,6))
+
+        # Trailing global por defecto
+        row_idx += 1
+        tk.Label(main_frame, text="Trailing por defecto (global):", font=("Segoe UI", 10, "bold")).grid(row=row_idx, column=0, sticky="w", pady=(10, 4))
+        row_idx += 1
+        # Habilitar
+        tk.Checkbutton(main_frame, text="Habilitar trailing global por defecto", variable=self.default_trailing_enabled_var).grid(row=row_idx, column=0, sticky="w")
+        row_idx += 1
+        # Modo por defecto
+        tk.Label(main_frame, text="Modo trailing por defecto (vacío = sin modo):", font=("Segoe UI", 10)).grid(row=row_idx, column=0, sticky="w")
+        row_idx += 1
+        try:
+            mode_combo = ttk.Combobox(main_frame, textvariable=self.default_trailing_mode_var, values=["", "aggressive", "conservative", "hybrid"], state="readonly", width=18)
+            mode_combo.grid(row=row_idx, column=0, sticky="w", pady=(0,6))
+        except Exception:
+            tk.Entry(main_frame, textvariable=self.default_trailing_mode_var, width=18).grid(row=row_idx, column=0, sticky="w", pady=(0,6))
+        row_idx += 1
+        # Multiplicador por defecto
+        tk.Label(main_frame, text="Multiplicador ATR trailing por defecto:", font=("Segoe UI", 10)).grid(row=row_idx, column=0, sticky="w")
+        row_idx += 1
+        tk.Entry(main_frame, textvariable=self.default_trailing_mult_var, width=10).grid(row=row_idx, column=0, sticky="w", pady=(0,6))
+
+        # Sección: Desbloqueo de escenarios
+        row_idx += 1
+        sep2 = ttk.Separator(main_frame, orient="horizontal")
+        sep2.grid(row=row_idx, column=0, sticky="ew", pady=(8, 8))
+        row_idx += 1
+        tk.Label(main_frame, text="Desbloqueo de escenarios:", font=("Segoe UI", 10, "bold")).grid(row=row_idx, column=0, sticky="w", pady=(0,6))
+        
+        # Checkbox desbloquear escenario forex
+        row_idx += 1
+        tk.Checkbutton(main_frame, text="Desbloquear escenario forex", 
+                      variable=self.unlock_forex_scenario_var,
+                      font=("Segoe UI", 10)).grid(row=row_idx, column=0, sticky="w", pady=(0,4))
+        
+        # Checkbox desbloquear escenario candle
+        row_idx += 1
+        tk.Checkbutton(main_frame, text="Desbloquear escenario candle", 
+                      variable=self.unlock_candle_scenario_var,
+                      font=("Segoe UI", 10)).grid(row=row_idx, column=0, sticky="w", pady=(0,6))
+
+        # Auditoría
+        row_idx += 1
+        audit_frame = tk.Frame(main_frame)
+        audit_frame.grid(row=row_idx, column=0, sticky="w", pady=(6, 6))
+        tk.Checkbutton(audit_frame, text="Habilitar audit log (JSONL)", variable=self.audit_enabled_var).pack(side="left")
+        row_idx += 1
+        tk.Label(main_frame, text="Carpeta audit log:", font=("Segoe UI", 10)).grid(row=row_idx, column=0, sticky="w")
+        row_idx += 1
+        tk.Entry(main_frame, textvariable=self.audit_dir_var, width=20).grid(row=row_idx, column=0, sticky="w")
+
+        # ===== Botones fijos al final (fuera del área desplazable) =====
         frame_btn = tk.Frame(self)
         frame_btn.pack(pady=10)
         btn_cancelar = ttk.Button(frame_btn, text="Cancelar", command=self._cancelar)
@@ -119,6 +254,8 @@ class ConfigAppModal(tk.Toplevel):
         # Validación para el campo de horas y capital
         self.hours_entry.bind('<KeyRelease>', self._validar_horas)
         self.capital_limit_entry.bind('<KeyRelease>', self._validar_capital_limit)
+        # Validaciones básicas numéricas
+        self._bind_numeric_validations()
         
     def _toggle_password_visibility(self):
         """Alternar visibilidad de la contraseña"""
@@ -193,11 +330,29 @@ class ConfigAppModal(tk.Toplevel):
             if self.config_file.exists():
                 with open(self.config_file, 'r', encoding='utf-8') as f:
                     config = json.load(f)
-                    
+                
                 self.capital_limit_var.set(str(config.get('capital_limit', 100)))
                 self.email_var.set(config.get('email', ''))
                 self.password_var.set(config.get('password', ''))
                 self.hours_var.set(str(config.get('report_hours', 0)))
+                # Nuevos campos
+                self.max_account_risk_var.set(str(config.get('max_account_risk_percent', 5.0)))
+                self.analysis_candles_var.set(str(config.get('market_analysis_every_candles', 5)))
+                self.analysis_seconds_var.set(str(config.get('market_analysis_every_seconds', 0)))
+                self.strategy_cd_var.set(str(config.get('strategy_cooldown_seconds', 0)))
+                self.exit_cd_var.set(str(config.get('exit_cooldown_seconds', 0)))
+                self.audit_enabled_var.set(1 if config.get('audit_log_enabled', True) else 0)
+                self.audit_dir_var.set(config.get('audit_log_dir', 'logs'))
+                # Trailing global por defecto
+                self.default_trailing_enabled_var.set(1 if config.get('default_trailing_enabled', False) else 0)
+                self.default_trailing_mode_var.set(str(config.get('default_trailing_mode', '') or ''))
+                try:
+                    self.default_trailing_mult_var.set(str(float(config.get('default_trailing_multiplier', 1.5))))
+                except Exception:
+                    self.default_trailing_mult_var.set("1.5")
+                # Checkboxes de desbloqueo de escenarios
+                self.unlock_forex_scenario_var.set(1 if config.get('unlock_forex_scenario', False) else 0)
+                self.unlock_candle_scenario_var.set(1 if config.get('unlock_candle_scenario', False) else 0)
                 
         except Exception as e:
             print(f"Error al cargar configuración: {e}")
@@ -206,6 +361,18 @@ class ConfigAppModal(tk.Toplevel):
             self.email_var.set('')
             self.password_var.set('')
             self.hours_var.set('0')
+            self.max_account_risk_var.set('5.0')
+            self.analysis_candles_var.set('5')
+            self.analysis_seconds_var.set('0')
+            self.strategy_cd_var.set('0')
+            self.exit_cd_var.set('0')
+            self.audit_enabled_var.set(1)
+            self.audit_dir_var.set('logs')
+            self.default_trailing_enabled_var.set(0)
+            self.default_trailing_mode_var.set('')
+            self.default_trailing_mult_var.set('1.5')
+            self.unlock_forex_scenario_var.set(0)
+            self.unlock_candle_scenario_var.set(0)
     
     def _actualizar_risk_manager(self, capital_limit):
         """Actualizar el archivo risk_manager.py con el nuevo límite de capital"""
@@ -304,6 +471,19 @@ class ConfigAppModal(tk.Toplevel):
                 'email': email,
                 'password': password,
                 'report_hours': hours,
+                # Nuevos campos
+                'max_account_risk_percent': float(self.max_account_risk_var.get() or 0.0),
+                'market_analysis_every_candles': int(self.analysis_candles_var.get() or 5),
+                'market_analysis_every_seconds': int(self.analysis_seconds_var.get() or 0),
+                'strategy_cooldown_seconds': int(self.strategy_cd_var.get() or 0),
+                'exit_cooldown_seconds': int(self.exit_cd_var.get() or 0),
+                'audit_log_enabled': True if self.audit_enabled_var.get() == 1 else False,
+                'audit_log_dir': self.audit_dir_var.get().strip() or 'logs',
+                'default_trailing_enabled': True if self.default_trailing_enabled_var.get() == 1 else False,
+                'default_trailing_mode': (self.default_trailing_mode_var.get() or '').strip(),
+                'default_trailing_multiplier': float(self.default_trailing_mult_var.get() or 1.5),
+                'unlock_forex_scenario': True if self.unlock_forex_scenario_var.get() == 1 else False,
+                'unlock_candle_scenario': True if self.unlock_candle_scenario_var.get() == 1 else False,
                 'last_updated': str(datetime.now())
             }
             
@@ -316,6 +496,38 @@ class ConfigAppModal(tk.Toplevel):
             
         except Exception as e:
             messagebox.showerror("Error", f"Error al guardar la configuración: {str(e)}")
+
+    def _bind_numeric_validations(self):
+        """Validaciones básicas para campos numéricos nuevos (no bloqueantes)."""
+        def numeric_only(var: tk.StringVar, allow_float=False):
+            val = var.get()
+            if val == "":
+                return
+            if allow_float:
+                # Permitir un punto decimal
+                ok = True
+                dots = 0
+                for c in val:
+                    if c.isdigit():
+                        continue
+                    if c == '.' and dots == 0:
+                        dots += 1
+                        continue
+                    ok = False
+                    break
+                if not ok:
+                    var.set(''.join(ch for ch in val if ch.isdigit() or ch == '.') )
+            else:
+                if not val.isdigit():
+                    var.set(''.join(ch for ch in val if ch.isdigit()))
+
+        # Enlazar validaciones (suaves) en KeyRelease
+        self.max_account_risk_var.trace_add('write', lambda *args: numeric_only(self.max_account_risk_var, allow_float=True))
+        self.analysis_candles_var.trace_add('write', lambda *args: numeric_only(self.analysis_candles_var, allow_float=False))
+        self.analysis_seconds_var.trace_add('write', lambda *args: numeric_only(self.analysis_seconds_var, allow_float=False))
+        self.strategy_cd_var.trace_add('write', lambda *args: numeric_only(self.strategy_cd_var, allow_float=False))
+        self.exit_cd_var.trace_add('write', lambda *args: numeric_only(self.exit_cd_var, allow_float=False))
+        self.default_trailing_mult_var.trace_add('write', lambda *args: numeric_only(self.default_trailing_mult_var, allow_float=True))
     
     def _cancelar(self):
         """Cancelar y cerrar el modal"""
@@ -336,7 +548,9 @@ class ConfigAppModal(tk.Toplevel):
                     'capital_limit': 100,
                     'email': '',
                     'password': '',
-                    'report_hours': 0
+                    'report_hours': 0,
+                    'unlock_forex_scenario': False,
+                    'unlock_candle_scenario': False
                 }
         except Exception as e:
             print(f"Error al leer configuración: {e}")
@@ -344,5 +558,7 @@ class ConfigAppModal(tk.Toplevel):
                 'capital_limit': 100,
                 'email': '',
                 'password': '',
-                'report_hours': 0
+                'report_hours': 0,
+                'unlock_forex_scenario': False,
+                'unlock_candle_scenario': False
             }
