@@ -1037,12 +1037,31 @@ class EstrategiasModal(tk.Toplevel):
     def _update_parent_interface(self, risk_manager):
         """Actualizar la interfaz del gui_parent con los resultados"""
         def update():
-            if hasattr(self.gui_parent, 'dinero_ficticio'):
-                self.gui_parent.dinero_ficticio = risk_manager.capital
-            if hasattr(self.gui_parent, 'beneficios'):
-                self.gui_parent.beneficios += risk_manager.ganancia_ganadoras_total
-            if hasattr(self.gui_parent, 'perdidas'):
-                self.gui_parent.perdidas += abs(risk_manager.perdida_perdedoras_total)
+            if hasattr(self.gui_parent, 'strategy_handler'):
+                strategy_handler = self.gui_parent.strategy_handler
+                
+                # Actualizar dinero ficticio con el capital final
+                strategy_handler.dinero_ficticio = risk_manager.capital
+                
+                # Usar el nuevo método coherente si está disponible
+                if hasattr(self.gui_parent, 'status_bar') and hasattr(self.gui_parent.status_bar, 'actualizar_valores_financieros'):
+                    self.gui_parent.status_bar.actualizar_valores_financieros(
+                        capital_inicial=risk_manager.capital_inicial,
+                        equidad_actual=risk_manager.capital,
+                        beneficios_totales=risk_manager.ganancia_ganadoras_total,
+                        perdidas_totales=risk_manager.perdida_perdedoras_total
+                    )
+                else:
+                    # Fallback para compatibilidad
+                    if hasattr(self.gui_parent, 'beneficios'):
+                        self.gui_parent.beneficios = risk_manager.ganancia_ganadoras_total
+                    if hasattr(self.gui_parent, 'perdidas'):
+                        self.gui_parent.perdidas = risk_manager.perdida_perdedoras_total
+                        
+                    # Actualizar labels usando método legacy
+                    if hasattr(strategy_handler, 'actualizar_labels'):
+                        strategy_handler.actualizar_labels()
+        update()
 
     # --- Mouse wheel support for scrolling ---
     def _bind_mousewheel(self):

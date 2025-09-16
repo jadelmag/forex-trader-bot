@@ -6,17 +6,26 @@ class StatusBar:
     def __init__(self, parent_frame):
         self.parent_frame = parent_frame
         
-        # Variables de estado financiero SEPARADAS
-        self.dinero_disponible = 0  # Capital disponible (sin riesgo reservado)
-        self.equidad_total = 0      # Capital + P&L flotante de operaciones abiertas
-        self.beneficios = 0
-        self.perdidas = 0
+        # Variables de estado financiero CORREGIDAS
+        self.capital_inicial = 0     # Capital inicial del usuario
+        self.equidad_total = 0       # Capital inicial + ganancia neta + P&L flotante
+        self.beneficios_totales = 0  # Total de operaciones ganadoras
+        self.perdidas_totales = 0    # Total de operaciones perdedoras
         
         self._create_status_labels()
         
     def _create_status_labels(self):
-        """Crea las etiquetas de estado financiero"""
-        # Equity (capital + P&L flotante de operaciones abiertas)
+        """Crea las etiquetas de estado financiero con lógica corregida"""
+        # Capital inicial
+        self.label_capital = tk.Label(
+            self.parent_frame, 
+            text=f"Capital inicial: ${self.capital_inicial:,.2f}", 
+            fg="blue", 
+            bg=COLORS['BACKGROUND']
+        )
+        self.label_capital.pack(side="left", padx=10)
+
+        # Equidad total (capital + ganancia neta + P&L flotante)
         self.label_dinero = tk.Label(
             self.parent_frame, 
             text=f"Equidad: ${self.equidad_total:,.2f}", 
@@ -25,26 +34,19 @@ class StatusBar:
         )
         self.label_dinero.pack(side="left", padx=10)
 
-        # Cash (capital disponible - riesgo reservado)
-        self.label_cash = tk.Label(
-            self.parent_frame, 
-            text=f"Dinero: ${self.dinero_disponible:,.2f}", 
-            fg="black", 
-            bg=COLORS['BACKGROUND']
-        )
-        self.label_cash.pack(side="left", padx=10)
-
+        # Beneficios totales de operaciones ganadoras
         self.label_beneficios = tk.Label(
             self.parent_frame, 
-            text=f"Beneficios: ${self.beneficios:,.2f}", 
+            text=f"Beneficios: ${self.beneficios_totales:,.2f}", 
             fg="green", 
             bg=COLORS['BACKGROUND']
         )
         self.label_beneficios.pack(side="left", padx=10)
 
+        # Pérdidas totales de operaciones perdedoras
         self.label_perdidas = tk.Label(
             self.parent_frame, 
-            text=f"Pérdidas: ${self.perdidas:,.2f}", 
+            text=f"Pérdidas: ${self.perdidas_totales:,.2f}", 
             fg="red", 
             bg=COLORS['BACKGROUND']
         )
@@ -60,28 +62,47 @@ class StatusBar:
         self.label_sim_status.pack(side="left", padx=12)
         
     def actualizar_labels(self, dinero_ficticio=None, beneficios=None, perdidas=None):
-        """DEPRECATED: Usar actualizar_dinero_visible() en su lugar"""
+        """DEPRECATED: Usar actualizar_valores_financieros() en su lugar"""
         # Mantener compatibilidad hacia atrás
         if dinero_ficticio is not None:
-            self.dinero_disponible = dinero_ficticio
-            self.equidad_total = dinero_ficticio  # Fallback temporal
+            # Si no hay capital inicial establecido, usar dinero_ficticio como base
+            if self.capital_inicial == 0:
+                self.capital_inicial = dinero_ficticio
+                self.label_capital.config(text=f"Capital inicial: ${self.capital_inicial:,.2f}")
+            
+            self.equidad_total = dinero_ficticio
             self.label_dinero.config(text=f"Equidad: ${self.equidad_total:,.2f}")
-            self.label_cash.config(text=f"Dinero: ${self.dinero_disponible:,.2f}")
             
         if beneficios is not None:
-            self.beneficios = beneficios
-            self.label_beneficios.config(text=f"Beneficios: ${self.beneficios:,.2f}")
+            self.beneficios_totales = beneficios
+            self.label_beneficios.config(text=f"Beneficios: ${self.beneficios_totales:,.2f}")
             
         if perdidas is not None:
-            self.perdidas = perdidas
-            self.label_perdidas.config(text=f"Pérdidas: ${self.perdidas:,.2f}")
+            self.perdidas_totales = perdidas
+            self.label_perdidas.config(text=f"Pérdidas: ${self.perdidas_totales:,.2f}")
             
     def actualizar_dinero_visible(self, equity, cash):
-        """Actualiza dinero y equidad por separado correctamente"""
+        """DEPRECATED: Usar actualizar_valores_financieros() en su lugar"""
         self.equidad_total = equity
-        self.dinero_disponible = cash
-        self.label_dinero.config(text=f"Equidad: {equity:,.2f}$")
-        self.label_cash.config(text=f"Dinero: {cash:,.2f}$")
+        # Si no hay capital inicial, usar cash como referencia
+        if self.capital_inicial == 0:
+            self.capital_inicial = cash
+            self.label_capital.config(text=f"Capital inicial: ${self.capital_inicial:,.2f}")
+        
+        self.label_dinero.config(text=f"Equidad: ${equity:,.2f}")
+        
+    def actualizar_valores_financieros(self, capital_inicial, equidad_actual, beneficios_totales, perdidas_totales):
+        """Método principal para actualizar todos los valores financieros de forma coherente"""
+        self.capital_inicial = capital_inicial
+        self.equidad_total = equidad_actual
+        self.beneficios_totales = beneficios_totales
+        self.perdidas_totales = perdidas_totales
+        
+        # Actualizar todos los labels
+        self.label_capital.config(text=f"Capital inicial: ${self.capital_inicial:,.2f}")
+        self.label_dinero.config(text=f"Equidad: ${self.equidad_total:,.2f}")
+        self.label_beneficios.config(text=f"Beneficios: ${self.beneficios_totales:,.2f}")
+        self.label_perdidas.config(text=f"Pérdidas: ${self.perdidas_totales:,.2f}")
         
     def actualizar_estado_simulacion(self, estado, color="gray"):
         """Actualiza el estado de la simulación"""

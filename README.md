@@ -719,6 +719,13 @@ Ve a 👉 https://my.telegram.org
 - Manejo robusto de errores de conexión SMTP
 
 
+### Labels Informativos
+
+* Capital inicial: Tu inversión base (ej: 594€)
+* Equidad: Capital inicial + ganancia neta + P&L flotante (613.93€)
+* Beneficios: Solo operaciones ganadoras (130.28€)
+* Pérdidas: Solo operaciones perdedoras (110.29€)
+
 ## Videos
 
 [Como realizar backtesting](https://youtu.be/NNO-L6AWeSM)

@@ -1,31 +1,71 @@
 Iniciando simulación Binance
 Cargar configuraciones: 30 estrategia(s) actualizada(s).
-2025-09-15 16:20:37,886 - RiskManagerIntegration - INFO - RiskManagerIntegration mejorado iniciado con config: RiskConfig(atr_period=14, default_risk_percent=0.02, default_rr_ratio=2.0, atr_sl_multiplier=2.0, atr_tp_multiplier=2.0, atr_trailing_multiplier=1.5, max_strategies_per_candle=3, enable_trailing_stop=False, enable_sell_operations=True, worker_timeout=0.5, queue_maxsize=2000, force_open_operations=True)
-2025-09-15 16:21:06,236 - RiskManagerIntegration - ERROR - Niveles inválidos para BUY: Precio=1.1722, SL=1.1725714285714286, TP=1.1714571428571428
-2025-09-15 16:21:28,848 - RiskManager - WARNING - P&L ANORMAL DETECTADO:
-2025-09-15 16:21:28,848 - RiskManager - WARNING -   Operación ID: 2
-2025-09-15 16:21:28,848 - RiskManager - WARNING -   Tipo: BUY
-2025-09-15 16:21:28,848 - RiskManager - WARNING -   Precio apertura: 1.17220
-2025-09-15 16:21:28,848 - RiskManager - WARNING -   Precio actual: 1.00000
-2025-09-15 16:21:28,848 - RiskManager - WARNING -   Diferencia: 0.17220
-2025-09-15 16:21:28,848 - RiskManager - WARNING -   Lote size: 10000.00
-2025-09-15 16:21:28,848 - RiskManager - WARNING -   P&L calculado: -1722.00000
-2025-09-15 16:21:28,848 - RiskManager - WARNING -   Estrategia: forex_price_action_patterns
-2025-09-15 16:21:28,848 - RiskManager - WARNING - P&L ANORMAL DETECTADO:
-2025-09-15 16:21:28,848 - RiskManager - WARNING -   Operación ID: 3
-2025-09-15 16:21:28,848 - RiskManager - WARNING -   Tipo: SELL
-2025-09-15 16:21:28,848 - RiskManager - WARNING -   Precio apertura: 1.17210
-2025-09-15 16:21:28,848 - RiskManager - WARNING -   Precio actual: 1.00000
-2025-09-15 16:21:28,848 - RiskManager - WARNING -   Diferencia: 0.17210
-2025-09-15 16:21:28,848 - RiskManager - WARNING -   Lote size: 10000.00
-2025-09-15 16:21:28,848 - RiskManager - WARNING -   P&L calculado: 1721.00000
-2025-09-15 16:21:28,848 - RiskManager - WARNING -   Estrategia: forex_support_resistance_strategy
-2025-09-15 16:21:28,848 - RiskManager - WARNING - P&L ANORMAL DETECTADO:
-2025-09-15 16:21:28,848 - RiskManager - WARNING -   Operación ID: 5
-2025-09-15 16:21:28,848 - RiskManager - WARNING -   Tipo: BUY
-2025-09-15 16:21:28,848 - RiskManager - WARNING -   Precio apertura: 1.17180
-2025-09-15 16:21:28,848 - RiskManager - WARNING -   Precio actual: 1.00000
-2025-09-15 16:21:28,848 - RiskManager - WARNING -   Diferencia: 0.17180
-2025-09-15 16:21:28,848 - RiskManager - WARNING -   Lote size: 10000.00
-2025-09-15 16:21:28,848 - RiskManager - WARNING -   P&L calculado: -1718.00000
-2025-09-15 16:21:28,848 - RiskManager - WARNING -   Estrategia: forex_stochastic_strategy
+2025-09-15 20:42:31,856 - RiskManagerIntegration - INFO - RiskManagerIntegration mejorado iniciado con config: RiskConfig(atr_period=14, default_risk_percent=0.02, default_rr_ratio=2.0, atr_sl_multiplier=2.0, atr_tp_multiplier=2.0, atr_trailing_multiplier=1.5, max_strategies_per_candle=3, enable_trailing_stop=False, enable_sell_operations=True, worker_timeout=0.5, queue_maxsize=2000, force_open_operations=True)
+2025-09-15 20:45:34,170 - RiskManagerIntegration - ERROR - Override values inválidos para SELL: Precio=1.1748, estrategia=forex_price_action_patterns SL=1.1744142857142859, TP=1.1755714285714285
+2025-09-15 20:53:51,702 - RiskManagerIntegration - ERROR - Override values inválidos para BUY: Precio=1.1759, estrategia=forex_support_resistance_strategy SL=1.1763714285714284, TP=1.1749571428571428
+2025-09-15 20:56:12,112 - RiskManagerIntegration - ERROR - Override values inválidos para SELL: Precio=1.1757, estrategia=forex_price_action_patterns SL=1.1752285714285715, TP=1.176642857142857
+2025-09-15 20:58:49,108 - RiskManagerIntegration - ERROR - Override values inválidos para BUY: Precio=1.1756, estrategia=forex_support_resistance_strategy SL=1.1760857142857142, TP=1.1746285714285716
+2025-09-15 21:01:32,364 - RiskManagerIntegration - ERROR - Override values inválidos para BUY: Precio=1.1746, estrategia=forex_price_action_patterns SL=1.1750142857142858, TP=1.1737714285714287
+2025-09-15 21:11:45,579 - RiskManager - WARNING - P&L ANORMAL DETECTADO:
+2025-09-15 21:11:45,579 - RiskManager - WARNING -   Operación ID: 111
+2025-09-15 21:11:45,579 - RiskManager - WARNING -   Tipo: SELL
+2025-09-15 21:11:45,579 - RiskManager - WARNING -   Precio apertura: 1.17590
+2025-09-15 21:11:45,579 - RiskManager - WARNING -   Precio actual: 1.00000
+2025-09-15 21:11:45,579 - RiskManager - WARNING -   Diferencia: 0.17590
+2025-09-15 21:11:45,579 - RiskManager - WARNING -   Lote size: 3829.94
+2025-09-15 21:11:45,579 - RiskManager - WARNING -   P&L calculado: 673.68679
+2025-09-15 21:11:45,579 - RiskManager - WARNING -   Estrategia: forex_rsi_strategy
+2025-09-15 21:11:45,579 - RiskManager - WARNING - P&L ANORMAL DETECTADO:
+2025-09-15 21:11:45,579 - RiskManager - WARNING -   Operación ID: 118
+2025-09-15 21:11:45,579 - RiskManager - WARNING -   Tipo: SELL
+2025-09-15 21:11:45,579 - RiskManager - WARNING -   Precio apertura: 1.17610
+2025-09-15 21:11:45,579 - RiskManager - WARNING -   Precio actual: 1.00000
+2025-09-15 21:11:45,579 - RiskManager - WARNING -   Diferencia: 0.17610
+2025-09-15 21:11:45,579 - RiskManager - WARNING -   Lote size: 4938.25
+2025-09-15 21:11:45,579 - RiskManager - WARNING -   P&L calculado: 869.62608
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Estrategia: forex_bollinger_bands_strategy
+2025-09-15 21:11:45,588 - RiskManager - WARNING - P&L ANORMAL DETECTADO:
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Operación ID: 119
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Tipo: SELL
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Precio apertura: 1.17610
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Precio actual: 1.00000
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Diferencia: 0.17610
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Lote size: 4888.87
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   P&L calculado: 860.92982
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Estrategia: forex_range_trading_strategy
+2025-09-15 21:11:45,588 - RiskManager - WARNING - P&L ANORMAL DETECTADO:
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Operación ID: 120
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Tipo: BUY
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Precio apertura: 1.17640
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Precio actual: 1.00000
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Diferencia: 0.17640
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Lote size: 4886.47
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   P&L calculado: -861.97288
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Estrategia: forex_price_action_patterns
+2025-09-15 21:11:45,588 - RiskManager - WARNING - P&L ANORMAL DETECTADO:
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Operación ID: 121
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Tipo: SELL
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Precio apertura: 1.17650
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Precio actual: 1.00000
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Diferencia: 0.17650
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Lote size: 5584.33
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   P&L calculado: 985.63368
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Estrategia: forex_rsi_strategy
+2025-09-15 21:11:45,588 - RiskManager - WARNING - P&L ANORMAL DETECTADO:
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Operación ID: 122
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Tipo: SELL
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Precio apertura: 1.17650
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Precio actual: 1.00000
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Diferencia: 0.17650
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Lote size: 7108.05
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   P&L calculado: 1254.57088
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Estrategia: forex_stochastic_strategy
+2025-09-15 21:11:45,588 - RiskManager - WARNING - P&L ANORMAL DETECTADO:
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Operación ID: 123
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Tipo: SELL
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Precio apertura: 1.17640
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Precio actual: 1.00000
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Diferencia: 0.17640
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Lote size: 4925.88
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   P&L calculado: 868.92503
+2025-09-15 21:11:45,588 - RiskManager - WARNING -   Estrategia: forex_rsi_strategy

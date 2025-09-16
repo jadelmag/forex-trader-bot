@@ -379,19 +379,53 @@ class StrategyHandler:
         return equidad_total
         
     def _actualizar_dinero_visible(self, precio_actual: float):
-        """Actualiza la visualización del dinero y equidad por separado"""
+        """Actualiza la visualización del dinero y equidad usando el nuevo sistema coherente"""
         try:
-            # Calcular valores separados
-            capital_disponible = float(self.risk_manager.capital) if hasattr(self, 'risk_manager') and self.risk_manager is not None else float(self.dinero_ficticio)
-            equidad_total = self._calcular_dinero_visible(precio_actual)
+            # Obtener valores del RiskManager
+            if hasattr(self, 'risk_manager') and self.risk_manager is not None:
+                capital_inicial = float(self.risk_manager.capital_inicial)
+                capital_actual = float(self.risk_manager.capital)
+                beneficios_totales = float(getattr(self.risk_manager, 'ganancia_ganadoras_total', 0.0))
+                perdidas_totales = float(getattr(self.risk_manager, 'perdida_perdedoras_total', 0.0))
+            else:
+                capital_inicial = float(self.dinero_ficticio)
+                capital_actual = float(self.dinero_ficticio)
+                beneficios_totales = float(self.beneficios)
+                perdidas_totales = float(self.perdidas)
+
+            # Calcular P&L flotante de operaciones activas
+            total_pnl_flotante = 0.0
+            try:
+                for op in getattr(self.risk_manager, 'operaciones_activas', []):
+                    if getattr(op, 'estado', 'ACTIVA') != 'ACTIVA':
+                        continue
+                    if getattr(op, 'tipo', 'BUY') == 'BUY':
+                        # Para BUY: P&L flotante = (precio_actual - precio_entrada) * lote_size
+                        pnl_flotante = (float(precio_actual) - float(op.precio_apertura)) * float(op.lote_size)
+                        total_pnl_flotante += pnl_flotante
+                    else:
+                        # Para SELL: P&L flotante = (precio_entrada - precio_actual) * lote_size
+                        pnl_flotante = (float(op.precio_apertura) - float(precio_actual)) * float(op.lote_size)
+                        total_pnl_flotante += pnl_flotante
+            except Exception:
+                pass
+
+            # EQUIDAD = capital actual + P&L flotante total
+            equidad_total = capital_actual + total_pnl_flotante
             
-            # Actualizar usando el nuevo sistema separado
-            if hasattr(self.main_app, 'status_bar') and hasattr(self.main_app.status_bar, 'actualizar_dinero_visible'):
-                self.main_app.status_bar.actualizar_dinero_visible(equidad_total, capital_disponible)
+            # Usar el nuevo método coherente
+            if hasattr(self.main_app, 'status_bar') and hasattr(self.main_app.status_bar, 'actualizar_valores_financieros'):
+                self.main_app.status_bar.actualizar_valores_financieros(
+                    capital_inicial=capital_inicial,
+                    equidad_actual=equidad_total,
+                    beneficios_totales=beneficios_totales,
+                    perdidas_totales=perdidas_totales
+                )
             else:
                 # Fallback para compatibilidad
-                if hasattr(self.main_app, 'status_bar') and hasattr(self.main_app.status_bar, 'label_cash'):
-                    self.main_app.status_bar.label_cash.config(text=f"Dinero: ${capital_disponible:,.2f}")
+                if hasattr(self.main_app, 'status_bar'):
+                    self.main_app.status_bar.actualizar_labels(equidad_total, beneficios_totales, perdidas_totales)
+                    
         except Exception as e:
             self.log(f"Error actualizando dinero visible: {e}", color='red')
             
