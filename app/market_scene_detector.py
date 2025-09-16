@@ -1,4 +1,4 @@
-# app/scene_detector.py
+# app/market_scene_detector.py
 
 import pandas as pd
 import numpy as np
@@ -23,16 +23,16 @@ class ForexMarketAnalyzer:
     basados en el análisis de precios y patrones.
     """
     
-    def __init__(self, window_size: int = 20, atr_period: int = 14, 
-                 volatility_threshold: float = 0.005, trend_strength: float = 0.3):
+    def __init__(self, window_size: int = 30, atr_period: int = 14, 
+                 volatility_threshold: float = 0.002, trend_strength: float = 0.001):
         """
         Inicializa el analizador de mercado.
         
         Args:
-            window_size: Tamaño de ventana para análisis de tendencia
+            window_size: Tamaño de ventana para análisis de tendencia (30 para mejor detección)
             atr_period: Período para el cálculo de ATR (Average True Range)
-            volatility_threshold: Umbral para determinar alta/baja volatilidad
-            trend_strength: Fuerza mínima requerida para considerar tendencia
+            volatility_threshold: Umbral para determinar alta/baja volatilidad (0.2% más realista para forex)
+            trend_strength: Fuerza mínima requerida para considerar tendencia (0.1% es más realista para forex)
         """
         self.window_size = window_size
         self.atr_period = atr_period
@@ -90,27 +90,51 @@ class ForexMarketAnalyzer:
     def detect_trend(self, df: pd.DataFrame) -> Tuple[MarketScenario, float]:
         """
         Detecta si el mercado está en tendencia alcista o bajista.
+        Usa análisis más flexible y realista para mercados forex.
         """
         recent_data = df.tail(self.window_size)
         
-        # Análisis de máximos y mínimos
+        if len(recent_data) < 3:
+            return MarketScenario.UNCLEAR, 0.0
+        
+        # Calcular cambio porcentual total
+        price_change = (recent_data['close'].iloc[-1] - recent_data['close'].iloc[0]) / recent_data['close'].iloc[0]
+        
+        # Análisis de máximos y mínimos más flexible
         highs = recent_data['high'].values
         lows = recent_data['low'].values
         
-        # Detectar secuencia de máximos y mínimos
-        max_increasing = len(highs) > 1 and all(highs[i] > highs[i-1] for i in range(1, len(highs)))
-        min_increasing = len(lows) > 1 and all(lows[i] > lows[i-1] for i in range(1, len(lows)))
-        max_decreasing = len(highs) > 1 and all(highs[i] < highs[i-1] for i in range(1, len(highs)))
-        min_decreasing = len(lows) > 1 and all(lows[i] < lows[i-1] for i in range(1, len(lows)))
+        # Contar tendencia de máximos y mínimos (no requiere que TODOS sean crecientes)
+        highs_increasing = 0
+        lows_increasing = 0
         
-        # Fuerza de tendencia basada en pendiente de medias móviles
-        sma_20_slope = (recent_data['sma_20'].iloc[-1] - recent_data['sma_20'].iloc[0]) / recent_data['sma_20'].iloc[0] if recent_data['sma_20'].iloc[0] != 0 else 0
-        trend_strength = abs(sma_20_slope)
+        for i in range(1, len(highs)):
+            if highs[i] > highs[i-1]:
+                highs_increasing += 1
+            if lows[i] > lows[i-1]:
+                lows_increasing += 1
         
-        if max_increasing and min_increasing and trend_strength > self.trend_strength:
+        # Porcentaje de velas con máximos/mínimos crecientes
+        pct_highs_up = highs_increasing / (len(highs) - 1) if len(highs) > 1 else 0
+        pct_lows_up = lows_increasing / (len(lows) - 1) if len(lows) > 1 else 0
+        
+        # Análisis de medias móviles
+        sma_20_current = recent_data['sma_20'].iloc[-1] if 'sma_20' in recent_data.columns else recent_data['close'].iloc[-1]
+        sma_50_current = recent_data['sma_50'].iloc[-1] if 'sma_50' in recent_data.columns else recent_data['close'].iloc[-1]
+        price_above_sma = recent_data['close'].iloc[-1] > sma_20_current
+        
+        # Fuerza de tendencia basada en cambio de precio
+        trend_strength = abs(price_change)
+        
+        # Criterios más realistas para tendencia alcista
+        if price_change > self.trend_strength and pct_highs_up > 0.5 and pct_lows_up > 0.5 and price_above_sma:
             return MarketScenario.UPTREND, trend_strength
-        elif max_decreasing and min_decreasing and trend_strength > self.trend_strength:
+        # Criterios más realistas para tendencia bajista
+        elif price_change < -self.trend_strength and pct_highs_up < 0.5 and pct_lows_up < 0.5 and not price_above_sma:
             return MarketScenario.DOWNTREND, trend_strength
+        # Si hay movimiento significativo pero no cumple criterios estrictos
+        elif abs(price_change) > self.trend_strength * 3:
+            return MarketScenario.UPTREND if price_change > 0 else MarketScenario.DOWNTREND, trend_strength
         
         return MarketScenario.UNCLEAR, trend_strength
     
@@ -120,16 +144,27 @@ class ForexMarketAnalyzer:
         """
         recent_data = df.tail(self.window_size)
         
-        # Calcular volatilidad relativa
+        if len(recent_data) < 3:
+            return MarketScenario.UNCLEAR, 0.0
+        
+        # Calcular rango de precios
         price_range = recent_data['high'].max() - recent_data['low'].min()
         avg_price = recent_data['close'].mean()
         volatility = price_range / avg_price if avg_price != 0 else 0
         
-        # Porcentaje de tiempo dentro de las bandas de Bollinger
-        in_bb_percentage = ((recent_data['close'] >= recent_data['bb_lower']) & 
-                           (recent_data['close'] <= recent_data['bb_upper'])).mean()
+        # Calcular cambio neto de precio
+        net_change = abs(recent_data['close'].iloc[-1] - recent_data['close'].iloc[0])
+        net_change_pct = net_change / recent_data['close'].iloc[0] if recent_data['close'].iloc[0] != 0 else 0
         
-        if volatility < self.volatility_threshold and in_bb_percentage > 0.8:
+        # Porcentaje de tiempo dentro de las bandas de Bollinger
+        if 'bb_upper' in recent_data.columns and 'bb_lower' in recent_data.columns:
+            in_bb_percentage = ((recent_data['close'] >= recent_data['bb_lower']) & 
+                               (recent_data['close'] <= recent_data['bb_upper'])).mean()
+        else:
+            in_bb_percentage = 0.8  # Default si no hay bandas
+        
+        # Mercado lateral: poco cambio neto pero con volatilidad dentro del rango
+        if net_change_pct < self.trend_strength * 2 and volatility < self.volatility_threshold * 2 and in_bb_percentage > 0.7:
             return MarketScenario.RANGING, 1 - volatility
         
         return MarketScenario.UNCLEAR, volatility
@@ -184,10 +219,24 @@ class ForexMarketAnalyzer:
         """
         recent_data = df.tail(self.window_size)
         
-        # Calcular volatilidad promedio
-        avg_volatility = recent_data['atr'].mean() / recent_data['close'].mean() if recent_data['close'].mean() != 0 else 0
+        if len(recent_data) < 3:
+            return MarketScenario.UNCLEAR, 0.0
         
-        if avg_volatility < self.volatility_threshold / 2:
+        # Calcular rango de precios
+        price_range = recent_data['high'].max() - recent_data['low'].min()
+        avg_price = recent_data['close'].mean()
+        
+        # Volatilidad basada en rango
+        range_volatility = price_range / avg_price if avg_price != 0 else 0
+        
+        # Volatilidad basada en ATR
+        atr_volatility = recent_data['atr'].mean() / avg_price if 'atr' in recent_data.columns and avg_price != 0 else range_volatility
+        
+        # Usar el menor de ambos para ser más conservador
+        avg_volatility = min(range_volatility, atr_volatility)
+        
+        # Umbral más estricto para baja volatilidad (menos del 0.1% es muy bajo para forex)
+        if avg_volatility < self.volatility_threshold / 4:  # 0.002 / 4 = 0.0005 (0.05%)
             return MarketScenario.LOW_VOLATILITY, avg_volatility
         
         return MarketScenario.UNCLEAR, avg_volatility
@@ -262,24 +311,49 @@ class ForexMarketAnalyzer:
             'indicators': df_with_indicators.iloc[-1:].to_dict('records')[0] if len(df_with_indicators) > 0 else {}
         }
     
-    def _determine_primary_scenario(self, *scenarios) -> MarketScenario:
+    def _determine_primary_scenario(self, trend_scenario, ranging_scenario, acc_dist_scenario,
+                                   breakout_scenario, low_vol_scenario, fakeout_scenario,
+                                   trend_strength, range_strength) -> MarketScenario:
         """
         Determina el escenario principal basado en la prioridad y fuerza.
+        Prioriza tendencias sobre otros escenarios cuando hay movimiento claro.
         """
+        # Si hay una tendencia clara con fuerza significativa, priorizarla
+        if trend_scenario in [MarketScenario.UPTREND, MarketScenario.DOWNTREND]:
+            if trend_strength > self.trend_strength * 2:  # Si la tendencia es fuerte
+                return trend_scenario
+        
+        # Prioridad de escenarios
         priority_order = [
             MarketScenario.BREAKOUT,
             MarketScenario.UPTREND,
             MarketScenario.DOWNTREND,
             MarketScenario.FAKE_BREAKOUT,
-            MarketScenario.RANGING,
             MarketScenario.ACCUMULATION,
             MarketScenario.DISTRIBUTION,
+            MarketScenario.RANGING,
             MarketScenario.LOW_VOLATILITY
         ]
         
+        # Crear lista de escenarios detectados
+        detected_scenarios = []
+        
+        if breakout_scenario != MarketScenario.UNCLEAR:
+            detected_scenarios.append(breakout_scenario)
+        if trend_scenario != MarketScenario.UNCLEAR:
+            detected_scenarios.append(trend_scenario)
+        if fakeout_scenario != MarketScenario.UNCLEAR:
+            detected_scenarios.append(fakeout_scenario)
+        if acc_dist_scenario != MarketScenario.UNCLEAR:
+            detected_scenarios.append(acc_dist_scenario)
+        if ranging_scenario != MarketScenario.UNCLEAR:
+            detected_scenarios.append(ranging_scenario)
+        if low_vol_scenario != MarketScenario.UNCLEAR:
+            detected_scenarios.append(low_vol_scenario)
+        
+        # Retornar el escenario de mayor prioridad
         for scenario in priority_order:
-            if scenario in scenarios:
+            if scenario in detected_scenarios:
                 return scenario
         
         return MarketScenario.UNCLEAR
-
