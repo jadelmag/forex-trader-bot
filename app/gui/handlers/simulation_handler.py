@@ -20,6 +20,8 @@ class SimulationHandler:
         self.candle_streamer = None
         # Establecer instancia actual para logs de cierre
         SimulationHandler._current_instance = self
+        # Inicializar debug_mode para evitar AttributeError
+        self.debug_mode = False
         
     def iniciar_streamer(self):
         """Muestra el modal de configuración y luego inicia el CandleStreamer"""
@@ -824,8 +826,53 @@ class SimulationHandler:
             
             # CRÍTICO: Verificar cierre de operaciones existentes ANTES de procesar nuevas señales
             if hasattr(self, 'risk_manager') and self.risk_manager:
-                precio_actual = float(last_candle.get('Close', 0))
+                precio_actual = 0
+                
+                # Intentar obtener precio de múltiples fuentes
+                if 'Close' in last_candle:
+                    precio_actual = float(last_candle.get('Close', 0))
+                elif 'close' in last_candle:
+                    precio_actual = float(last_candle.get('close', 0))
+                    
+                # Validación crítica: el precio no puede ser 0 o 1.0 exacto para forex
+                if precio_actual == 0 or precio_actual == 1.0:
+                    # Intentar obtener precio del DataFrame completo
+                    if hasattr(df, 'iloc') and len(df) > 0:
+                        try:
+                            # Intentar con mayúscula
+                            if 'Close' in df.columns:
+                                precio_actual = float(df['Close'].iloc[-1])
+                            elif 'close' in df.columns:
+                                precio_actual = float(df['close'].iloc[-1])
+                        except Exception:
+                            pass
+                    
+                    # Si aún no tenemos precio válido, usar el último precio conocido
+                    if precio_actual == 0 or precio_actual == 1.0:
+                        if hasattr(self, '_last_valid_price') and self._last_valid_price > 0:
+                            precio_actual = self._last_valid_price
+                            self.log(f"⚠️ Usando último precio válido conocido: {precio_actual:.5f}", "yellow")
+                        else:
+                            # No procesar cierres sin precio válido
+                            self.log(f"❌ ERROR: Precio inválido detectado: {precio_actual}. Saltando verificación de cierres.", "red")
+                            return
+                
+                # Validación adicional para forex (precios típicamente entre 0.5 y 2.0)
+                if precio_actual < 0.5 or precio_actual > 3.0:
+                    self.log(f"⚠️ ADVERTENCIA: Precio anormal detectado: {precio_actual:.5f}", "yellow")
+                    # Intentar usar último precio válido
+                    if hasattr(self, '_last_valid_price') and 0.5 < self._last_valid_price < 3.0:
+                        precio_actual = self._last_valid_price
+                        self.log(f"Usando último precio válido: {precio_actual:.5f}", "blue")
+                else:
+                    # Guardar como último precio válido
+                    self._last_valid_price = precio_actual
+                
                 timestamp = pd.Timestamp.now()
+                
+                # Log de debug para verificar precio
+                if getattr(self, 'debug_mode', False):
+                    self.log(f"DEBUG: Verificando cierres con precio={precio_actual:.5f}", "gray")
                 
                 # Verificar cierres por SL/TP/Profit/Breakeven
                 operaciones_cerradas = self.risk_manager.verificar_cierre_operaciones(precio_actual, timestamp)
@@ -868,16 +915,22 @@ class SimulationHandler:
                     active_candle = count_active_by_prefix('candle_')
                     opens_candle_this_tick = 0
 
-                    # Preparar MarketStrategyMapper
+                    # Instancia única de CandleStrategies para el DF actual
+                    candle_strategies = CandleStrategies(df)
+
+                    # Preparar mapper y reordenar por prioridad segun escenario
                     mapper = MarketStrategyMapper()
                     scenario = getattr(self, 'current_market_scenario', None)
-
-                    # Reordenar Candle por prioridad (HIGH -> LOW) para consumir slots primero en las más recomendadas
                     try:
+                        # Construir prioridades por escenario
+                        available_candles = [c.get('name') for c in selected_candles if isinstance(c, dict) and c.get('name')]
+                        prioritized_candles = mapper.get_prioritized_candle_strategies(scenario, available_candles)
                         def _candle_weight(item):
                             try:
-                                name = item.get('name') if isinstance(item, dict) else None
-                                return mapper.get_priority_weight(name, scenario) if name else 0.0
+                                n = item.get('name') if isinstance(item, dict) else None
+                                pr = prioritized_candles.get(n)
+                                # Convertir prioridad a peso numérico (igual que get_priority_weight para candle)
+                                return {1: 1.0, 2: 0.5, 3: 0.2, 4: 0.0}.get(getattr(pr, 'value', 99), 0.0)
                             except Exception:
                                 return 0.0
                         selected_candles.sort(key=_candle_weight, reverse=True)
