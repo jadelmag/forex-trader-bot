@@ -349,7 +349,7 @@ class GUIPrincipal:
         # ---------------- Dinero/beneficios/pérdidas (centro) ----------------
         # Equity (dinero visible: capital - riesgo reservado + PnL flotante)
         self.label_dinero = tk.Label(
-            self.frame_center, text=f"Equidad: ${self.dinero_ficticio:,.2f}", fg="black", bg="#F0F0F0"
+            self.frame_center, text=f"Balance Total: ${self.dinero_ficticio:,.2f}", fg="black", bg="#F0F0F0"
         )
         self.label_dinero.pack(side="left", padx=10)
 
@@ -531,7 +531,7 @@ class GUIPrincipal:
     def actualizar_labels(self):
         print(f"DEBUG: actualizar labels: {self.dinero_ficticio}")
         # Por defecto, tratamos dinero_ficticio como equity inicial
-        self.label_dinero.config(text=f"Equidad: ${self.dinero_ficticio:,.2f}")
+        self.label_dinero.config(text=f"Balance Total: ${self.dinero_ficticio:,.2f}")
         # Cash inicial (sin reservado ni PnL en este punto)
         try:
             capital = float(self.risk_manager.capital)
@@ -607,7 +607,7 @@ class GUIPrincipal:
 
             # Actualizar estado interno y labels
             self.dinero_ficticio = float(equity)
-            self.label_dinero.config(text=f"Equidad: {equity:,.2f}$")
+            self.label_dinero.config(text=f"Balance Total: {equity:,.2f}$")
             self.label_cash.config(text=f"Dinero: {cash:,.2f}$")
 
             # Beneficios y pérdidas (cerradas) se actualizan donde corresponde

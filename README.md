@@ -722,7 +722,7 @@ Ve a 👉 https://my.telegram.org
 ### Labels Informativos
 
 * Capital inicial: Tu inversión base (ej: 594€)
-* Equidad: Capital inicial + ganancia neta + P&L flotante (613.93€)
+* Balance Total: Capital inicial + ganancia neta + P&L flotante (613.93€)
 * Beneficios: Solo operaciones ganadoras (130.28€)
 * Pérdidas: Solo operaciones perdedoras (110.29€)
 

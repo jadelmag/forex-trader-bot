@@ -393,12 +393,8 @@ class RiskManager:
         # El capital ya incluye el riesgo reservado cuando se abre la operación
         # Solo necesitamos aplicar el P&L real de la operación
         
-        # ANTES: self.capital += operacion.riesgo_reservado  # INCORRECTO - doble contabilidad
-        # ANTES: self.capital += profit                      # INCORRECTO - doble modificación
-        
-        # CORREGIDO: Solo aplicar el P&L neto al capital
-        # El riesgo_reservado ya está incluido en el cálculo del profit de la operación
-        self.capital += profit
+        # CORREGIDO: Devolver el riesgo reservado y aplicar el P&L neto
+        self.capital += operacion.riesgo_reservado + profit
         
         # Actualizar estadísticas globales
         self.beneficio_total += profit

@@ -71,7 +71,7 @@ class StatusBar:
                 self.label_capital.config(text=f"Capital inicial: ${self.capital_inicial:,.2f}")
             
             self.equidad_total = dinero_ficticio
-            self.label_dinero.config(text=f"Equidad: ${self.equidad_total:,.2f}")
+            self.label_dinero.config(text=f"Balance Total: ${self.equidad_total:,.2f}")
             
         if beneficios is not None:
             self.beneficios_totales = beneficios
@@ -89,7 +89,7 @@ class StatusBar:
             self.capital_inicial = cash
             self.label_capital.config(text=f"Capital inicial: ${self.capital_inicial:,.2f}")
         
-        self.label_dinero.config(text=f"Equidad: ${equity:,.2f}")
+        self.label_dinero.config(text=f"Balance Total: ${equity:,.2f}")
         
     def actualizar_valores_financieros(self, capital_inicial, equidad_actual, beneficios_totales, perdidas_totales):
         """Método principal para actualizar todos los valores financieros de forma coherente"""
@@ -100,7 +100,7 @@ class StatusBar:
         
         # Actualizar todos los labels
         self.label_capital.config(text=f"Capital inicial: ${self.capital_inicial:,.2f}")
-        self.label_dinero.config(text=f"Equidad: ${self.equidad_total:,.2f}")
+        self.label_dinero.config(text=f"Balance Total: ${self.equidad_total:,.2f}")
         self.label_beneficios.config(text=f"Beneficios: ${self.beneficios_totales:,.2f}")
         self.label_perdidas.config(text=f"Pérdidas: ${self.perdidas_totales:,.2f}")
         
