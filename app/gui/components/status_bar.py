@@ -28,7 +28,7 @@ class StatusBar:
         # Equidad total (capital + ganancia neta + P&L flotante)
         self.label_dinero = tk.Label(
             self.parent_frame, 
-            text=f"Equidad: ${self.equidad_total:,.2f}", 
+            text=f"Balance total: ${self.equidad_total:,.2f}", 
             fg="black", 
             bg=COLORS['BACKGROUND']
         )
