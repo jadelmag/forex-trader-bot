@@ -1114,16 +1114,33 @@ class SimulationHandler:
                             # Niveles SL/TP desde estrategia (si disponibles)
                             sl_override = float(row['StopLoss']) if 'StopLoss' in result_df.columns and pd.notna(row.get('StopLoss')) else None
                             tp_override = float(row['TakeProfit']) if 'TakeProfit' in result_df.columns and pd.notna(row.get('TakeProfit')) else None
-                            # Calcular ATR value - usar columnas del DataFrame original si no están en result_df
+                            # Calcular ATR value - CORREGIDO: usar ATR real dinámico
                             if 'ATR' in result_df.columns and pd.notna(row.get('ATR')):
                                 atr_value = float(row['ATR'])
-                            elif 'High' in result_df.columns and 'Low' in result_df.columns:
-                                atr_value = max(float(row['High']) - float(row['Low']), 1e-6)
+                            elif len(df) >= 14:  # Suficientes datos para ATR real
+                                try:
+                                    # Calcular ATR real: promedio móvil de True Range (14 períodos)
+                                    high_low = df['High'] - df['Low']
+                                    high_close_prev = abs(df['High'] - df['Close'].shift(1))
+                                    low_close_prev = abs(df['Low'] - df['Close'].shift(1))
+                                    true_range = pd.concat([high_low, high_close_prev, low_close_prev], axis=1).max(axis=1)
+                                    atr_series = true_range.ewm(span=14, adjust=False).mean()
+                                    atr_value = float(atr_series.iloc[-1])
+                                    
+                                    # Validar ATR mínimo realista para forex
+                                    if atr_value < 0.0010:
+                                        atr_value = 0.0015
+                                        if getattr(self, 'debug_mode', False):
+                                            self.log(f"ATR muy pequeño, usando mínimo: {atr_value:.5f}", "yellow")
+                                except Exception:
+                                    atr_value = 0.0020  # Fallback seguro
                             else:
-                                # Fallback: usar datos de la vela actual
-                                atr_value = max(float(last_candle.get('High', 0)) - float(last_candle.get('Low', 0)), 1e-6)
-
-                            # Preparar parámetros para integración
+                                # Fallback: rango de vela actual con mínimo realista
+                                if 'High' in result_df.columns and 'Low' in result_df.columns:
+                                    single_range = max(float(row['High']) - float(row['Low']), 1e-6)
+                                else:
+                                    single_range = max(float(last_candle.get('High', 0)) - float(last_candle.get('Low', 0)), 1e-6)
+                                atr_value = max(single_range, 0.0015)  # Mínimo 15 pips
                             precio_actual = float(row.get('Close') or last_candle.get('Close', 0))
                             ts = result_df.index[-1]
                             estrategia_nombre = f"candle_{strategy_name}"
@@ -1416,15 +1433,33 @@ class SimulationHandler:
                             # Niveles desde estrategia
                             sl_override = float(row['StopLoss']) if 'StopLoss' in result_df.columns and pd.notna(row.get('StopLoss')) else None
                             tp_override = float(row['TakeProfit']) if 'TakeProfit' in result_df.columns and pd.notna(row.get('TakeProfit')) else None
-                            # Calcular ATR value - usar columnas del DataFrame original si no están en result_df
+                            # Calcular ATR value - CORREGIDO: usar ATR real dinámico
                             if 'ATR' in result_df.columns and pd.notna(row.get('ATR')):
                                 atr_value = float(row['ATR'])
-                            elif 'High' in result_df.columns and 'Low' in result_df.columns:
-                                atr_value = max(float(row['High']) - float(row['Low']), 1e-6)
+                            elif len(df) >= 14:  # Suficientes datos para ATR real
+                                try:
+                                    # Calcular ATR real: promedio móvil de True Range (14 períodos)
+                                    high_low = df['High'] - df['Low']
+                                    high_close_prev = abs(df['High'] - df['Close'].shift(1))
+                                    low_close_prev = abs(df['Low'] - df['Close'].shift(1))
+                                    true_range = pd.concat([high_low, high_close_prev, low_close_prev], axis=1).max(axis=1)
+                                    atr_series = true_range.ewm(span=14, adjust=False).mean()
+                                    atr_value = float(atr_series.iloc[-1])
+                                    
+                                    # Validar ATR mínimo realista para forex
+                                    if atr_value < 0.0010:
+                                        atr_value = 0.0015
+                                        if getattr(self, 'debug_mode', False):
+                                            self.log(f"ATR muy pequeño, usando mínimo: {atr_value:.5f}", "yellow")
+                                except Exception:
+                                    atr_value = 0.0020  # Fallback seguro
                             else:
-                                # Fallback: usar datos de la vela actual
-                                atr_value = max(float(last_candle.get('High', 0)) - float(last_candle.get('Low', 0)), 1e-6)
-
+                                # Fallback: rango de vela actual con mínimo realista
+                                if 'High' in result_df.columns and 'Low' in result_df.columns:
+                                    single_range = max(float(row['High']) - float(row['Low']), 1e-6)
+                                else:
+                                    single_range = max(float(last_candle.get('High', 0)) - float(last_candle.get('Low', 0)), 1e-6)
+                                atr_value = max(single_range, 0.0015)  # Mínimo 15 pips
                             precio_actual = float(row.get('Close') or last_candle.get('Close', 0))
                             ts = result_df.index[-1]
                             estrategia_nombre = f"forex_{name}"
