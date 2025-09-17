@@ -305,18 +305,15 @@ class RiskManager:
         # CORRECCIÓN CRÍTICA: Calcular lote size correcto para forex
         riesgo_dinero = self.capital * riesgo_por_operacion
         
-        # Para EURUSD: 1 pip = 0.0001, valor por pip = lote_size * 0.0001
-        # Queremos: valor_por_pip = riesgo_dinero / pips_hasta_SL
-        pips_hasta_sl = riesgo_por_pip / 0.0001  # Convertir diferencia a pips
-        valor_por_pip_deseado = riesgo_dinero / pips_hasta_sl
+        # FÓRMULA CORREGIDA: Eliminar doble división
+        # Para EURUSD: Si queremos arriesgar 10€ con SL de 20 pips (0.0020)
+        # lote_size = 10€ / 0.0020 = 5,000 unidades (correcto)
+        # ANTES (INCORRECTO): convertía a pips y dividía otra vez por 0.0001
+        lote_size = riesgo_dinero / riesgo_por_pip
         
-        # Calcular lote size: valor_por_pip = lote_size * 0.0001
-        # Por tanto: lote_size = valor_por_pip / 0.0001
-        lote_size = valor_por_pip_deseado / 0.0001
-        
-        # LÍMITES para forex: entre 1,000 y 100,000 unidades
-        min_lote_forex = 1000   # Mínimo 1,000 unidades
-        max_lote_forex = 100000 # Máximo 100,000 unidades (1 lote estándar)
+        # LÍMITES AJUSTADOS para forex: entre 100 y 50,000 unidades
+        min_lote_forex = 100     # Mínimo 100 unidades (micro lote)
+        max_lote_forex = 50000   # Máximo 50,000 unidades (0.5 lotes estándar)
         
         if lote_size < min_lote_forex:
             lote_size = min_lote_forex
@@ -341,8 +338,6 @@ class RiskManager:
             logger.info(f"  Precio: {precio:.5f}")
             logger.info(f"  Stop Loss: {stop_loss:.5f}")
             logger.info(f"  Diferencia: {riesgo_por_pip:.5f}")
-            logger.info(f"  Pips hasta SL: {pips_hasta_sl:.1f}")
-            logger.info(f"  Valor por pip deseado: {valor_por_pip_deseado:.4f}€")
             logger.info(f"  Lote size final: {lote_size:.0f} unidades")
             logger.info(f"  Valor real por pip: {lote_size * 0.0001:.4f}€")
 
