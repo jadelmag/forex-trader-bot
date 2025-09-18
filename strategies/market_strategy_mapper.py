@@ -194,17 +194,19 @@ class MarketStrategyMapper:
                 'tweezer_bottom_strategy': StrategyPriority.MEDIUM,
                 'inverted_hammer_strategy': StrategyPriority.MEDIUM,
                 
-                # Baja prioridad - otros patrones
+                # Baja prioridad - otros patrones (cambiado de DISABLED a LOW)
                 'hammer_reversal_strategy': StrategyPriority.LOW,
                 'hanging_man_strategy': StrategyPriority.LOW,
                 'bullish_engulfing_strategy': StrategyPriority.LOW,
                 'bearish_engulfing_strategy': StrategyPriority.LOW,
+                'piercing_line_strategy': StrategyPriority.LOW,
+                'dark_cloud_cover_strategy': StrategyPriority.LOW,
+                'morning_star_strategy': StrategyPriority.LOW,
+                'evening_star_strategy': StrategyPriority.LOW,
                 
-                # Deshabilitadas - patrones de impulso
+                # Deshabilitadas - solo patrones de impulso fuerte
                 'three_white_soldiers_strategy': StrategyPriority.DISABLED,
                 'three_black_crows_strategy': StrategyPriority.DISABLED,
-                'morning_star_strategy': StrategyPriority.DISABLED,
-                'evening_star_strategy': StrategyPriority.DISABLED,
             },
             
             # 8. FALSAS RUPTURAS (FAKEOUTS)

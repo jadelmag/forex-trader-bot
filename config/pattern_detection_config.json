@@ -1,0 +1,18 @@
+{
+  "doji_threshold": 0.20,
+  "tweezer_tolerance": 0.02,
+  "min_confidence": 0.2,
+  "partial_factor": 0.4,
+  "hammer_body_ratio": 1.0,
+  "shooting_star_ratio": 1.2,
+  "spinning_top_ratio": 0.5,
+  "marubozu_ratio": 0.6,
+  "engulfing_min_body_ratio": 1.1,
+  "harami_max_body_ratio": 0.9,
+  "star_gap_threshold": 0.0005,
+  "three_methods_trend_strength": 0.5,
+  "atr_period": 14,
+  "trend_period": 20,
+  "volatility_period": 20,
+  "description": "Configuración más flexible para detectar más patrones de velas en forex 1m"
+}

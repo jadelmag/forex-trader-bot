@@ -2,7 +2,7 @@
 
 # Dimensiones de la interfaz
 DIMENSIONS = {
-    'MAIN_WINDOW': '1600x1000',
+    'MAIN_WINDOW': '1650x1000',
     'LOG_HEIGHT': 120,
 }
 

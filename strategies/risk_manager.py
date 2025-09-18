@@ -305,16 +305,26 @@ class RiskManager:
         # CORRECCIÓN CRÍTICA: Calcular lote size correcto para forex
         riesgo_dinero = self.capital * riesgo_por_operacion
         
-        # FÓRMULA CORREGIDA: Eliminar doble división
-        # Para EURUSD: Si queremos arriesgar 10€ con SL de 20 pips (0.0020)
-        # lote_size = 10€ / 0.0020 = 5,000 unidades (correcto)
-        # ANTES (INCORRECTO): convertía a pips y dividía otra vez por 0.0001
-        lote_size = riesgo_dinero / riesgo_por_pip
+        # NUEVA FÓRMULA CORREGIDA para Forex:
+        # 1. Convertir la diferencia de precio a pips (multiplicar por 10,000 para pares con 4 decimales)
+        # Para EURUSD: diferencia 0.00047 = 4.7 pips
+        pips_de_riesgo = riesgo_por_pip * 10000  # Conversión a pips
+        
+        # 2. Calcular el valor por pip necesario
+        # Si queremos arriesgar 8.32€ en 4.7 pips: valor_por_pip = 8.32 / 4.7 = 1.77€ por pip
+        valor_por_pip_necesario = riesgo_dinero / pips_de_riesgo if pips_de_riesgo > 0 else 0
+        
+        # 3. Calcular el tamaño del lote
+        # En Forex, para EURUSD: 1 micro lote (1,000 unidades) = 0.10€ por pip
+        # Por tanto: lote_size = valor_por_pip_necesario / 0.0001 (valor de 1 unidad por pip)
+        # Simplificado: lote_size = valor_por_pip_necesario * 10000
+        lote_size = valor_por_pip_necesario * 10000
         
         # LÍMITES AJUSTADOS para forex: entre 100 y 50,000 unidades
-        min_lote_forex = 100     # Mínimo 100 unidades (micro lote)
+        min_lote_forex = 100     # Mínimo 100 unidades (0.001 lotes estándar)
         max_lote_forex = 50000   # Máximo 50,000 unidades (0.5 lotes estándar)
         
+        # Aplicar límites
         if lote_size < min_lote_forex:
             lote_size = min_lote_forex
             if self.debug_mode:
@@ -331,15 +341,18 @@ class RiskManager:
 
         # DEBUG: Log detallado del cálculo
         if self.debug_mode:
-            logger.info(f"CÁLCULO LOTE SIZE:")
+            logger.info(f"CÁLCULO LOTE SIZE CORREGIDO:")
             logger.info(f"  Capital: {self.capital:.2f}€")
             logger.info(f"  Riesgo %: {riesgo_por_operacion*100:.1f}%")
             logger.info(f"  Riesgo €: {riesgo_dinero:.2f}€")
             logger.info(f"  Precio: {precio:.5f}")
             logger.info(f"  Stop Loss: {stop_loss:.5f}")
-            logger.info(f"  Diferencia: {riesgo_por_pip:.5f}")
+            logger.info(f"  Diferencia precio: {riesgo_por_pip:.5f}")
+            logger.info(f"  Pips de riesgo: {pips_de_riesgo:.2f}")
+            logger.info(f"  Valor por pip necesario: {valor_por_pip_necesario:.4f}€")
             logger.info(f"  Lote size final: {lote_size:.0f} unidades")
             logger.info(f"  Valor real por pip: {lote_size * 0.0001:.4f}€")
+            logger.info(f"  Pérdida máxima esperada: {pips_de_riesgo * lote_size * 0.0001:.2f}€")
 
         return float(lote_size), None
 
