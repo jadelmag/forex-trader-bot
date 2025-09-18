@@ -761,9 +761,9 @@ class SimulationHandler:
             else:
                 # Caer a frecuencia por número de velas
                 try:
-                    every_candles = int(self._get_config_value('market_analysis_every_candles', 5) or 5)
+                    every_candles = int(self._get_config_value('market_analysis_every_candles', 1) or 1)
                 except Exception:
-                    every_candles = 5
+                    every_candles = 1
                 if not hasattr(self, 'candle_count_for_market_analysis'):
                     self.candle_count_for_market_analysis = 0
                 self.candle_count_for_market_analysis += 1
@@ -1554,17 +1554,21 @@ class SimulationHandler:
             self._processing_candle = False
             
     def _analyze_market_type(self, df):
-        """Analiza el tipo de mercado usando ForexMarketAnalyzer cada 5 velas"""
+        """Analiza el tipo de mercado usando ForexMarketAnalyzer cada vela para detección rápida"""
         try:
-            # Verificar que tenemos suficientes datos
-            if len(df) < 20:
+            # Verificar que tenemos suficientes datos (reducido a 3 velas mínimo)
+            if len(df) < 3:
                 return
-                
+            
             # Importar el analizador de mercado
             if not hasattr(self, '_market_analyzer') or self._market_analyzer is None:
                 try:
                     from app.market_scene_detector import ForexMarketAnalyzer
-                    self._market_analyzer = ForexMarketAnalyzer()
+                    # Inicializar con detección rápida activada
+                    self._market_analyzer = ForexMarketAnalyzer(
+                        window_size=5,  # Ventana pequeña
+                        quick_detection=True  # Activar detección rápida con 3 velas
+                    )
                 except Exception as e:
                     if getattr(self, 'debug_mode', False):
                         self.log(f"DEBUG Error importando ForexMarketAnalyzer: {str(e)}", color="orange")

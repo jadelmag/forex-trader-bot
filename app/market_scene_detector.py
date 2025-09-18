@@ -23,21 +23,24 @@ class ForexMarketAnalyzer:
     basados en el análisis de precios y patrones.
     """
     
-    def __init__(self, window_size: int = 30, atr_period: int = 14, 
-                 volatility_threshold: float = 0.002, trend_strength: float = 0.001):
+    def __init__(self, window_size: int = 5, atr_period: int = 14, 
+                 volatility_threshold: float = 0.002, trend_strength: float = 0.001,
+                 quick_detection: bool = True):
         """
         Inicializa el analizador de mercado.
         
         Args:
-            window_size: Tamaño de ventana para análisis de tendencia (30 para mejor detección)
+            window_size: Tamaño de ventana para análisis de tendencia (5 para detección rápida)
             atr_period: Período para el cálculo de ATR (Average True Range)
             volatility_threshold: Umbral para determinar alta/baja volatilidad (0.2% más realista para forex)
             trend_strength: Fuerza mínima requerida para considerar tendencia (0.1% es más realista para forex)
+            quick_detection: Si True, permite detección con menos velas (mínimo 3)
         """
         self.window_size = window_size
         self.atr_period = atr_period
         self.volatility_threshold = volatility_threshold
         self.trend_strength = trend_strength
+        self.quick_detection = quick_detection
         
     def calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """
