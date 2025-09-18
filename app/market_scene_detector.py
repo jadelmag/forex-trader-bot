@@ -6,21 +6,16 @@ from typing import Dict, List, Optional, Tuple
 from enum import Enum
 
 class MarketScenario(Enum):
-    """Enumeración de los escenarios del mercado"""
-    UPTREND = "Tendencia alcista"
-    DOWNTREND = "Tendencia bajista"
-    RANGING = "Mercado lateral/rango"
-    ACCUMULATION = "Fase de acumulación"
-    DISTRIBUTION = "Fase de distribución"
-    BREAKOUT = "Ruptura de alta volatilidad"
-    LOW_VOLATILITY = "Baja volatilidad/contracción"
-    FAKE_BREAKOUT = "Falsa ruptura"
-    UNCLEAR = "Escenario no claro"
+    """Enumeración de los escenarios del mercado - SIMPLIFICADO A 3 TIPOS"""
+    UPTREND = "Mercado ascendente"      # Tendencia alcista clara
+    DOWNTREND = "Mercado descendente"   # Tendencia bajista clara
+    LATERAL = "Mercado lateral"          # Mercado en rango o lateral
 
 class ForexMarketAnalyzer:
     """
     Clase para detectar los principales escenarios del mercado Forex
     basados en el análisis de precios y patrones.
+    SIMPLIFICADO para detectar solo 3 tipos de mercado.
     """
     
     def __init__(self, window_size: int = 5, atr_period: int = 14, 
@@ -90,24 +85,27 @@ class ForexMarketAnalyzer:
         
         return df
     
-    def detect_trend(self, df: pd.DataFrame) -> Tuple[MarketScenario, float]:
+    def detect_market_type(self, df: pd.DataFrame) -> Tuple[MarketScenario, float]:
         """
-        Detecta si el mercado está en tendencia alcista o bajista.
-        Usa análisis más flexible y realista para mercados forex.
+        Detecta el tipo de mercado: ascendente, descendente o lateral.
+        MÉTODO PRINCIPAL SIMPLIFICADO.
+        
+        Returns:
+            Tuple con (tipo_de_mercado, fuerza_de_la_señal)
         """
         recent_data = df.tail(self.window_size)
         
         if len(recent_data) < 3:
-            return MarketScenario.UNCLEAR, 0.0
+            return MarketScenario.LATERAL, 0.0
         
         # Calcular cambio porcentual total
         price_change = (recent_data['close'].iloc[-1] - recent_data['close'].iloc[0]) / recent_data['close'].iloc[0]
         
-        # Análisis de máximos y mínimos más flexible
+        # Análisis de máximos y mínimos
         highs = recent_data['high'].values
         lows = recent_data['low'].values
         
-        # Contar tendencia de máximos y mínimos (no requiere que TODOS sean crecientes)
+        # Contar tendencia de máximos y mínimos
         highs_increasing = 0
         lows_increasing = 0
         
@@ -129,234 +127,105 @@ class ForexMarketAnalyzer:
         # Fuerza de tendencia basada en cambio de precio
         trend_strength = abs(price_change)
         
-        # Criterios más realistas para tendencia alcista
-        if price_change > self.trend_strength and pct_highs_up > 0.5 and pct_lows_up > 0.5 and price_above_sma:
+        # CRITERIOS SIMPLIFICADOS PARA 3 TIPOS DE MERCADO:
+        
+        # 1. MERCADO ASCENDENTE
+        if (price_change > self.trend_strength and 
+            (pct_highs_up > 0.5 or pct_lows_up > 0.5) and 
+            price_above_sma):
             return MarketScenario.UPTREND, trend_strength
-        # Criterios más realistas para tendencia bajista
-        elif price_change < -self.trend_strength and pct_highs_up < 0.5 and pct_lows_up < 0.5 and not price_above_sma:
+        
+        # 2. MERCADO DESCENDENTE
+        elif (price_change < -self.trend_strength and 
+              (pct_highs_up < 0.5 or pct_lows_up < 0.5) and 
+              not price_above_sma):
             return MarketScenario.DOWNTREND, trend_strength
-        # Si hay movimiento significativo pero no cumple criterios estrictos
-        elif abs(price_change) > self.trend_strength * 3:
-            return MarketScenario.UPTREND if price_change > 0 else MarketScenario.DOWNTREND, trend_strength
         
-        return MarketScenario.UNCLEAR, trend_strength
-    
-    def detect_ranging_market(self, df: pd.DataFrame) -> Tuple[MarketScenario, float]:
-        """
-        Detecta si el mercado está en fase lateral/rango.
-        """
-        recent_data = df.tail(self.window_size)
-        
-        if len(recent_data) < 3:
-            return MarketScenario.UNCLEAR, 0.0
-        
-        # Calcular rango de precios
-        price_range = recent_data['high'].max() - recent_data['low'].min()
-        avg_price = recent_data['close'].mean()
-        volatility = price_range / avg_price if avg_price != 0 else 0
-        
-        # Calcular cambio neto de precio
-        net_change = abs(recent_data['close'].iloc[-1] - recent_data['close'].iloc[0])
-        net_change_pct = net_change / recent_data['close'].iloc[0] if recent_data['close'].iloc[0] != 0 else 0
-        
-        # Porcentaje de tiempo dentro de las bandas de Bollinger
-        if 'bb_upper' in recent_data.columns and 'bb_lower' in recent_data.columns:
-            in_bb_percentage = ((recent_data['close'] >= recent_data['bb_lower']) & 
-                               (recent_data['close'] <= recent_data['bb_upper'])).mean()
+        # 3. MERCADO LATERAL (por defecto si no hay tendencia clara)
         else:
-            in_bb_percentage = 0.8  # Default si no hay bandas
-        
-        # Mercado lateral: poco cambio neto pero con volatilidad dentro del rango
-        if net_change_pct < self.trend_strength * 2 and volatility < self.volatility_threshold * 2 and in_bb_percentage > 0.7:
-            return MarketScenario.RANGING, 1 - volatility
-        
-        return MarketScenario.UNCLEAR, volatility
-    
-    def detect_accumulation_distribution(self, df: pd.DataFrame) -> MarketScenario:
-        """
-        Detecta fases de acumulación o distribución.
-        """
-        recent_data = df.tail(30)
-        
-        # Análisis de precio
-        price_change = recent_data['close'].iloc[-1] - recent_data['close'].iloc[0]
-        volatility = recent_data['atr'].mean() / recent_data['close'].mean() if recent_data['close'].mean() != 0 else 0
-        
-        # Patrones típicos de acumulación/distribución
-        if (abs(price_change) < volatility * 2 and 
-            self.detect_ranging_market(df)[0] == MarketScenario.RANGING):
-            
-            # Análisis de RSI
-            avg_rsi = recent_data['rsi'].mean()
-            
-            if avg_rsi > 55:
-                return MarketScenario.DISTRIBUTION
-            elif avg_rsi < 45:
-                return MarketScenario.ACCUMULATION
-        
-        return MarketScenario.UNCLEAR
-    
-    def detect_breakout(self, df: pd.DataFrame, support: float, resistance: float) -> MarketScenario:
-        """
-        Detecta rupturas de soportes/resistencias.
-        """
-        recent_data = df.tail(10)
-        current_close = recent_data['close'].iloc[-1]
-        current_high = recent_data['high'].iloc[-1]
-        current_low = recent_data['low'].iloc[-1]
-        
-        # Volatilidad actual
-        current_volatility = recent_data['atr'].iloc[-1] / recent_data['close'].iloc[-1] if recent_data['close'].iloc[-1] != 0 else 0
-        
-        # Detectar rupturas
-        if current_high > resistance and current_volatility > self.volatility_threshold * 2:
-            return MarketScenario.BREAKOUT
-        elif current_low < support and current_volatility > self.volatility_threshold * 2:
-            return MarketScenario.BREAKOUT
-        
-        return MarketScenario.UNCLEAR
-    
-    def detect_low_volatility(self, df: pd.DataFrame) -> Tuple[MarketScenario, float]:
-        """
-        Detecta periodos de baja volatilidad.
-        """
-        recent_data = df.tail(self.window_size)
-        
-        if len(recent_data) < 3:
-            return MarketScenario.UNCLEAR, 0.0
-        
-        # Calcular rango de precios
-        price_range = recent_data['high'].max() - recent_data['low'].min()
-        avg_price = recent_data['close'].mean()
-        
-        # Volatilidad basada en rango
-        range_volatility = price_range / avg_price if avg_price != 0 else 0
-        
-        # Volatilidad basada en ATR
-        atr_volatility = recent_data['atr'].mean() / avg_price if 'atr' in recent_data.columns and avg_price != 0 else range_volatility
-        
-        # Usar el menor de ambos para ser más conservador
-        avg_volatility = min(range_volatility, atr_volatility)
-        
-        # Umbral más estricto para baja volatilidad (menos del 0.1% es muy bajo para forex)
-        if avg_volatility < self.volatility_threshold / 4:  # 0.002 / 4 = 0.0005 (0.05%)
-            return MarketScenario.LOW_VOLATILITY, avg_volatility
-        
-        return MarketScenario.UNCLEAR, avg_volatility
-    
-    def detect_fake_breakout(self, df: pd.DataFrame, support: float, resistance: float) -> MarketScenario:
-        """
-        Detecta falsas rupturas.
-        """
-        recent_data = df.tail(15)
-        
-        for i in range(5, len(recent_data)):
-            if i >= len(recent_data):
-                continue
-                
-            window = recent_data.iloc[i-5:i]
-            current_candle = recent_data.iloc[i]
-            
-            # Ruptura previa seguida de reversión
-            if (window['high'].max() > resistance and 
-                current_candle['close'] < resistance and
-                abs(current_candle['close'] - resistance) / resistance > 0.001):
-                return MarketScenario.FAKE_BREAKOUT
-            
-            if (window['low'].min() < support and 
-                current_candle['close'] > support and
-                abs(current_candle['close'] - support) / support > 0.001):
-                return MarketScenario.FAKE_BREAKOUT
-        
-        return MarketScenario.UNCLEAR
+            # Calcular rango para determinar la fuerza del mercado lateral
+            price_range = recent_data['high'].max() - recent_data['low'].min()
+            avg_price = recent_data['close'].mean()
+            range_strength = 1.0 - (price_range / avg_price) if avg_price != 0 else 0.5
+            return MarketScenario.LATERAL, range_strength
     
     def analyze_market(self, df: pd.DataFrame, 
                       support: Optional[float] = None, 
                       resistance: Optional[float] = None) -> Dict:
         """
-        Analiza el mercado y detecta todos los escenarios posibles.
+        Analiza el mercado y detecta el tipo de mercado (simplificado a 3 tipos).
+        
+        Returns:
+            Diccionario con el análisis del mercado
         """
         # Calcular indicadores
         df_with_indicators = self.calculate_indicators(df)
         
-        # Detectar escenarios
-        trend_scenario, trend_strength = self.detect_trend(df_with_indicators)
-        ranging_scenario, range_strength = self.detect_ranging_market(df_with_indicators)
-        acc_dist_scenario = self.detect_accumulation_distribution(df_with_indicators)
-        low_vol_scenario, volatility = self.detect_low_volatility(df_with_indicators)
+        # Detectar tipo de mercado (método simplificado)
+        market_type, market_strength = self.detect_market_type(df_with_indicators)
         
-        # Detectar rupturas y falsas rupturas si se proporcionan niveles
-        breakout_scenario = MarketScenario.UNCLEAR
-        fakeout_scenario = MarketScenario.UNCLEAR
+        # Análisis adicional de volatilidad
+        recent_data = df_with_indicators.tail(self.window_size)
+        volatility = recent_data['atr'].mean() / recent_data['close'].mean() if recent_data['close'].mean() != 0 else 0
         
-        if support is not None and resistance is not None:
-            breakout_scenario = self.detect_breakout(df_with_indicators, support, resistance)
-            fakeout_scenario = self.detect_fake_breakout(df_with_indicators, support, resistance)
+        # RSI para confirmar condiciones
+        current_rsi = recent_data['rsi'].iloc[-1] if 'rsi' in recent_data.columns else 50
         
-        # Determinar escenario principal
-        primary_scenario = self._determine_primary_scenario(
-            trend_scenario, ranging_scenario, acc_dist_scenario,
-            breakout_scenario, low_vol_scenario, fakeout_scenario,
-            trend_strength, range_strength
-        )
-        
+        # Resultado simplificado
         return {
-            'primary_scenario': primary_scenario,
-            'trend': trend_scenario,
-            'trend_strength': trend_strength,
-            'ranging': ranging_scenario,
-            'range_strength': range_strength,
-            'accumulation_distribution': acc_dist_scenario,
-            'breakout': breakout_scenario,
-            'low_volatility': low_vol_scenario,
-            'volatility_level': volatility,
-            'fake_breakout': fakeout_scenario,
-            'indicators': df_with_indicators.iloc[-1:].to_dict('records')[0] if len(df_with_indicators) > 0 else {}
+            'primary_scenario': market_type,
+            'market_type': market_type.value,
+            'market_strength': market_strength,
+            'volatility': volatility,
+            'current_rsi': current_rsi,
+            'indicators': df_with_indicators.iloc[-1:].to_dict('records')[0] if len(df_with_indicators) > 0 else {},
+            # Mantener compatibilidad con código existente
+            'trend': market_type if market_type != MarketScenario.LATERAL else MarketScenario.LATERAL,
+            'trend_strength': market_strength if market_type != MarketScenario.LATERAL else 0.0,
+            'ranging': MarketScenario.LATERAL if market_type == MarketScenario.LATERAL else None,
+            'range_strength': market_strength if market_type == MarketScenario.LATERAL else 0.0,
         }
     
-    def _determine_primary_scenario(self, trend_scenario, ranging_scenario, acc_dist_scenario,
-                                   breakout_scenario, low_vol_scenario, fakeout_scenario,
-                                   trend_strength, range_strength) -> MarketScenario:
-        """
-        Determina el escenario principal basado en la prioridad y fuerza.
-        Prioriza tendencias sobre otros escenarios cuando hay movimiento claro.
-        """
-        # Si hay una tendencia clara con fuerza significativa, priorizarla
-        if trend_scenario in [MarketScenario.UPTREND, MarketScenario.DOWNTREND]:
-            if trend_strength > self.trend_strength * 2:  # Si la tendencia es fuerte
-                return trend_scenario
-        
-        # Prioridad de escenarios
-        priority_order = [
-            MarketScenario.BREAKOUT,
-            MarketScenario.UPTREND,
-            MarketScenario.DOWNTREND,
-            MarketScenario.FAKE_BREAKOUT,
-            MarketScenario.ACCUMULATION,
-            MarketScenario.DISTRIBUTION,
-            MarketScenario.RANGING,
-            MarketScenario.LOW_VOLATILITY
-        ]
-        
-        # Crear lista de escenarios detectados
-        detected_scenarios = []
-        
-        if breakout_scenario != MarketScenario.UNCLEAR:
-            detected_scenarios.append(breakout_scenario)
-        if trend_scenario != MarketScenario.UNCLEAR:
-            detected_scenarios.append(trend_scenario)
-        if fakeout_scenario != MarketScenario.UNCLEAR:
-            detected_scenarios.append(fakeout_scenario)
-        if acc_dist_scenario != MarketScenario.UNCLEAR:
-            detected_scenarios.append(acc_dist_scenario)
-        if ranging_scenario != MarketScenario.UNCLEAR:
-            detected_scenarios.append(ranging_scenario)
-        if low_vol_scenario != MarketScenario.UNCLEAR:
-            detected_scenarios.append(low_vol_scenario)
-        
-        # Retornar el escenario de mayor prioridad
-        for scenario in priority_order:
-            if scenario in detected_scenarios:
-                return scenario
-        
-        return MarketScenario.UNCLEAR
+    # Métodos de compatibilidad (mantener por si otros módulos los usan)
+    def detect_trend(self, df: pd.DataFrame) -> Tuple[MarketScenario, float]:
+        """Método de compatibilidad - redirige a detect_market_type"""
+        market_type, strength = self.detect_market_type(df)
+        if market_type == MarketScenario.LATERAL:
+            return MarketScenario.LATERAL, 0.0
+        return market_type, strength
+    
+    def detect_ranging_market(self, df: pd.DataFrame) -> Tuple[MarketScenario, float]:
+        """Método de compatibilidad - detecta solo mercado lateral"""
+        market_type, strength = self.detect_market_type(df)
+        if market_type == MarketScenario.LATERAL:
+            return MarketScenario.LATERAL, strength
+        return None, 0.0
+    
+    def detect_accumulation_distribution(self, df: pd.DataFrame) -> MarketScenario:
+        """Método de compatibilidad - simplificado"""
+        market_type, _ = self.detect_market_type(df)
+        return market_type
+    
+    def detect_breakout(self, df: pd.DataFrame, support: float, resistance: float) -> MarketScenario:
+        """Método de compatibilidad - simplificado"""
+        market_type, _ = self.detect_market_type(df)
+        # Un breakout sería un cambio de lateral a tendencia
+        return market_type if market_type != MarketScenario.LATERAL else MarketScenario.LATERAL
+    
+    def detect_low_volatility(self, df: pd.DataFrame) -> Tuple[MarketScenario, float]:
+        """Método de compatibilidad - simplificado"""
+        # Baja volatilidad normalmente implica mercado lateral
+        return self.detect_market_type(df)
+    
+    def detect_fake_breakout(self, df: pd.DataFrame, support: float, resistance: float) -> MarketScenario:
+        """Método de compatibilidad - simplificado"""
+        # Fake breakout sería volver a lateral después de intentar tendencia
+        return MarketScenario.LATERAL
+    
+    def _determine_primary_scenario(self, *args, **kwargs) -> MarketScenario:
+        """Método de compatibilidad - simplificado"""
+        # Solo retorna uno de los 3 tipos de mercado
+        for arg in args:
+            if isinstance(arg, MarketScenario) and arg in [MarketScenario.UPTREND, MarketScenario.DOWNTREND, MarketScenario.LATERAL]:
+                return arg
+        return MarketScenario.LATERAL
