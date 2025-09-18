@@ -5,3 +5,20 @@ TODO
 3. Añadir IA a datos en tiempo real. [TODO]
 4. Conectar con metatrader [TODO]
 
+El problema que veo es que tarda mucho en detectar el tipo de mercado
+por ello se pierden oportunidades de abrir operaciones short y long
+cuando con 3 velas se ve que el mercado va a ir hacia arriba aun esta en el
+mercado anterior.
+
+en la funcion _get_execution_rules se utiliza preferred_signal para dependiendo 
+del mercado se utilizan una estrategias u otras. 
+En estas estrategias estan incluidas las estrategias forex y las CandleStrategies?? si o no
+
+
+
+
+
+cuando se aplica una estrategia forex en un mercado se 
+llama a should_execute_forex_strategy no? y que estrategia 
+forex se utiliza la que mas combiene habiendo siendo calculada 
+previamente o se coge la primera del array de allowed_buy??

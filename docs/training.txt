@@ -1,0 +1,99 @@
+025-09-17 17:05:41,671 - RiskManagerIntegration - WARNING - 🚫 OPERACIÓN BLOQUEADA: forex_price_action_patterns (SELL) - Escenario de mercado no determinado todavía
+2025-09-17 17:05:46,283 - RiskManagerIntegration - WARNING - 🚫 OPERACIÓN BLOQUEADA: candle_doji_reversal_strategy (BUY) - Escenario de mercado no determinado todavía
+2025-09-17 17:05:46,727 - RiskManagerIntegration - WARNING - 🚫 OPERACIÓN BLOQUEADA: forex_macd_strategy (SELL) - Escenario de mercado no determinado todavía
+2025-09-17 17:05:46,777 - RiskManagerIntegration - WARNING - 🚫 OPERACIÓN BLOQUEADA: forex_support_resistance_strategy (BUY) - Escenario de mercado no determinado todavía
+2025-09-17 17:05:51,306 - RiskManagerIntegration - WARNING - 🚫 OPERACIÓN BLOQUEADA: candle_doji_reversal_strategy (BUY) - Escenario de mercado no determinado todavía
+2025-09-17 17:05:56,824 - RiskManagerIntegration - WARNING - 🚫 OPERACIÓN BLOQUEADA: forex_rsi_strategy (BUY) - Escenario de mercado no determinado todavía
+2025-09-17 17:06:01,873 - RiskManagerIntegration - WARNING - 🚫 OPERACIÓN BLOQUEADA: forex_stochastic_strategy (BUY) - Escenario de mercado no determinado todavía
+2025-09-17 17:06:06,925 - RiskManagerIntegration - WARNING - 🚫 OPERACIÓN BLOQUEADA: forex_rsi_strategy (BUY) - Escenario de mercado no determinado todavía
+2025-09-17 17:06:06,954 - RiskManagerIntegration - WARNING - 🚫 OPERACIÓN BLOQUEADA: forex_trend_following (SELL) - Escenario de mercado no determinado todavía
+2025-09-17 17:06:37,253 - RiskManager - INFO - APERTURA - Lote size calculado: 22580.65
+2025-09-17 17:06:37,253 - RiskManager - INFO -   Calculado con fallback: riesgo=10.00 / pip_risk=0.00044
+2025-09-17 17:06:37,253 - RiskManager - WARNING -   ⚠️ LOTE_SIZE MUY ALTO: 22580.65 - Puede causar P&L extremo
+2025-09-17 17:07:27,843 - RiskManager - INFO - APERTURA - Lote size calculado: 25624.07
+2025-09-17 17:07:27,843 - RiskManager - INFO -   Calculado con fallback: riesgo=9.88 / pip_risk=0.00039
+2025-09-17 17:07:27,843 - RiskManager - WARNING -   ⚠️ LOTE_SIZE MUY ALTO: 25624.07 - Puede causar P&L extremo
+2025-09-17 17:10:00,503 - RiskManager - INFO - APERTURA - Lote size calculado: 32204.96
+2025-09-17 17:10:00,503 - RiskManager - INFO -   Calculado con fallback: riesgo=9.66 / pip_risk=0.00030
+2025-09-17 17:10:00,503 - RiskManager - WARNING -   ⚠️ LOTE_SIZE MUY ALTO: 32204.96 - Puede causar P&L extremo
+2025-09-17 17:10:00,515 - RiskManager - INFO - APERTURA - Lote size calculado: 31882.91
+2025-09-17 17:10:00,515 - RiskManager - INFO -   Calculado con fallback: riesgo=9.56 / pip_risk=0.00030
+2025-09-17 17:10:00,515 - RiskManager - WARNING -   ⚠️ LOTE_SIZE MUY ALTO: 31882.91 - Puede causar P&L extremo
+2025-09-17 17:12:59,832 - RiskManager - INFO - APERTURA - Lote size calculado: 28108.42
+2025-09-17 17:12:59,833 - RiskManager - INFO -   Calculado con fallback: riesgo=9.64 / pip_risk=0.00034
+2025-09-17 17:12:59,833 - RiskManager - WARNING -   ⚠️ LOTE_SIZE MUY ALTO: 28108.42 - Puede causar P&L extremo
+2025-09-17 17:12:59,844 - RiskManager - INFO - APERTURA - Lote size calculado: 27827.33
+2025-09-17 17:12:59,844 - RiskManager - INFO -   Calculado con fallback: riesgo=9.54 / pip_risk=0.00034
+2025-09-17 17:12:59,844 - RiskManager - WARNING -   ⚠️ LOTE_SIZE MUY ALTO: 27827.33 - Puede causar P&L extremo
+2025-09-17 17:14:58,580 - RiskManager - INFO - APERTURA - Lote size calculado: 20800.42
+2025-09-17 17:14:58,580 - RiskManager - INFO -   Calculado con fallback: riesgo=9.21 / pip_risk=0.00044
+2025-09-17 17:14:58,580 - RiskManager - WARNING -   ⚠️ LOTE_SIZE MUY ALTO: 20800.42 - Puede causar P&L extremo
+2025-09-17 17:15:14,156 - RiskManager - INFO - APERTURA - Lote size calculado: 22224.50
+2025-09-17 17:15:14,156 - RiskManager - INFO -   Calculado con fallback: riesgo=9.21 / pip_risk=0.00041
+2025-09-17 17:15:14,157 - RiskManager - WARNING -   ⚠️ LOTE_SIZE MUY ALTO: 22224.50 - Puede causar P&L extremo
+2025-09-17 17:15:14,171 - RiskManagerIntegration - ERROR - Override values inválidos para SELL: Precio=1.1844, estrategia=forex_price_action_patterns SL=1.1839857142857142, TP=1.1852285714285713
+2025-09-17 17:15:19,308 - RiskManager - INFO - APERTURA - Lote size calculado: 21782.23
+2025-09-17 17:15:19,309 - RiskManager - INFO -   Calculado con fallback: riesgo=9.02 / pip_risk=0.00041
+2025-09-17 17:15:19,309 - RiskManager - WARNING -   ⚠️ LOTE_SIZE MUY ALTO: 21782.23 - Puede causar P&L extremo
+2025-09-17 17:15:24,548 - RiskManager - INFO - APERTURA - Lote size calculado: 20845.60
+2025-09-17 17:15:24,548 - RiskManager - INFO -   Calculado con fallback: riesgo=8.93 / pip_risk=0.00043
+2025-09-17 17:15:24,548 - RiskManager - WARNING -   ⚠️ LOTE_SIZE MUY ALTO: 20845.60 - Puede causar P&L extremo
+2025-09-17 17:15:29,787 - RiskManager - INFO - APERTURA - Lote size calculado: 21348.77
+2025-09-17 17:15:29,788 - RiskManager - INFO -   Calculado con fallback: riesgo=8.84 / pip_risk=0.00041
+2025-09-17 17:15:29,788 - RiskManager - WARNING -   ⚠️ LOTE_SIZE MUY ALTO: 21348.77 - Puede causar P&L extremo
+2025-09-17 17:18:16,331 - RiskManager - INFO - APERTURA - Lote size calculado: 18402.86
+2025-09-17 17:18:16,331 - RiskManager - INFO -   Calculado con fallback: riesgo=9.73 / pip_risk=0.00053
+2025-09-17 17:18:16,331 - RiskManager - WARNING -   ⚠️ LOTE_SIZE MUY ALTO: 18402.86 - Puede causar P&L extremo
+2025-09-17 17:18:16,353 - RiskManager - INFO - APERTURA - Lote size calculado: 18218.83
+2025-09-17 17:18:16,354 - RiskManager - INFO -   Calculado con fallback: riesgo=9.63 / pip_risk=0.00053
+2025-09-17 17:18:16,354 - RiskManager - WARNING -   ⚠️ LOTE_SIZE MUY ALTO: 18218.83 - Puede causar P&L extremo
+2025-09-17 17:21:20,176 - RiskManagerIntegration - ERROR - Override values inválidos para SELL: Precio=1.184, estrategia=forex_price_action_patterns SL=1.1836428571428572, TP=1.1847142857142856
+2025-09-17 17:21:25,535 - RiskManagerIntegration - ERROR - Override values inválidos para SELL: Precio=1.1838, estrategia=forex_support_resistance_strategy SL=1.1834428571428572, TP=1.1845142857142856
+2025-09-17 17:22:02,537 - RiskManager - INFO - APERTURA - Lote size calculado: 26352.55
+2025-09-17 17:22:02,537 - RiskManager - INFO -   Calculado con fallback: riesgo=9.79 / pip_risk=0.00037
+2025-09-17 17:22:02,537 - RiskManager - WARNING -   ⚠️ LOTE_SIZE MUY ALTO: 26352.55 - Puede causar P&L extremo
+2025-09-17 17:22:13,155 - RiskManager - INFO - APERTURA - Lote size calculado: 23983.27
+2025-09-17 17:22:13,155 - RiskManager - INFO -   Calculado con fallback: riesgo=9.59 / pip_risk=0.00040
+2025-09-17 17:22:13,155 - RiskManager - WARNING -   ⚠️ LOTE_SIZE MUY ALTO: 23983.27 - Puede causar P&L extremo
+2025-09-17 17:22:13,174 - RiskManager - INFO - APERTURA - Lote size calculado: 23743.44
+2025-09-17 17:22:13,174 - RiskManager - INFO -   Calculado con fallback: riesgo=9.50 / pip_risk=0.00040
+2025-09-17 17:22:13,174 - RiskManager - WARNING -   ⚠️ LOTE_SIZE MUY ALTO: 23743.44 - Puede causar P&L extremo
+2025-09-17 17:22:13,193 - RiskManager - INFO - APERTURA - Lote size calculado: 23506.00
+2025-09-17 17:22:13,193 - RiskManager - INFO -   Calculado con fallback: riesgo=9.40 / pip_risk=0.00040
+2025-09-17 17:22:13,195 - RiskManager - WARNING -   ⚠️ LOTE_SIZE MUY ALTO: 23506.00 - Puede causar P&L extremo
+2025-09-17 17:27:22,649 - RiskManager - INFO - APERTURA - Lote size calculado: 27456.19
+2025-09-17 17:27:22,650 - RiskManager - INFO -   Calculado con fallback: riesgo=9.81 / pip_risk=0.00036
+2025-09-17 17:27:22,650 - RiskManager - WARNING -   ⚠️ LOTE_SIZE MUY ALTO: 27456.19 - Puede causar P&L extremo
+2025-09-17 17:27:28,040 - RiskManager - INFO - APERTURA - Lote size calculado: 28314.20
+2025-09-17 17:27:28,040 - RiskManager - INFO -   Calculado con fallback: riesgo=9.71 / pip_risk=0.00034
+2025-09-17 17:27:28,040 - RiskManager - WARNING -   ⚠️ LOTE_SIZE MUY ALTO: 28314.20 - Puede causar P&L extremo
+2025-09-17 17:27:33,472 - RiskManager - INFO - APERTURA - Lote size calculado: 27750.75
+2025-09-17 17:27:33,472 - RiskManager - INFO -   Calculado con fallback: riesgo=9.51 / pip_risk=0.00034
+2025-09-17 17:27:33,472 - RiskManager - WARNING -   ⚠️ LOTE_SIZE MUY ALTO: 27750.75 - Puede causar P&L extremo
+2025-09-17 17:28:05,659 - RiskManagerIntegration - ERROR - Override values inválidos para BUY: Precio=1.1832, estrategia=forex_price_action_patterns SL=1.1835714285714285, TP=1.1824571428571429
+2025-09-17 17:29:53,931 - RiskManagerIntegration - ERROR - Override values inválidos para SELL: Precio=1.1832, estrategia=forex_support_resistance_strategy SL=1.1828142857142858, TP=1.1839714285714285
+2025-09-17 17:30:20,609 - RiskManager - INFO - APERTURA - Lote size calculado: 22230.54
+2025-09-17 17:30:20,610 - RiskManager - INFO -   Calculado con fallback: riesgo=9.84 / pip_risk=0.00044
+2025-09-17 17:30:20,610 - RiskManager - WARNING -   ⚠️ LOTE_SIZE MUY ALTO: 22230.54 - Puede causar P&L extremo
+2025-09-17 17:30:20,630 - RiskManager - INFO - APERTURA - Lote size calculado: 22008.24
+2025-09-17 17:30:20,630 - RiskManager - INFO -   Calculado con fallback: riesgo=9.75 / pip_risk=0.00044
+2025-09-17 17:30:20,630 - RiskManager - WARNING -   ⚠️ LOTE_SIZE MUY ALTO: 22008.24 - Puede causar P&L extremo
+2025-09-17 17:30:25,975 - RiskManager - INFO - APERTURA - Lote size calculado: 21788.16
+2025-09-17 17:30:25,975 - RiskManager - INFO -   Calculado con fallback: riesgo=9.65 / pip_risk=0.00044
+2025-09-17 17:30:25,975 - RiskManager - WARNING -   ⚠️ LOTE_SIZE MUY ALTO: 21788.16 - Puede causar P&L extremo
+2025-09-17 17:30:31,346 - RiskManager - INFO - APERTURA - Lote size calculado: 21996.47
+2025-09-17 17:30:31,346 - RiskManager - INFO -   Calculado con fallback: riesgo=9.74 / pip_risk=0.00044
+2025-09-17 17:30:31,347 - RiskManager - WARNING -   ⚠️ LOTE_SIZE MUY ALTO: 21996.47 - Puede causar P&L extremo
+2025-09-17 17:32:25,935 - RiskManagerIntegration - ERROR - Override values inválidos para SELL: Precio=1.1834, estrategia=forex_support_resistance_strategy SL=1.1829714285714286, TP=1.1842571428571427
+2025-09-17 17:38:11,815 - RiskManager - INFO - APERTURA - Lote size calculado: 23761.32
+2025-09-17 17:38:11,815 - RiskManager - INFO -   Calculado con fallback: riesgo=10.52 / pip_risk=0.00044
+2025-09-17 17:38:11,815 - RiskManager - WARNING -   ⚠️ LOTE_SIZE MUY ALTO: 23761.32 - Puede causar P&L extremo
+2025-09-17 17:41:29,498 - RiskManager - INFO - APERTURA - Lote size calculado: 26188.28
+2025-09-17 17:41:29,498 - RiskManager - INFO -   Calculado con fallback: riesgo=10.48 / pip_risk=0.00040
+2025-09-17 17:41:29,498 - RiskManager - WARNING -   ⚠️ LOTE_SIZE MUY ALTO: 26188.28 - Puede causar P&L extremo
+2025-09-17 17:41:29,508 - RiskManager - INFO - APERTURA - Lote size calculado: 25926.39
+2025-09-17 17:41:29,508 - RiskManager - INFO -   Calculado con fallback: riesgo=10.37 / pip_risk=0.00040
+2025-09-17 17:41:29,508 - RiskManager - WARNING -   ⚠️ LOTE_SIZE MUY ALTO: 25926.39 - Puede causar P&L extremo
+2025-09-17 17:47:07,749 - RiskManager - INFO - APERTURA - Lote size calculado: 21982.47
+2025-09-17 17:47:07,749 - RiskManager - INFO -   Calculado con fallback: riesgo=10.05 / pip_risk=0.00046
+2025-09-17 17:47:07,749 - RiskManager - WARNING -   ⚠️ LOTE_SIZE MUY ALTO: 21982.47 - Puede causar P&L extremo
